@@ -1,6 +1,7 @@
 package com.sn.lib.gui;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 import org.bukkit.configuration.ConfigurationSection;
@@ -28,6 +29,13 @@ import com.sn.lib.yml.SnYml;
  */
 public final class GuiItemDef {
 
+    /** Navigation role of the item, detected from its click actions at parse time. */
+    enum NavKind {
+        NONE,
+        PREVIOUS,
+        NEXT
+    }
+
     private final String id;
     private final SnYml yml;
     private final String path;
@@ -37,10 +45,13 @@ public final class GuiItemDef {
     private final Requirement clickRequirement;
     private final List<String> clickActions;
     private final List<String> denyActions;
+    private final NavKind navKind;
+    private final @Nullable GuiItemDef navDisabled;
 
     private GuiItemDef(String id, SnYml yml, String path, int[] slots, int updateInterval,
                        Requirement viewRequirement, Requirement clickRequirement,
-                       List<String> clickActions, List<String> denyActions) {
+                       List<String> clickActions, List<String> denyActions,
+                       NavKind navKind, @Nullable GuiItemDef navDisabled) {
         this.id = id;
         this.yml = yml;
         this.path = path;
@@ -50,6 +61,8 @@ public final class GuiItemDef {
         this.clickRequirement = clickRequirement;
         this.clickActions = clickActions;
         this.denyActions = denyActions;
+        this.navKind = navKind;
+        this.navDisabled = navDisabled;
     }
 
     /**
@@ -72,8 +85,27 @@ public final class GuiItemDef {
                 message -> warn.accept("Item '" + id + "': " + message));
         List<String> clickActions = List.copyOf(sec.getStringList("click-actions"));
         List<String> denyActions = List.copyOf(sec.getStringList("deny-actions"));
+        NavKind navKind = detectNav(clickActions);
+        GuiItemDef navDisabled = null;
+        if (navKind != NavKind.NONE && sec.getConfigurationSection("nav-disabled") != null) {
+            navDisabled = parse(yml, path + ".nav-disabled", id + ".nav-disabled", warn);
+        }
         return new GuiItemDef(id, yml, path, slots, updateInterval, viewReq, clickReq,
-                clickActions, denyActions);
+                clickActions, denyActions, navKind, navDisabled);
+    }
+
+    /** Scans the click actions for the pagination tags that make this a navigation item. */
+    private static NavKind detectNav(List<String> clickActions) {
+        for (String line : clickActions) {
+            String lower = line.toLowerCase(Locale.ROOT);
+            if (lower.contains("[previous-page]")) {
+                return NavKind.PREVIOUS;
+            }
+            if (lower.contains("[next-page]")) {
+                return NavKind.NEXT;
+            }
+        }
+        return NavKind.NONE;
     }
 
     /** Item id (its key inside the {@code items:} or {@code templates:} section). */
@@ -114,6 +146,20 @@ public final class GuiItemDef {
     /** Raw action lines run when the click requirement fails. */
     public List<String> denyActions() {
         return denyActions;
+    }
+
+    /** Navigation role of the item; sessions gate disabled arrows through it. */
+    NavKind navKind() {
+        return navKind;
+    }
+
+    /**
+     * Appearance override rendered INSTEAD of this navigation item when there is no page
+     * to go to (first page for previous, last page for next), or null when not declared.
+     * A disabled navigation item never fires any action.
+     */
+    @Nullable GuiItemDef navDisabled() {
+        return navDisabled;
     }
 
     /**

@@ -1,14 +1,19 @@
 package com.sn.lib.gui;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -17,6 +22,7 @@ import net.kyori.adventure.text.Component;
 
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
+import com.sn.lib.action.ActionContext;
 import com.sn.lib.action.PageTarget;
 import com.sn.lib.action.Requirement;
 import com.sn.lib.scheduler.TaskHandle;
@@ -38,6 +44,13 @@ import com.sn.lib.util.TagIo;
  * binds. Every rendered stack is stamped with the owner-namespaced PDC key
  * {@code snlib_gui_item} carrying {@code "<guiId>:<slot>"}.</p>
  *
+ * <p>Paged data enters through {@link #bindPaged}: the paged slots render the CURRENT
+ * page of THIS viewer from an immutable {@link Pagination} snapshot, and navigation items
+ * declared in the YML gate themselves through their optional {@code nav-disabled}
+ * override (a disabled arrow renders the override and fires nothing). Clicks and closes
+ * are dispatched by the shared click listener into {@link #handleClick} and
+ * {@link #handleClose}.</p>
+ *
  * <p>As a {@link PageTarget}, page operations are gated by the menu's opt-in
  * {@code pagination} flag: with pagination false, {@link #nextPage()},
  * {@link #previousPage()}, {@link #setPage(int)} and {@link #refreshPage()} are no-ops
@@ -52,6 +65,7 @@ public final class GuiSession implements PageTarget {
     private final SnGuiHolder holder;
     private final Map<Integer, GuiItemDef> baseSlots = new ConcurrentHashMap<>();
     private final Map<Integer, Binding> binds = new ConcurrentHashMap<>();
+    private final Map<Integer, Ph[]> pagedPhs = new ConcurrentHashMap<>();
     private final List<TaskHandle> tasks = new CopyOnWriteArrayList<>();
 
     private volatile Inventory inventory;
@@ -59,6 +73,8 @@ public final class GuiSession implements PageTarget {
     private volatile int page;
     private volatile boolean transitioningPage;
     private volatile boolean closed;
+    private volatile @Nullable PagedBind<?> pagedBind;
+    private volatile Set<Integer> pagedSlots = Set.of();
     private boolean typeWarned;
 
     GuiSession(Sn ctx, Gui gui, Player viewer, int initialPage) {
@@ -144,13 +160,19 @@ public final class GuiSession implements PageTarget {
     }
 
     /**
-     * Definition rendered at {@code slot} for this viewer: an API bind takes precedence
-     * over the declared item of that slot. Null for an empty slot.
+     * Definition rendered at {@code slot} for this viewer: an API bind takes precedence,
+     * then a paged entry, then the declared item of that slot. Null for an empty slot.
      */
     public @Nullable GuiItemDef itemAt(int slot) {
         Binding binding = binds.get(slot);
         if (binding != null) {
             return binding.template().item();
+        }
+        if (pagedPhs.containsKey(slot)) {
+            PagedBind<?> bind = pagedBind;
+            if (bind != null) {
+                return bind.template().item();
+            }
         }
         return baseSlots.get(slot);
     }
@@ -172,9 +194,96 @@ public final class GuiSession implements PageTarget {
         }
     }
 
+    /**
+     * Binds a paged data set to THIS session: an immutable snapshot of {@code data} is
+     * paged by {@code slots.length} entries and the CURRENT page of this viewer renders
+     * into {@code slots} using the template, one entry per slot in order. The mapper
+     * fills the local placeholders of each entry; leftover slots of a short page stay
+     * empty. The bind survives page changes and inventory recreations until rebound; the
+     * page is clamped to the snapshot's total pages, which also drives the
+     * {@code nav-disabled} state of the YML navigation items.
+     *
+     * <p>With {@code pagination: false} (the menu default) the call is ignored with ONE
+     * warning per GUI; an unknown template or empty slots also WARN once and ignore.</p>
+     */
+    public <T> void bindPaged(String templateId, List<T> data, int[] slots,
+                              BiConsumer<T, PhCollector> mapper) {
+        Objects.requireNonNull(mapper, "mapper");
+        if (!def.pagination()) {
+            ctx.guis().warnOnce("bind-paged:" + def.id(), "bindPaged en gui '" + def.id()
+                    + "' ignorado: pagination false (opt-in por menu)");
+            return;
+        }
+        GuiTemplate template = def.template(templateId);
+        if (template == null) {
+            ctx.guis().warnOnce("bind-paged-template:" + def.id() + ":" + templateId,
+                    "bindPaged en gui '" + def.id() + "' ignorado: template '" + templateId
+                            + "' no existe");
+            return;
+        }
+        if (slots == null || slots.length == 0) {
+            ctx.guis().warnOnce("bind-paged-slots:" + def.id(),
+                    "bindPaged en gui '" + def.id() + "' ignorado: sin slots destino");
+            return;
+        }
+        int[] target = slots.clone();
+        Set<Integer> slotSet = new HashSet<>();
+        for (int slot : target) {
+            slotSet.add(slot);
+        }
+        this.pagedBind = new PagedBind<>(template, Pagination.of(data, target.length),
+                target, mapper);
+        this.pagedSlots = Set.copyOf(slotSet);
+        if (!closed && inventory != null) {
+            renderContents();
+        }
+    }
+
+    /**
+     * Click dispatch invoked by the shared click listener with a raw top-inventory slot:
+     * resolves the effective definition (manual bind, paged entry, declared item), skips
+     * disabled navigation items and runs the click or deny actions with this session as
+     * page target and the click type in the context.
+     */
+    public void handleClick(int slot, ClickType click) {
+        if (closed) {
+            return;
+        }
+        Binding binding = binds.get(slot);
+        if (binding != null) {
+            runClick(binding.template().item(), binding.phs(), click);
+            return;
+        }
+        Ph[] pagedLocals = pagedPhs.get(slot);
+        if (pagedLocals != null) {
+            PagedBind<?> bind = pagedBind;
+            if (bind != null) {
+                runClick(bind.template().item(), pagedLocals, click);
+            }
+            return;
+        }
+        GuiItemDef item = baseSlots.get(slot);
+        if (item == null || navDisabledNow(item)) {
+            return;
+        }
+        runClick(item, new Ph[0], click);
+    }
+
+    /**
+     * Close handling invoked by the shared click listener when the viewer's client closed
+     * the inventory: same teardown as {@link #close()} without force-closing the screen.
+     */
+    public void handleClose() {
+        teardown();
+    }
+
     @Override
     public void nextPage() {
         if (paginationBlocked("next-page")) {
+            return;
+        }
+        int total = knownTotalPages();
+        if (total > 0 && page >= total) {
             return;
         }
         page++;
@@ -197,7 +306,12 @@ public final class GuiSession implements PageTarget {
         if (paginationBlocked("set-page")) {
             return;
         }
-        page = Math.max(1, targetPage);
+        int target = Math.max(1, targetPage);
+        int total = knownTotalPages();
+        if (total > 0 && target > total) {
+            target = total;
+        }
+        page = target;
         refreshPage();
     }
 
@@ -236,8 +350,19 @@ public final class GuiSession implements PageTarget {
      * session is still on screen. Idempotent.
      */
     public void close() {
-        if (closed) {
+        if (!teardown()) {
             return;
+        }
+        Inventory current = inventory;
+        if (current != null && current.getViewers().contains(viewer)) {
+            viewer.closeInventory();
+        }
+    }
+
+    /** Cancels timers and unregisters the session everywhere; false when already closed. */
+    private boolean teardown() {
+        if (closed) {
+            return false;
         }
         closed = true;
         for (TaskHandle task : tasks) {
@@ -247,10 +372,16 @@ public final class GuiSession implements PageTarget {
         gui.removeSession(viewer.getUniqueId(), this);
         GuiManager.SESSIONS.remove(ctx.plugin(), this);
         TenantSweeper.untrackInventory(holder);
-        Inventory current = inventory;
-        if (current != null && current.getViewers().contains(viewer)) {
-            viewer.closeInventory();
-        }
+        return true;
+    }
+
+    /** Runs click or deny actions of the definition under this session's context. */
+    private void runClick(GuiItemDef item, Ph[] phs, ClickType click) {
+        ActionContext context = new ActionContext(viewer, ctx, this, click, phs);
+        List<String> actions = item.clickRequirement().test(viewer, resolver(phs))
+                ? item.clickActions()
+                : item.denyActions();
+        ctx.actions().run(viewer, actions, context);
     }
 
     /**
@@ -264,6 +395,29 @@ public final class GuiSession implements PageTarget {
         ctx.debug().log(() -> "GUI '" + def.id() + "': " + operation
                 + " ignorado, pagination false (opt-in por menu)");
         return true;
+    }
+
+    /** Total pages of the live paged bind, or 0 when no paged data is bound (unknown). */
+    private int knownTotalPages() {
+        PagedBind<?> bind = pagedBind;
+        return bind == null ? 0 : bind.pagination().totalPages();
+    }
+
+    /**
+     * Whether the navigation item is currently disabled for this viewer: previous on the
+     * first page, next on the last KNOWN page (only a paged bind knows the total). A
+     * disabled navigation item renders its {@code nav-disabled} override and fires
+     * nothing.
+     */
+    private boolean navDisabledNow(GuiItemDef item) {
+        if (!def.pagination() || item.navKind() == GuiItemDef.NavKind.NONE) {
+            return false;
+        }
+        if (item.navKind() == GuiItemDef.NavKind.PREVIOUS) {
+            return page <= 1;
+        }
+        int total = knownTotalPages();
+        return total > 0 && page >= total;
     }
 
     /** True while this session's inventory is the one on the viewer's screen. */
@@ -319,6 +473,7 @@ public final class GuiSession implements PageTarget {
         for (GuiItemDef item : def.items()) {
             renderItem(current, item);
         }
+        renderPaged(current);
         for (Map.Entry<Integer, Binding> entry : binds.entrySet()) {
             if (entry.getKey() < current.getSize()) {
                 renderBinding(current, entry.getKey(), entry.getValue());
@@ -326,13 +481,59 @@ public final class GuiSession implements PageTarget {
         }
     }
 
+    /**
+     * Renders a declared item into its slots, swapping in the {@code nav-disabled}
+     * override while its navigation direction has no page to go to; slots taken by a
+     * manual bind or by the paged bind are left to their own render phases.
+     */
     private void renderItem(Inventory target, GuiItemDef item) {
-        ItemStack prototype = passes(item.viewRequirement()) ? item.render(viewer) : null;
+        GuiItemDef effective = item;
+        if (navDisabledNow(item) && item.navDisabled() != null) {
+            effective = item.navDisabled();
+        }
+        ItemStack prototype = passes(effective.viewRequirement()) ? effective.render(viewer) : null;
         for (int slot : item.slots()) {
-            if (slot >= target.getSize() || binds.containsKey(slot)) {
+            if (slot >= target.getSize() || binds.containsKey(slot) || pagedSlots.contains(slot)) {
                 continue;
             }
             target.setItem(slot, prototype == null ? null : stamp(prototype.clone(), slot));
+        }
+    }
+
+    /** Renders the viewer's current page of the paged bind into its slots. */
+    private void renderPaged(Inventory target) {
+        PagedBind<?> bind = pagedBind;
+        if (bind == null) {
+            return;
+        }
+        renderPaged(target, bind);
+    }
+
+    private <T> void renderPaged(Inventory target, PagedBind<T> bind) {
+        int total = bind.pagination().totalPages();
+        if (page > total) {
+            page = total;
+        }
+        List<T> slice = bind.pagination().page(page);
+        int[] slots = bind.slots();
+        pagedPhs.clear();
+        GuiItemDef item = bind.template().item();
+        for (int index = 0; index < slots.length; index++) {
+            int slot = slots[index];
+            if (slot < 0 || slot >= target.getSize() || binds.containsKey(slot)) {
+                continue;
+            }
+            ItemStack stack = null;
+            if (index < slice.size()) {
+                PhCollector collector = new PhCollector();
+                bind.mapper().accept(slice.get(index), collector);
+                Ph[] phs = collector.toArray();
+                if (item.viewRequirement().test(viewer, resolver(phs))) {
+                    stack = stamp(bind.template().render(viewer, phs), slot);
+                    pagedPhs.put(slot, phs);
+                }
+            }
+            target.setItem(slot, stack);
         }
     }
 
@@ -405,5 +606,10 @@ public final class GuiSession implements PageTarget {
 
     /** Template bound to a slot with its local placeholders captured at bind time. */
     private record Binding(GuiTemplate template, Ph[] phs) {
+    }
+
+    /** Live paged bind: template, immutable pagination snapshot, target slots and mapper. */
+    private record PagedBind<T>(GuiTemplate template, Pagination<T> pagination, int[] slots,
+                                BiConsumer<T, PhCollector> mapper) {
     }
 }

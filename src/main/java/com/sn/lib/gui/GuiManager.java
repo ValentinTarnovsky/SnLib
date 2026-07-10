@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,6 +56,7 @@ public final class GuiManager {
     private final JavaPlugin plugin;
     private final Map<String, Gui> guis = new LinkedHashMap<>();
     private final Map<String, SnYml> mounts = new ConcurrentHashMap<>();
+    private final Set<String> warnedOnce = ConcurrentHashMap.newKeySet();
 
     /** Creates the module for the given context and hooks its quit cleanup. */
     public GuiManager(Sn ctx) {
@@ -142,6 +144,13 @@ public final class GuiManager {
     public void closeAll(Plugin owner) {
         for (GuiSession session : new ArrayList<>(SESSIONS.forOwner(owner))) {
             session.close();
+        }
+    }
+
+    /** Logs a GUI misuse warning once per key for this context (bindPaged gating). */
+    void warnOnce(String key, String message) {
+        if (warnedOnce.add(key)) {
+            plugin.getLogger().warning(message);
         }
     }
 
