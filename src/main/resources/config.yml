@@ -1,0 +1,20 @@
+# ============================================================
+#  SnLib - shared runtime of the Sn plugins
+#  Managed config: keys added by future versions are merged in
+#  on every start; your values and extra keys are preserved.
+# ============================================================
+
+# Master gate of the always-merge updater: false skips every yml merge except this file.
+update-configs: true
+
+# Runtime debug output of the library itself (also toggleable live, no restart needed).
+debug:
+  # Master toggle of the debug output.
+  enabled: false
+  # Verbosity threshold: OFF, INFO, DEBUG or TRACE.
+  level: DEBUG
+  # Category filter; an empty list lets every category through.
+  categories: []
+
+# Anonymous usage metrics via bStats (https://bstats.org); set false to opt out.
+bstats: true

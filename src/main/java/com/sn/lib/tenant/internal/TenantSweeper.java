@@ -80,7 +80,7 @@ public final class TenantSweeper implements Listener {
     public void onPluginDisable(PluginDisableEvent event) {
         Plugin plugin = event.getPlugin();
         if (plugin instanceof SnLibPlugin) {
-            cascade();
+            cascadeAll();
             return;
         }
         Sn ctx = plugin instanceof JavaPlugin owner ? SnLib.context(owner) : null;
@@ -110,7 +110,13 @@ public final class TenantSweeper implements Listener {
         access.detach(owner, captured);
     }
 
-    private void cascade() {
+    /**
+     * Full shutdown cascade: detaches and shuts down every live context in reverse
+     * registration order. Idempotent (the registry drains on the first pass); fired by
+     * the SnLib disable event and invoked again from the bootstrap's onDisable as a
+     * double net when the listener never got registered.
+     */
+    public static void cascadeAll() {
         ContextAccess access = contexts;
         if (access == null) {
             return;

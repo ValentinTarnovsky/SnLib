@@ -3,6 +3,7 @@ package com.sn.lib.tenant.internal;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginManager;
 
@@ -22,9 +23,10 @@ import com.sn.lib.item.internal.LockedItemListener;
  * Single inscription point for every shared listener of the library.
  *
  * <p>Fixed wiring mechanism: each module inscribes its shared listener here (accumulated
- * in a list) and {@link #registerAll} performs the ONLY {@code registerEvents} call of
- * the whole library, invoked once from the SnLibPlugin bootstrap. No library code may
- * register events anywhere else.</p>
+ * in a list from the static initializer, before any bootstrap call) and
+ * {@link #registerAll} performs the ONLY {@code registerEvents} call of the whole
+ * library, invoked once from the SnLibPlugin bootstrap. No library code may register
+ * events anywhere else.</p>
  */
 public final class ListenerHub {
 
@@ -52,10 +54,14 @@ public final class ListenerHub {
     }
 
     /**
-     * Registers every inscribed listener against the SnLib plugin. Bootstrap-only call;
-     * a disable of SnLib unregisters them, so a re-enable registers them again.
+     * Registers every inscribed listener against the SnLib plugin: the single
+     * {@code registerEvents} point of the library, invoked once from
+     * {@code SnLibPlugin.onEnable}. Idempotent: SnLib's previous event registrations
+     * are dropped first, so a double call or a re-enable never duplicates handlers
+     * (a disable of SnLib also unregisters them all).
      */
     public static void registerAll(SnLibPlugin plugin) {
+        HandlerList.unregisterAll(plugin);
         PluginManager pluginManager = plugin.getServer().getPluginManager();
         for (Listener listener : LISTENERS) {
             pluginManager.registerEvents(listener, plugin);
