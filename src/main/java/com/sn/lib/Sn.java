@@ -5,6 +5,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.sn.lib.action.ActionEngine;
 import com.sn.lib.command.SnCommands;
 import com.sn.lib.cooldown.Cooldowns;
+import com.sn.lib.db.DbConfig;
+import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.gui.GuiManager;
 import com.sn.lib.item.ItemRegistry;
@@ -35,6 +37,7 @@ public final class Sn {
     private final Cooldowns cooldowns;
     private final ItemRegistry items;
     private final GuiManager guis;
+    private final SnDb db;
     private final SnCommands commands;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
@@ -64,6 +67,10 @@ public final class Sn {
         if (guis != null) {
             guis.load();
         }
+        this.db = spec.db()
+                ? new SnDb(this, DbConfig.load(plugin,
+                        yml == null ? null : yml.config().getSection("database")))
+                : null;
         this.commands = new SnCommands(this, lang, spec.debugCommand());
     }
 
@@ -171,6 +178,21 @@ public final class Sn {
     }
 
     /**
+     * Database module of the owning plugin: dual SQLite/MySQL over one Hikari pool with
+     * every query and update off the main thread.
+     *
+     * @throws UnsupportedOperationException if the spec did not declare the db module
+     *         via {@code SnSpec.builder().db()}
+     */
+    public SnDb db() {
+        if (db == null) {
+            throw new UnsupportedOperationException(
+                    "Modulo db no declarado: falta SnSpec.builder().db()");
+        }
+        return db;
+    }
+
+    /**
      * Command module of the owning plugin; available in every context. Roots built here
      * inject reload and help subcommands by default, tab-complete gated by permission,
      * and are unregistered on shutdown.
@@ -195,6 +217,9 @@ public final class Sn {
         }
         shuttingDown = true;
         commands.unregisterAll();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     /** Reloads every reloadable module owned by this context. */
