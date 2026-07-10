@@ -140,7 +140,7 @@ public final class RootCommand extends Command implements Registrable {
             return true;
         }
         String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
-        if (subArgs.length < sub.args.size()) {
+        if (subArgs.length < sub.requiredArgs) {
             send(sender, "snlib.usage", Ph.of("usage", usageOf(sub)));
             return true;
         }
@@ -155,6 +155,9 @@ public final class RootCommand extends Command implements Registrable {
         int index = 0;
         int lastIndex = sub.args.size() - 1;
         for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
+            if (index >= subArgs.length) {
+                break;
+            }
             String token = subArgs[index];
             if (index == lastIndex && isGreedy(entry.getValue())) {
                 token = String.join(" ",
@@ -307,11 +310,12 @@ public final class RootCommand extends Command implements Registrable {
         int index = 0;
         int lastIndex = sub.args.size() - 1;
         for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
-            out.append(" <").append(entry.getKey());
+            boolean optional = index >= sub.requiredArgs;
+            out.append(optional ? " [" : " <").append(entry.getKey());
             if (index == lastIndex && isGreedy(entry.getValue())) {
                 out.append("...");
             }
-            out.append('>');
+            out.append(optional ? ']' : '>');
             index++;
         }
         return out.toString();
@@ -368,12 +372,13 @@ public final class RootCommand extends Command implements Registrable {
         final String description;
         final boolean visible;
         final Map<String, Arg<?>> args;
+        final int requiredArgs;
         final List<Condition> conditions;
         final @Nullable Consumer<CommandContext> executor;
 
         Sub(String name, List<String> aliases, @Nullable String permission,
                 @Nullable String usage, String description, boolean visible,
-                Map<String, Arg<?>> args, List<Condition> conditions,
+                Map<String, Arg<?>> args, int requiredArgs, List<Condition> conditions,
                 @Nullable Consumer<CommandContext> executor) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
             List<String> lowered = new ArrayList<>(aliases.size());
@@ -386,6 +391,7 @@ public final class RootCommand extends Command implements Registrable {
             this.description = description;
             this.visible = visible;
             this.args = Collections.unmodifiableMap(new LinkedHashMap<>(args));
+            this.requiredArgs = requiredArgs;
             this.conditions = List.copyOf(conditions);
             this.executor = executor;
         }
@@ -393,7 +399,7 @@ public final class RootCommand extends Command implements Registrable {
         static Sub of(String name, @Nullable String permission, String description,
                 Consumer<CommandContext> executor) {
             return new Sub(name, List.of(), permission, null, description, true,
-                    Map.of(), List.of(), executor);
+                    Map.of(), 0, List.of(), executor);
         }
     }
 }

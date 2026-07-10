@@ -1,6 +1,7 @@
 package com.sn.lib.command.internal;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +23,7 @@ import org.jetbrains.annotations.Nullable;
 import com.sn.lib.Sn;
 import com.sn.lib.SnLib;
 import com.sn.lib.SnLibPlugin;
+import com.sn.lib.command.Args;
 import com.sn.lib.command.CommandContext;
 import com.sn.lib.compat.SnVersion;
 import com.sn.lib.hook.SoftDependency;
@@ -74,6 +76,7 @@ public final class SnLibCommand {
                         .permission("snlib.admin.reload")
                         .usage("/snlib reload [plugin]")
                         .description("Reloads the library's own surface or one consumer")
+                        .argOptional("plugin", Args.oneOf(SnLibCommand::hookedConsumerNames))
                         .executes(context -> reload(plugin, selfCtx, context))
                         .and()
                 .register();
@@ -168,6 +171,20 @@ public final class SnLibCommand {
      * debug + bstats) through the selfCtx reload manager; with a plugin name it delegates
      * to that consumer's reload manager. Classes are never reloaded.
      */
+    /** Tab options of {@code /snlib reload}: SnLib itself plus every hooked consumer. */
+    private static Collection<String> hookedConsumerNames() {
+        List<String> names = new ArrayList<>();
+        names.add(SnLibPlugin.get().getName());
+        for (Plugin plugin : Bukkit.getPluginManager().getPlugins()) {
+            if (plugin instanceof JavaPlugin javaPlugin && !(plugin instanceof SnLibPlugin)
+                    && SnLib.context(javaPlugin) != null) {
+                names.add(plugin.getName());
+            }
+        }
+        Collections.sort(names);
+        return names;
+    }
+
     private static void reload(SnLibPlugin self, Sn selfCtx, CommandContext context) {
         String targetName = context.raw(0);
         if (targetName == null || targetName.equalsIgnoreCase(self.getName())) {

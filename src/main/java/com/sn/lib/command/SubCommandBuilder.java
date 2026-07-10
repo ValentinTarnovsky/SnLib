@@ -27,6 +27,8 @@ public final class SubCommandBuilder {
     private @Nullable String usage;
     private String description = "";
     private boolean visible = true;
+    private int requiredArgs;
+    private boolean optionalDeclared;
     private @Nullable Consumer<CommandContext> executor;
 
     SubCommandBuilder(SnCommands.RootBuilder parent, String name) {
@@ -68,12 +70,32 @@ public final class SubCommandBuilder {
 
     /** Declares the next positional argument; declaration order is parse order. */
     public SubCommandBuilder arg(String name, Arg<?> arg) {
+        if (optionalDeclared) {
+            throw new IllegalStateException(
+                    "Argumento obligatorio '" + name + "' despues de uno opcional");
+        }
+        declare(name, arg);
+        requiredArgs++;
+        return this;
+    }
+
+    /**
+     * Declares an OPTIONAL trailing positional argument: it suggests and parses when the
+     * token is present but its absence never rejects the invocation. Optionals go last;
+     * a required {@link #arg} after one is an error.
+     */
+    public SubCommandBuilder argOptional(String name, Arg<?> arg) {
+        declare(name, arg);
+        optionalDeclared = true;
+        return this;
+    }
+
+    private void declare(String name, Arg<?> arg) {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(arg, "arg");
         if (args.put(name, arg) != null) {
             throw new IllegalArgumentException("Argumento duplicado: '" + name + "'");
         }
-        return this;
     }
 
     /**
@@ -103,6 +125,6 @@ public final class SubCommandBuilder {
 
     RootCommand.Sub build() {
         return new RootCommand.Sub(name, aliases, permission, usage, description,
-                visible, args, conditions, executor);
+                visible, args, requiredArgs, conditions, executor);
     }
 }
