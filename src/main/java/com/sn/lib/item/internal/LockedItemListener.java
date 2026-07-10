@@ -113,7 +113,7 @@ public final class LockedItemListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        if (!def.noManualEquip()
+        if (!manualEquipDenied(def)
                 || event.getInventory().getType() != InventoryType.CRAFTING) {
             return;
         }
@@ -138,7 +138,7 @@ public final class LockedItemListener implements Listener {
             return;
         }
         ItemDef def = match.def();
-        if ((def.noManualEquip() || def.locked()) && isArmourPiece(item)) {
+        if ((manualEquipDenied(def) || def.locked()) && isArmourPiece(item)) {
             event.setUseItemInHand(Event.Result.DENY);
         }
     }
@@ -272,7 +272,16 @@ public final class LockedItemListener implements Listener {
 
     private static boolean noManualEquip(@Nullable ItemStack stack) {
         ItemPropertyListener.Match match = ItemPropertyListener.match(stack);
-        return match != null && match.def().noManualEquip();
+        return match != null && manualEquipDenied(match.def());
+    }
+
+    /**
+     * COMMAND_ONLY implica no-equip-manual: solo {@link ItemRegistry#apply} puede
+     * equiparla. PlayerArmorChangeEvent llega post-hecho (no vinculante), asi que la
+     * negativa tiene que ocurrir en los vectores de click/drag/interact.
+     */
+    private static boolean manualEquipDenied(ItemDef def) {
+        return def.noManualEquip() || def.obtainVia() == ObtainMode.COMMAND_ONLY;
     }
 
     /**
