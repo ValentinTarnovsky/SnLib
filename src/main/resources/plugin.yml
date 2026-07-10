@@ -1,0 +1,39 @@
+name: SnLib
+main: com.sn.lib.SnLibPlugin
+version: ${project.version}
+author: ValentinTarnovsky
+api-version: '1.20'
+load: STARTUP
+description: Common library core for Sn plugins (standalone hard-depend).
+softdepend: [PlaceholderAPI, Vault]
+
+commands:
+  snlib:
+    description: SnLib administration command.
+    usage: /snlib <version|plugins|integrations|iteminfo|reload>
+
+permissions:
+  snlib.admin:
+    description: Grants every SnLib admin subcommand.
+    default: op
+    children:
+      snlib.admin.version: true
+      snlib.admin.plugins: true
+      snlib.admin.integrations: true
+      snlib.admin.iteminfo: true
+      snlib.admin.reload: true
+  snlib.admin.version:
+    description: Allows /snlib version.
+    default: op
+  snlib.admin.plugins:
+    description: Allows /snlib plugins.
+    default: op
+  snlib.admin.integrations:
+    description: Allows /snlib integrations.
+    default: op
+  snlib.admin.iteminfo:
+    description: Allows /snlib iteminfo.
+    default: op
+  snlib.admin.reload:
+    description: Allows /snlib reload.
+    default: op

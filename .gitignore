@@ -1,0 +1,7 @@
+target/
+.idea/
+*.iml
+.vscode/
+dependency-reduced-pom.xml
+CLAUDE.md
+.claude/
