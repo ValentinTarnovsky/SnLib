@@ -10,6 +10,7 @@ import com.sn.lib.cron.SnCron;
 import com.sn.lib.db.DbConfig;
 import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.discord.DiscordWebhook;
 import com.sn.lib.economy.EconomyBridge;
 import com.sn.lib.gui.GuiManager;
 import com.sn.lib.hologram.HologramUtil;
@@ -18,6 +19,7 @@ import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.item.internal.EquipmentBackup;
 import com.sn.lib.item.internal.RecipeLoader;
 import com.sn.lib.lang.SnLang;
+import com.sn.lib.leaderboard.LeaderboardCache;
 import com.sn.lib.papi.SnPapi;
 import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
@@ -55,6 +57,8 @@ public final class Sn {
     private final BossBarUtil bossbars;
     private final HologramUtil holograms;
     private final SnCron cron;
+    private final LeaderboardCache leaderboards;
+    private final DiscordWebhook discord;
     private final ItemRegistry items;
     private final GuiManager guis;
     private final SnDb db;
@@ -78,6 +82,8 @@ public final class Sn {
         this.bossbars = new BossBarUtil(this);
         this.holograms = new HologramUtil(this);
         this.cron = new SnCron(this);
+        this.leaderboards = new LeaderboardCache(this);
+        this.discord = new DiscordWebhook(this);
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
         if (itemsFile != null) {
@@ -220,6 +226,25 @@ public final class Sn {
     }
 
     /**
+     * Leaderboard cache of the owning plugin; available in every context. Each board runs
+     * its query asynchronously on a fixed interval and swaps an immutable snapshot behind
+     * a volatile reference, so getTop/positionOf/valueOf are lock-free cache reads safe
+     * for PlaceholderAPI resolvers.
+     */
+    public LeaderboardCache leaderboards() {
+        return leaderboards;
+    }
+
+    /**
+     * Discord webhook dispatcher of the owning plugin; available in every context.
+     * Messages queue FIFO and post asynchronously through the JDK HttpClient, honoring
+     * Retry-After on 429; the context teardown drains whatever is still queued.
+     */
+    public DiscordWebhook discord() {
+        return discord;
+    }
+
+    /**
      * Item registry of the owning plugin; available in every context and works with zero
      * files: definitions come from {@code ItemDef.builder()}, from YML sections or from
      * the items file declared via {@code SnSpec.builder().items(...)}.
@@ -336,11 +361,12 @@ public final class Sn {
         // 11. Release the BungeeCord outgoing channel if [connect] registered it.
         actions.shutdown();
         // 12. Teardown hooks of the extra modules, before the generic removeOwner: hide
-        //     this owner's bossbars and delete its TextDisplay holograms so they do not
-        //     linger as orphans until the next startup purge (discord drain slots here
-        //     too once that module exists).
+        //     this owner's bossbars, delete its TextDisplay holograms so they do not
+        //     linger as orphans until the next startup purge, and drain the queued
+        //     Discord webhooks best-effort under a short deadline.
         bossbars.hideAll();
         holograms.deleteAll();
+        discord.drain();
         // 13. Remove this owner's key from EVERY tenant registry and detach the context.
         TenantRegistry.sweepOwner(plugin);
         SnLib.detach(plugin, this);
