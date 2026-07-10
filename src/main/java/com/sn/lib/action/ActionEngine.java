@@ -34,6 +34,7 @@ import net.kyori.adventure.title.Title;
 
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
+import com.sn.lib.gui.Gui;
 import com.sn.lib.text.SnText;
 import com.sn.lib.util.SoundUtil;
 
@@ -231,8 +232,7 @@ public final class ActionEngine {
         handlers.put("title", (p, arg, c) -> showTitle(p, arg));
         handlers.put("sound", (p, arg, c) -> SoundUtil.play(p, arg));
         handlers.put("close", (p, arg, c) -> p.closeInventory());
-        handlers.put("open", (p, arg, c) -> warnOnce("open",
-                "Accion [open] ignorada: el modulo gui no esta disponible en este contexto"));
+        handlers.put("open", (p, arg, c) -> openGui(p, arg));
         handlers.put("connect", (p, arg, c) -> connect(p, arg));
         handlers.put("next-page", (p, arg, c) -> withPagination(c, "next-page", PageTarget::nextPage));
         handlers.put("previous-page", (p, arg, c) -> withPagination(c, "previous-page", PageTarget::previousPage));
@@ -295,6 +295,28 @@ public final class ActionEngine {
             return def;
         }
         return parseInt(parts[index], (int) def, "title");
+    }
+
+    /** Opens the context GUI named by {@code arg}; misconfigurations WARN once and skip. */
+    private void openGui(Player player, String arg) {
+        String id = arg.trim();
+        if (id.isEmpty()) {
+            warnOnce("open-arg", "Accion [open] sin gui-id; se ignora");
+            return;
+        }
+        Gui gui;
+        try {
+            gui = ctx.guis().get(id);
+        } catch (UnsupportedOperationException e) {
+            warnOnce("open-module",
+                    "Accion [open] ignorada: modulo guis no declarado en el spec");
+            return;
+        }
+        if (gui == null) {
+            warnOnce("open:" + id, "Accion [open] ignorada: gui '" + id + "' no existe");
+            return;
+        }
+        gui.open(player);
     }
 
     private void connect(Player player, String arg) {

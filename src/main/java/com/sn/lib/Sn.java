@@ -5,6 +5,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.sn.lib.action.ActionEngine;
 import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.gui.GuiManager;
 import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
@@ -32,6 +33,7 @@ public final class Sn {
     private final SnLang lang;
     private final Cooldowns cooldowns;
     private final ItemRegistry items;
+    private final GuiManager guis;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -55,6 +57,10 @@ public final class Sn {
                 plugin.getLogger().warning("items(\"" + itemsFile + "\") declarado sin config(): "
                         + "el archivo no se monta y sn.items() queda solo programatico");
             }
+        }
+        this.guis = spec.guis() ? new GuiManager(this) : null;
+        if (guis != null) {
+            guis.load();
         }
     }
 
@@ -144,6 +150,21 @@ public final class Sn {
      */
     public ItemRegistry items() {
         return items;
+    }
+
+    /**
+     * GUI module of the owning plugin: the {@code guis/} folder with one GUI per file,
+     * one session and inventory per viewer, and opt-in pagination per menu.
+     *
+     * @throws UnsupportedOperationException if the spec did not declare the guis
+     *         module via {@code SnSpec.builder().guis()}
+     */
+    public GuiManager guis() {
+        if (guis == null) {
+            throw new UnsupportedOperationException(
+                    "Modulo guis no declarado: falta SnSpec.builder().guis()");
+        }
+        return guis;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */
