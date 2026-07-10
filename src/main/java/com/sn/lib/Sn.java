@@ -3,6 +3,7 @@ package com.sn.lib;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.action.ActionEngine;
+import com.sn.lib.command.SnCommands;
 import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.gui.GuiManager;
@@ -34,6 +35,7 @@ public final class Sn {
     private final Cooldowns cooldowns;
     private final ItemRegistry items;
     private final GuiManager guis;
+    private final SnCommands commands;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -62,6 +64,7 @@ public final class Sn {
         if (guis != null) {
             guis.load();
         }
+        this.commands = new SnCommands(this, lang, spec.debugCommand());
     }
 
     /** Consumer plugin that owns this context. */
@@ -167,6 +170,15 @@ public final class Sn {
         return guis;
     }
 
+    /**
+     * Command module of the owning plugin; available in every context. Roots built here
+     * inject reload and help subcommands by default, tab-complete gated by permission,
+     * and are unregistered on shutdown.
+     */
+    public SnCommands commands() {
+        return commands;
+    }
+
     /** True once teardown of this context started; module I/O must go synchronous. */
     public boolean isShuttingDown() {
         return shuttingDown;
@@ -182,6 +194,7 @@ public final class Sn {
             return;
         }
         shuttingDown = true;
+        commands.unregisterAll();
     }
 
     /** Reloads every reloadable module owned by this context. */
