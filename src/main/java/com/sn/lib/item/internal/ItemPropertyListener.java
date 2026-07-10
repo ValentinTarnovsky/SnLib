@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockDispenseArmorEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
@@ -24,6 +25,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -42,8 +44,11 @@ import com.sn.lib.util.InvUtil;
 /**
  * Single shared listener owned by SnLib that enforces the behaviour properties of
  * registered items (droppable/no-drop, moveable, placeable, tradeable, despawnable,
- * keep-on-death) and runs their pickup/drop action lists. Inscribed in the ListenerHub;
- * the registerEvents call happens UNIQUELY in the SnLibPlugin bootstrap.
+ * keep-on-death), the best-effort {@code equipment-slot} restriction (direct click into
+ * an incompatible slot, shift-click auto-equip and dispenser equips; the right-click
+ * auto-equip vector lives in the interact listener) and runs their pickup/drop action
+ * lists. Inscribed in the ListenerHub; the registerEvents call happens UNIQUELY in the
+ * SnLibPlugin bootstrap.
  *
  * <p>Owner resolution is PDC-based: a created stack carries the owner-namespaced key
  * {@code snlib_item_id}, whose namespace maps back to the consumer plugin and its tracked
@@ -89,7 +94,25 @@ public final class ItemPropertyListener implements Listener {
         boolean merchantTop = event.getInventory().getType() == InventoryType.MERCHANT;
         if (denies(event.getCurrentItem(), event, merchantTop)
                 || denies(event.getCursor(), event, merchantTop)
-                || deniesHotbar(event, player, merchantTop)) {
+                || deniesHotbar(event, player, merchantTop)
+                || deniesEquipmentSlot(event, player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Equipment-slot enforcement, dispenser vector: incompatible equips are cancelled. */
+    @EventHandler(ignoreCancelled = true)
+    public void onDispenseArmor(BlockDispenseArmorEvent event) {
+        ItemStack stack = event.getItem();
+        if (!stack.hasItemMeta()) {
+            return;
+        }
+        EquipmentSlot declared = declaredSlot(stack);
+        if (declared == null) {
+            return;
+        }
+        EquipmentSlot vanilla = vanillaEquipSlot(stack);
+        if (vanilla == null || vanilla != declared) {
             event.setCancelled(true);
         }
     }
@@ -273,6 +296,95 @@ public final class ItemPropertyListener implements Listener {
             return denies(player.getInventory().getItemInOffHand(), event, merchantTop);
         }
         return false;
+    }
+
+    /**
+     * Equipment-slot enforcement, best-effort click vectors: (a) a direct click (cursor
+     * drop, number-key swap or offhand swap) placing a registered stack into an armor or
+     * offhand slot it does not declare; (b) a shift-click whose vanilla auto-equip
+     * destination is not the declared slot.
+     */
+    private static boolean deniesEquipmentSlot(InventoryClickEvent event, Player player) {
+        EquipmentSlot target = equipmentSlotAt(event);
+        if (target != null) {
+            if (incompatible(event.getCursor(), target)) {
+                return true;
+            }
+            if (event.getClick() == ClickType.NUMBER_KEY) {
+                int button = event.getHotbarButton();
+                if (button >= 0
+                        && incompatible(player.getInventory().getItem(button), target)) {
+                    return true;
+                }
+            }
+        }
+        if (event.getClick() == ClickType.SWAP_OFFHAND
+                && incompatible(event.getCurrentItem(), EquipmentSlot.OFF_HAND)) {
+            return true;
+        }
+        if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && event.getInventory().getType() == InventoryType.CRAFTING) {
+            ItemStack current = event.getCurrentItem();
+            EquipmentSlot declared = declaredSlot(current);
+            if (declared != null) {
+                EquipmentSlot vanilla = vanillaEquipSlot(current);
+                return vanilla != null && vanilla != declared;
+            }
+        }
+        return false;
+    }
+
+    /** Whether the stack declares an equipment slot other than {@code target}. */
+    private static boolean incompatible(@Nullable ItemStack stack, EquipmentSlot target) {
+        EquipmentSlot declared = declaredSlot(stack);
+        return declared != null && declared != target;
+    }
+
+    /** Declared equipment-slot restriction of a registered stack, or null. */
+    private static @Nullable EquipmentSlot declaredSlot(@Nullable ItemStack stack) {
+        Match match = match(stack);
+        return match == null ? null : match.def().equipmentSlot();
+    }
+
+    /** Equipment slot behind a raw slot of the own-inventory (CRAFTING) view, or null. */
+    private static @Nullable EquipmentSlot equipmentSlotAt(InventoryClickEvent event) {
+        if (event.getInventory().getType() != InventoryType.CRAFTING) {
+            return null;
+        }
+        return switch (event.getRawSlot()) {
+            case 5 -> EquipmentSlot.HEAD;
+            case 6 -> EquipmentSlot.CHEST;
+            case 7 -> EquipmentSlot.LEGS;
+            case 8 -> EquipmentSlot.FEET;
+            case 45 -> EquipmentSlot.OFF_HAND;
+            default -> null;
+        };
+    }
+
+    /**
+     * Vanilla auto-equip destination of the stack's material, matched by name suffix
+     * (Material treated as open: name checks, never switch over its constants); null when
+     * the material is not vanilla-equippable.
+     */
+    static @Nullable EquipmentSlot vanillaEquipSlot(@Nullable ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return null;
+        }
+        String name = stack.getType().name();
+        if (name.endsWith("_HELMET") || name.endsWith("_HEAD") || name.endsWith("_SKULL")
+                || name.equals("CARVED_PUMPKIN")) {
+            return EquipmentSlot.HEAD;
+        }
+        if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) {
+            return EquipmentSlot.CHEST;
+        }
+        if (name.endsWith("_LEGGINGS")) {
+            return EquipmentSlot.LEGS;
+        }
+        if (name.endsWith("_BOOTS")) {
+            return EquipmentSlot.FEET;
+        }
+        return null;
     }
 
     private static void runActions(Match match, Player player, List<String> actions) {

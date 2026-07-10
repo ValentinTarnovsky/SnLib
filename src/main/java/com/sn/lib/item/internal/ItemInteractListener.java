@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -68,6 +69,7 @@ public final class ItemInteractListener implements Listener {
         }
         ItemDef def = match.def();
         Player player = event.getPlayer();
+        denyIncompatibleAutoEquip(event, def, item);
         if (def.cooldownTicks() > 0 && !ctx.cooldowns().tryUseTicks(
                 player.getUniqueId(), "item:" + match.id(), def.cooldownTicks())) {
             return;
@@ -80,6 +82,27 @@ public final class ItemInteractListener implements Listener {
         }
         dispatch(ctx, def, player, item, action);
         applyDurability(ctx, def, match, player, item, hand);
+    }
+
+    /**
+     * Equipment-slot enforcement, right-click auto-equip vector: when the vanilla
+     * auto-equip destination of the material is not the declared slot, the item use is
+     * denied (best-effort; the interact actions still dispatch, independent of cooldown).
+     */
+    private static void denyIncompatibleAutoEquip(PlayerInteractEvent event, ItemDef def,
+            ItemStack item) {
+        if (event.getAction() != Action.RIGHT_CLICK_AIR
+                && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        EquipmentSlot declared = def.equipmentSlot();
+        if (declared == null) {
+            return;
+        }
+        EquipmentSlot vanilla = ItemPropertyListener.vanillaEquipSlot(item);
+        if (vanilla != null && vanilla != declared) {
+            event.setUseItemInHand(Event.Result.DENY);
+        }
     }
 
     /** Runs the generic (shift-prioritized) variant, then the positional block/air one. */

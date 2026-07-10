@@ -19,8 +19,10 @@ import com.sn.lib.event.EquipMethod;
 import com.sn.lib.event.SnArmourEquipEvent;
 import com.sn.lib.item.internal.DurabilityTracker;
 import com.sn.lib.item.internal.EquipmentBackup;
+import com.sn.lib.item.internal.HeldEffectsTask;
 import com.sn.lib.item.internal.ItemPropertyListener;
 import com.sn.lib.item.internal.LockedItemListener;
+import com.sn.lib.item.internal.RecipeLoader;
 import com.sn.lib.util.InvUtil;
 import com.sn.lib.util.TagIo;
 import com.sn.lib.yml.SnYml;
@@ -63,6 +65,8 @@ public final class ItemRegistry {
     private final Sn ctx;
     private final JavaPlugin plugin;
     private final EquipmentBackup backup;
+    private final RecipeLoader recipes;
+    private final HeldEffectsTask heldEffects;
     private final Map<String, ItemDef> defs = new ConcurrentHashMap<>();
 
     /** Creates the registry for the given context and tracks it for owner resolution. */
@@ -70,6 +74,8 @@ public final class ItemRegistry {
         this.ctx = ctx;
         this.plugin = ctx.plugin();
         this.backup = new EquipmentBackup(ctx);
+        this.recipes = new RecipeLoader(plugin, this);
+        this.heldEffects = new HeldEffectsTask(ctx, this);
         ItemPropertyListener.track(plugin, this);
     }
 
@@ -85,13 +91,21 @@ public final class ItemRegistry {
         }
     }
 
-    /** Registers a definition under {@code id}, replacing any previous one. */
+    /**
+     * Registers a definition under {@code id}, replacing any previous one. A declared
+     * recipe is added to the server under {@code snlib_recipe_<id>} (looked up before
+     * registering, so re-registrations never throw) and held-effect lines start the
+     * per-context held-effects timer lazily.
+     */
     public void register(String id, ItemDef def) {
         if (id == null || id.isBlank() || def == null) {
             plugin.getLogger().warning("register de item ignorado: id o definicion nulos");
             return;
         }
-        defs.put(id.trim(), def);
+        String key = id.trim();
+        defs.put(key, def);
+        recipes.register(key, def);
+        heldEffects.track(key, def);
     }
 
     /** Registers every top-level section of {@code itemsFile} as one item definition. */
