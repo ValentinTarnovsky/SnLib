@@ -34,6 +34,13 @@ import com.sn.lib.tenant.internal.TenantSweeper;
  *   <li><b>(d) Frozen entrypoint.</b> {@code SnPlugin} + {@code requiredApiLevel()} +
  *       {@link SnSpec} + {@link SnApi#LEVEL} never change within a major version.</li>
  * </ul>
+ *
+ * <p><b>Lifecycle.</b> One {@link #init} call mounts every declared module of a consumer
+ * and registers its context here; {@code Sn.shutdown()} tears it down in a strict order
+ * (GUIs, commands, yml flush, scheduler, locked items, player caches, database, recipes,
+ * cooldowns, integrations, plugin channels, tenant registries) and detaches the key. The
+ * tenant sweeper acts as a double net for owners that never shut down and cascades every
+ * live context, in reverse registration order, when SnLib itself disables.</p>
  */
 public final class SnLib {
 
@@ -52,22 +59,50 @@ public final class SnLib {
     }
 
     /**
-     * Creates and registers the context for a consumer plugin.
+     * Creates and registers the context for a consumer plugin, mounting everything its
+     * spec declares in one call: managed config (with the {@code update-configs} gate
+     * seeded), lang, the {@code guis/} folder with its load, the items file, the
+     * database module and the runtime debug command.
      *
      * <p>Package-private ON PURPOSE: the only public initialization path is extending
      * {@code com.sn.lib.SnPlugin}, which performs the API-level handshake before calling
      * this. There is no alternative public init.</p>
+     *
+     * <p>Idempotent per owner: a double init returns the existing live context with a
+     * WARN instead of mounting a second one.</p>
      *
      * @param plugin consumer plugin that owns the new context
      * @param spec   modules the consumer declares
      * @return the registered context
      */
     static Sn init(JavaPlugin plugin, SnSpec spec) {
+        synchronized (CONTEXTS) {
+            Sn existing = CONTEXTS.get(plugin);
+            if (existing != null) {
+                plugin.getLogger().warning(
+                        "SnLib.init doble: se devuelve el contexto existente sin re-montar modulos");
+                return existing;
+            }
+        }
         Sn ctx = new Sn(plugin, spec);
         synchronized (CONTEXTS) {
-            CONTEXTS.put(plugin, ctx);
+            Sn raced = CONTEXTS.putIfAbsent(plugin, ctx);
+            if (raced != null) {
+                return raced;
+            }
         }
         return ctx;
+    }
+
+    /**
+     * Detaches the context key of an owner, only when it still maps to {@code ctx}; the
+     * final step of {@code Sn.shutdown()}. Idempotent with the tenant sweeper's own
+     * detach.
+     */
+    static void detach(Plugin owner, Sn ctx) {
+        synchronized (CONTEXTS) {
+            CONTEXTS.remove(owner, ctx);
+        }
     }
 
     /**

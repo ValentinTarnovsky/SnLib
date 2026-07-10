@@ -9,6 +9,12 @@ import org.jetbrains.annotations.Nullable;
  * {@code SnSpec} + {@link SnApi#LEVEL}): the builder surface below never changes within
  * a major version. A module accessor on {@link Sn} whose module was not declared here
  * throws {@link UnsupportedOperationException}.</p>
+ *
+ * <p>Everything declared is mounted by ONE init call when the consumer enables: the
+ * managed config is seeded and merged (with the {@code update-configs} gate), lang and
+ * the {@code guis/} folder load, the items file registers its definitions, the database
+ * module comes up and the debug subcommand is injected. The matching teardown runs
+ * automatically when the consumer disables.</p>
  */
 public final class SnSpec {
 

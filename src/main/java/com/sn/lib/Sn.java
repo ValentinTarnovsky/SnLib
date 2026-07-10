@@ -10,11 +10,15 @@ import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.economy.EconomyBridge;
 import com.sn.lib.gui.GuiManager;
+import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.item.ItemRegistry;
+import com.sn.lib.item.internal.EquipmentBackup;
+import com.sn.lib.item.internal.RecipeLoader;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
 import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
+import com.sn.lib.tenant.TenantRegistry;
 import com.sn.lib.yml.YmlManager;
 
 /**
@@ -24,7 +28,14 @@ import com.sn.lib.yml.YmlManager;
  * <p>Module accessor policy: each typed accessor (scheduler, yml, lang, guis, items, db,
  * papi, ...) only works if the corresponding module was declared in the owning spec; an
  * accessor for an undeclared module throws {@link UnsupportedOperationException} naming
- * the missing {@code SnSpec.builder()} call.</p>
+ * the missing {@code SnSpec.builder()} call. Every declared module is wired at
+ * construction; no accessor of a declared module ever throws.</p>
+ *
+ * <p>{@link #shutdown()} tears the context down in a strict documented order and is
+ * idempotent; {@link #reloadAll()} delegates to the {@link ReloadManager}. Both operate
+ * ONLY on state owned by this plugin: contexts of other consumers are never touched
+ * (no-interference). This class is part of the frozen entrypoint surface: its accessor
+ * set only grows within a major version.</p>
  */
 public final class Sn {
 
@@ -233,21 +244,63 @@ public final class Sn {
     }
 
     /**
-     * Shuts down every module owned by this context and releases its registrations.
-     * Idempotent: only the first call runs the teardown, and it flips the context to
-     * synchronous-write mode before anything else.
+     * Shuts down every module owned by this context and releases its registrations, in a
+     * strict order that never loses a pending write. Idempotent: only the first call runs
+     * the teardown, and it flips the context to synchronous-write mode before anything
+     * else, so every persistence performed inside it (equipment backups, debug toggles,
+     * data files) writes SYNC on the calling thread instead of going through a scheduler
+     * that is about to be cancelled.
      */
     public void shutdown() {
         if (shuttingDown) {
             return;
         }
+        // 0. Flip to synchronous-write mode FIRST: SnYml.save() now writes inline and
+        //    SnFuture.join accepts the teardown thread.
         shuttingDown = true;
+        // 1. Close this owner's open GUIs; each per-viewer session cancels its timers,
+        //    untracks its holder and force-closes its viewer.
+        if (guis != null) {
+            guis.closeAll();
+        }
+        // 2. Unregister this owner's command roots and refresh the client command trees.
         commands.unregisterAll();
+        // 3. Drain the coalesced async yml writes BEFORE cancelling the scheduler that
+        //    would run them.
+        if (yml != null) {
+            yml.flushAll();
+        }
+        // 4. Only now cancel every remaining task of the owning plugin.
+        items.cancelTasks();
+        scheduler.cancelAll();
+        // 5. Locked items: put the displaced real equipment back; the write-through
+        //    store persists synchronously through the shuttingDown flag.
+        EquipmentBackup.restoreAll(plugin);
+        // 6. Player caches: save every dirty entry and join the writes...
+        // 7. ...then close the pool (joins pending work, shutdownNow after timeout).
         if (db != null) {
-            // Flush ordenado: los player caches se guardan y joinean ANTES de cerrar el pool.
             db.flushPlayerCaches();
             db.shutdown();
         }
+        // 8. Remove this owner's recipe keys from the server.
+        RecipeLoader.unregisterAll(plugin);
+        // 9. Cooldown store of this owner.
+        cooldowns.clearAll();
+        // 10. Own integrations: force-disable this owner's soft-dependency hooks and
+        //     unregister its PlaceholderAPI expansions.
+        SoftDependency.forEachRegistered(hook -> {
+            if (hook.owner() == plugin) {
+                hook.forceDisable();
+            }
+        });
+        papi.unregisterAll();
+        // 11. Release the BungeeCord outgoing channel if [connect] registered it.
+        actions.shutdown();
+        // 12. Teardown hooks of the extra modules (bossbars hideAll, holograms
+        //     deleteAll, discord drain) slot HERE, before the generic removeOwner.
+        // 13. Remove this owner's key from EVERY tenant registry and detach the context.
+        TenantRegistry.sweepOwner(plugin);
+        SnLib.detach(plugin, this);
     }
 
     /** Reloads every module owned by this context; delegates to the reload manager. */
