@@ -37,13 +37,27 @@ public final class VaultBackend implements EconomyBridge.Backend {
 
     @Override
     public boolean available() {
-        return vault.isAvailable();
+        return economy().isPresent();
+    }
+
+    /**
+     * Resolucion on-use: el provider de Economy puede registrar el servicio DESPUES del
+     * primer acceso (Vault ya enabled, servicio tardio); un miss cacheado se re-resuelve
+     * en el siguiente uso en vez de quedar nulo toda la sesion.
+     */
+    private java.util.Optional<Economy> economy() {
+        java.util.Optional<Economy> resolved = vault.get();
+        if (resolved.isEmpty()) {
+            vault.invalidate();
+            resolved = vault.get();
+        }
+        return resolved;
     }
 
     @Override
     public double getBalance(OfflinePlayer player) {
         try {
-            return vault.get().map(economy -> economy.getBalance(player)).orElse(0.0D);
+            return economy().map(economy -> economy.getBalance(player)).orElse(0.0D);
         } catch (Throwable t) {
             ctx.plugin().getLogger().warning("Vault fallo al leer el balance: " + t);
             return 0.0D;
@@ -53,7 +67,7 @@ public final class VaultBackend implements EconomyBridge.Backend {
     @Override
     public CompletableFuture<Boolean> give(OfflinePlayer player, double amount) {
         return onMain(() -> {
-            Economy economy = vault.get().orElse(null);
+            Economy economy = economy().orElse(null);
             if (economy == null) {
                 return false;
             }
@@ -65,7 +79,7 @@ public final class VaultBackend implements EconomyBridge.Backend {
     @Override
     public CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount) {
         return onMain(() -> {
-            Economy economy = vault.get().orElse(null);
+            Economy economy = economy().orElse(null);
             if (economy == null || !economy.has(player, amount)) {
                 return false;
             }
