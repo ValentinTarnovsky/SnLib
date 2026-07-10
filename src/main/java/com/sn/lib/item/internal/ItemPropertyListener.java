@@ -189,11 +189,11 @@ public final class ItemPropertyListener implements Listener {
     }
 
     /** Registered item behind a stack: owner plugin, its registry, definition and id. */
-    private record Match(JavaPlugin owner, ItemRegistry registry, ItemDef def, String id) {
+    record Match(JavaPlugin owner, ItemRegistry registry, ItemDef def, String id) {
     }
 
     /** Layered quick-exit resolution: null/air, hasItemMeta, PDC tag, registry lookup. */
-    private static @Nullable Match match(@Nullable ItemStack item) {
+    static @Nullable Match match(@Nullable ItemStack item) {
         if (item == null || item.getType().isAir() || !item.hasItemMeta()) {
             return null;
         }

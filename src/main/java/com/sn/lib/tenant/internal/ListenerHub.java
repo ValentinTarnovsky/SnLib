@@ -11,6 +11,7 @@ import com.sn.lib.event.internal.ArmourEquipListener;
 import com.sn.lib.hook.HookListener;
 import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.internal.QuitCleanupListener;
+import com.sn.lib.item.internal.ItemInteractListener;
 import com.sn.lib.item.internal.ItemPropertyListener;
 
 /**
@@ -31,6 +32,7 @@ public final class ListenerHub {
         inscribe(new QuitCleanupListener());
         inscribe(new ArmourEquipListener());
         inscribe(new ItemPropertyListener());
+        inscribe(new ItemInteractListener());
     }
 
     private ListenerHub() {

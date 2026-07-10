@@ -11,6 +11,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
+import com.sn.lib.item.internal.DurabilityTracker;
 import com.sn.lib.item.internal.ItemPropertyListener;
 import com.sn.lib.util.InvUtil;
 import com.sn.lib.util.TagIo;
@@ -84,7 +85,9 @@ public final class ItemRegistry {
     /**
      * Builds the physical stack for {@code id}, tagged with the owner-namespaced
      * {@code snlib_item_id}. Appearance placeholders resolve against {@code viewer} plus
-     * the extra locals {@code phs}. An unknown id logs one WARN and returns null.
+     * the extra locals {@code phs}. Definitions with custom durability come out seeded at
+     * full durability with their lore line rendered. An unknown id logs one WARN and
+     * returns null.
      */
     public @Nullable ItemStack create(String id, @Nullable Player viewer, Ph... phs) {
         ItemDef def = def(id);
@@ -93,7 +96,39 @@ public final class ItemRegistry {
             return null;
         }
         ItemStack stack = def.buildStack(viewer, phs);
-        return TagIo.set(stack, plugin, TAG_KEY, id.trim());
+        TagIo.set(stack, plugin, TAG_KEY, id.trim());
+        DurabilityTracker.initialize(plugin, def, stack);
+        return stack;
+    }
+
+    /**
+     * Remaining custom durability of the stack; an untagged stack of a durability item
+     * counts as full. Returns -1 when the stack was not created by this context or its
+     * definition has no custom durability.
+     */
+    public int durability(ItemStack item) {
+        ItemDef def = defOf(item);
+        return def == null ? -1 : DurabilityTracker.durability(plugin, def, item);
+    }
+
+    /**
+     * Subtracts {@code amount} custom durability from the stack (floored at 0), updating
+     * its tag and re-rendering the lore line. Break-actions and hand removal only run
+     * through the interact flow, which has the using player; a programmatic break is the
+     * caller's to handle.
+     *
+     * @return the remaining durability (0 means broken), or -1 when the stack was not
+     *         created by this context or its definition has no custom durability
+     */
+    public int damage(ItemStack item, int amount) {
+        ItemDef def = defOf(item);
+        return def == null ? -1 : DurabilityTracker.damage(plugin, def, item, amount);
+    }
+
+    /** Definition behind a stack created by this context, or null. */
+    private @Nullable ItemDef defOf(ItemStack item) {
+        String id = idOf(item);
+        return id == null ? null : def(id);
     }
 
     /** Registered id of the stack when this context created it, or null. */
