@@ -160,6 +160,61 @@ public final class YamlUpdater {
         }
     }
 
+    /**
+     * Variant of {@link #update} whose reference lives in memory instead of the jar
+     * (e.g. a translation merged against the DISK {@code messages_en.yml}). Same
+     * semantics: seed when absent, backup-N plus reseed when corrupt, pre-merge backup
+     * keep-last-3 and the {@code update-configs} gate read from {@code gateFile}
+     * ({@code null} skips the gate).
+     *
+     * @return true when the disk file changed (seeded, reseeded or merged)
+     */
+    public static boolean updateFromLines(JavaPlugin plugin, List<String> referenceLines,
+                                          File diskFile, @Nullable File gateFile) {
+        try {
+            if (!diskFile.exists()) {
+                seed(diskFile, referenceLines);
+                return true;
+            }
+            String rawText = YamlPreprocessor.read(diskFile.toPath());
+            if (!isParseable(YamlPreprocessor.preprocess(rawText).cleanText())) {
+                File backup = backupCorrupt(diskFile);
+                seed(diskFile, referenceLines);
+                plugin.getLogger().warning("[update-configs] " + diskFile.getName()
+                        + " no parsea como YAML: respaldado en " + backup.getName()
+                        + " y regenerado desde la referencia");
+                return true;
+            }
+            List<String> diskLines = new ArrayList<>(
+                    Files.readAllLines(diskFile.toPath(), StandardCharsets.UTF_8));
+            List<Insertion> insertions = planInsertions(referenceLines, diskLines);
+            if (insertions.isEmpty()) {
+                return false;
+            }
+            if (gateFile != null && !readUpdateConfigsGate(gateFile)) {
+                plugin.getLogger().warning("[update-configs] update-configs esta en false: "
+                        + "faltan " + insertions.size() + " keys en " + diskFile.getName());
+                return false;
+            }
+            List<String> result = new ArrayList<>(diskLines);
+            applyInsertions(result, insertions);
+            if (result.equals(diskLines)) {
+                return false;
+            }
+            backupBeforeMerge(diskFile);
+            Files.write(diskFile.toPath(), result, StandardCharsets.UTF_8);
+            return true;
+        } catch (IOException ex) {
+            plugin.getLogger().severe("[update-configs] Fallo actualizando "
+                    + diskFile.getName() + ": " + ex.getMessage());
+            return false;
+        } catch (RuntimeException ex) {
+            plugin.getLogger().severe("[update-configs] Error de parseo mergeando referencia en "
+                    + diskFile.getName() + ": " + ex.getMessage());
+            return false;
+        }
+    }
+
     /** Seeds the file from the jar resource only when it does not exist; never merges. */
     static void seedIfMissing(JavaPlugin plugin, String resourcePath, File diskFile) {
         if (diskFile.exists()) {

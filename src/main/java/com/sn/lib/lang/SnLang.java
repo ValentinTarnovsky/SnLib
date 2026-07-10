@@ -360,26 +360,13 @@ public final class SnLang {
     private void mergeTranslation(File enFile, File langFile) {
         try {
             List<String> reference = Files.readAllLines(enFile.toPath(), StandardCharsets.UTF_8);
-            List<String> disk = Files.readAllLines(langFile.toPath(), StandardCharsets.UTF_8);
-            if (!YamlUpdater.isParseable(
-                    YamlPreprocessor.preprocess(String.join("\n", disk)).cleanText())) {
-                ctx.plugin().getLogger().warning(langFile.getName()
-                        + " no parsea como YAML; se omite el merge de traduccion");
-                return;
+            boolean changed = YamlUpdater.updateFromLines(ctx.plugin(), reference, langFile,
+                    config != null ? config.file() : null);
+            if (changed) {
+                ctx.plugin().getLogger().info("[update-configs] Keys nuevas de messages_"
+                        + FALLBACK_CODE + ".yml agregadas a " + LANG_DIR + "/"
+                        + langFile.getName() + "; traducirlas cuando convenga");
             }
-            List<String> merged = YamlUpdater.merge(reference, disk);
-            if (merged.equals(disk)) {
-                return;
-            }
-            if (config != null && !config.getBoolean("update-configs", true)) {
-                ctx.plugin().getLogger().warning("[update-configs] update-configs esta en false: "
-                        + "faltan keys en " + LANG_DIR + "/" + langFile.getName());
-                return;
-            }
-            Files.write(langFile.toPath(), merged, StandardCharsets.UTF_8);
-            ctx.plugin().getLogger().info("[update-configs] Keys nuevas de messages_"
-                    + FALLBACK_CODE + ".yml agregadas a " + LANG_DIR + "/" + langFile.getName()
-                    + "; traducirlas cuando convenga");
         } catch (IOException ex) {
             ctx.plugin().getLogger().warning("No se pudo mergear la traduccion "
                     + langFile.getName() + ": " + ex.getMessage());
@@ -522,12 +509,33 @@ public final class SnLang {
                     return;
                 }
             }
-            audience.sendMessage(renderLine(prefix + line, viewer, phs));
+            audience.sendMessage(renderLine(withPrefix(line), viewer, phs));
             return;
         }
         for (String line : lines) {
             audience.sendMessage(renderLine(line == null ? "" : line, viewer, phs));
         }
+    }
+
+    /**
+     * Inserts the configured prefix AFTER any leading {@code [center]}/{@code [rgb]}
+     * tags: a prefixed message keeps its tags at position 0 so they still render.
+     */
+    private String withPrefix(String line) {
+        if (prefix.isEmpty()) {
+            return line;
+        }
+        int i = 0;
+        while (true) {
+            if (line.regionMatches(true, i, "[center]", 0, 8)) {
+                i += 8;
+            } else if (line.regionMatches(true, i, "[rgb]", 0, 5)) {
+                i += 5;
+            } else {
+                break;
+            }
+        }
+        return i == 0 ? prefix + line : line.substring(0, i) + prefix + line.substring(i);
     }
 
     /** Fixed pipeline: locals, PAPI per viewer, PAPI output normalization, SnText render. */
