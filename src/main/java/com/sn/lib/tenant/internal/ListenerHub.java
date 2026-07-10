@@ -7,6 +7,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginManager;
 
 import com.sn.lib.SnLibPlugin;
+import com.sn.lib.db.PlayerDataCache;
 import com.sn.lib.event.internal.ArmourEquipListener;
 import com.sn.lib.gui.internal.GuiClickListener;
 import com.sn.lib.gui.internal.GuiProtectionListener;
@@ -39,6 +40,7 @@ public final class ListenerHub {
         inscribe(new LockedItemListener());
         inscribe(new GuiClickListener());
         inscribe(new GuiProtectionListener());
+        inscribe(PlayerDataCache.joinListener());
     }
 
     private ListenerHub() {

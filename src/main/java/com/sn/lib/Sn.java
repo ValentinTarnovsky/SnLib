@@ -218,6 +218,8 @@ public final class Sn {
         shuttingDown = true;
         commands.unregisterAll();
         if (db != null) {
+            // Flush ordenado: los player caches se guardan y joinean ANTES de cerrar el pool.
+            db.flushPlayerCaches();
             db.shutdown();
         }
     }

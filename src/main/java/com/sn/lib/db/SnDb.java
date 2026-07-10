@@ -6,15 +6,19 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 
 import com.sn.lib.Sn;
 import com.zaxxer.hikari.HikariConfig;
@@ -59,6 +63,7 @@ public final class SnDb {
     private final String poolName;
     private final ExecutorService executor;
     private final Set<Thread> workers = ConcurrentHashMap.newKeySet();
+    private final List<PlayerDataCache<?>> playerCaches = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object dataSourceLock = new Object();
 
@@ -154,6 +159,35 @@ public final class SnDb {
         });
     }
 
+    /** Dialect-aware single-row upsert builder for the given table. */
+    public UpsertBuilder upsert(String table) {
+        return new UpsertBuilder(this, table);
+    }
+
+    /**
+     * Creates a player-data cache backed by this database: load-on-join through the
+     * shared join listener (async load, main-thread install) and save-on-quit when
+     * dirty. The loader runs on the owning plugin's async pool, never on the database
+     * executor, so it may join queries of this module safely.
+     */
+    public <T> PlayerDataCache<T> playerCache(BiFunction<SnDb, UUID, T> loader,
+            PlayerDataCache.Saver<T> saver) {
+        PlayerDataCache<T> cache = new PlayerDataCache<>(ctx, this, loader, saver);
+        playerCaches.add(cache);
+        return cache;
+    }
+
+    /**
+     * Saves every dirty entry of every cache created via {@link #playerCache} and joins
+     * the enqueued writes. Ordered teardown: this runs right before {@link #shutdown()}
+     * so no write is lost to the pool close.
+     */
+    public void flushPlayerCaches() {
+        for (PlayerDataCache<?> cache : playerCaches) {
+            cache.saveAll().join();
+        }
+    }
+
     /**
      * Tears the module down: new operations are rejected, pending work is joined for up
      * to {@value #SHUTDOWN_JOIN_SECONDS} seconds, stragglers are interrupted with
@@ -190,6 +224,23 @@ public final class SnDb {
     /** True while an enable-time {@link #bootstrap} is still pending. */
     boolean inBootstrap() {
         return bootstrapping;
+    }
+
+    /**
+     * Write barrier: completes once the executor drained every task enqueued before it.
+     * Exact for the single-threaded SQLite executor; for a multi-threaded MySQL pool it
+     * is best-effort and {@link #shutdown()} joins the stragglers. Completes immediately
+     * when the executor already rejected the submission.
+     */
+    SnFuture<Void> fence() {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        SnFuture<Void> future = new SnFuture<>(ctx, this, result);
+        try {
+            executor.execute(() -> result.complete(null));
+        } catch (RejectedExecutionException e) {
+            result.complete(null);
+        }
+        return future;
     }
 
     private <R> SnFuture<R> submit(SqlFunction<Connection, R> work) {
