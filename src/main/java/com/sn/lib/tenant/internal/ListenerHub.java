@@ -9,6 +9,7 @@ import org.bukkit.plugin.PluginManager;
 import com.sn.lib.SnLibPlugin;
 import com.sn.lib.hook.HookListener;
 import com.sn.lib.hook.SoftDependency;
+import com.sn.lib.internal.QuitCleanupListener;
 
 /**
  * Single inscription point for every shared listener of the library.
@@ -25,6 +26,7 @@ public final class ListenerHub {
     static {
         inscribe(new HookListener(SoftDependency::forEachRegistered));
         inscribe(new TenantSweeper());
+        inscribe(new QuitCleanupListener());
     }
 
     private ListenerHub() {

@@ -1,6 +1,7 @@
 package com.sn.lib.tenant.internal;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.HumanEntity;
@@ -68,6 +69,11 @@ public final class TenantSweeper implements Listener {
     /** Stops tracking a library inventory once it is closed. */
     public static void untrackInventory(OwnedHolder holder) {
         OPEN_HOLDERS.remove(holder.owner(), holder);
+    }
+
+    /** Applies the action to every tracked open library inventory, across all owners. */
+    public static void forEachOpenInventory(Consumer<OwnedHolder> action) {
+        OPEN_HOLDERS.forEachOwner((owner, holders) -> holders.forEach(action));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

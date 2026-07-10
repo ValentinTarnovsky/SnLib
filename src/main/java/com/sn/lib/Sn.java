@@ -3,6 +3,7 @@ package com.sn.lib;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.action.ActionEngine;
+import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
@@ -28,6 +29,7 @@ public final class Sn {
     private final SnDebug debug;
     private final ActionEngine actions;
     private final SnLang lang;
+    private final Cooldowns cooldowns;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -41,6 +43,7 @@ public final class Sn {
         this.debug = new SnDebug(plugin, yml == null ? null : yml.config());
         this.actions = new ActionEngine(this);
         this.lang = spec.lang() ? new SnLang(this, yml == null ? null : yml.config()) : null;
+        this.cooldowns = new Cooldowns(this);
     }
 
     /** Consumer plugin that owns this context. */
@@ -96,6 +99,15 @@ public final class Sn {
      */
     public ActionEngine actions() {
         return actions;
+    }
+
+    /**
+     * Cooldown store of the owning plugin; available in every context. Unexpired entries
+     * survive relogs by design; only categories registered as session categories reset
+     * on quit/kick.
+     */
+    public Cooldowns cooldowns() {
+        return cooldowns;
     }
 
     /**
