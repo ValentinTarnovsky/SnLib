@@ -1,0 +1,23 @@
+# Shared SnLib message keys (snlib.*), bundled inside SnLib.jar.
+# The always-merge updater inserts any key missing from lang/messages_en.yml of every
+# consumer on each start; existing values are never overwritten, so admins can restyle
+# any line and keep their changes across updates.
+
+snlib:
+  # Sent when the sender lacks the permission required by a command or subcommand.
+  no-permission: "&cYou do not have permission to use this command."
+  # Sent when a command is used with missing or malformed arguments; {usage} is the correct syntax.
+  usage: "&cUsage: &f{usage}"
+  # Sent when an argument expected a number; {value} is the rejected input.
+  invalid-number: "&cInvalid number: &f{value}"
+  # Sent when an argument expected an online player; {value} is the rejected input.
+  player-not-found: "&cPlayer not found: &f{value}"
+  # Sent when the given subcommand does not exist; {value} is the unknown input.
+  unknown-subcommand: "&cUnknown subcommand: &f{value}"
+  # Sent to the sender after a successful reload.
+  reload-done: "&aConfiguration reloaded."
+  help:
+    # Header line printed before the generated help entries.
+    header: "&6&lCommands"
+    # One line per subcommand visible to the sender; {usage} is its syntax and {permission} its permission node.
+    entry: "&e{usage} &8- &7{permission}"

@@ -4,6 +4,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.action.ActionEngine;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.yml.YmlManager;
@@ -26,6 +27,7 @@ public final class Sn {
     private final YmlManager yml;
     private final SnDebug debug;
     private final ActionEngine actions;
+    private final SnLang lang;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -38,6 +40,7 @@ public final class Sn {
         this.yml = spec.config() == null ? null : new YmlManager(this, spec.config());
         this.debug = new SnDebug(plugin, yml == null ? null : yml.config());
         this.actions = new ActionEngine(this);
+        this.lang = spec.lang() ? new SnLang(this, yml == null ? null : yml.config()) : null;
     }
 
     /** Consumer plugin that owns this context. */
@@ -93,6 +96,21 @@ public final class Sn {
      */
     public ActionEngine actions() {
         return actions;
+    }
+
+    /**
+     * Language module of the owning plugin: {@code lang/messages_<code>.yml} with the
+     * shared {@code snlib.*} keys always-merged in and English fallback per key.
+     *
+     * @throws UnsupportedOperationException if the spec did not declare the lang
+     *         module via {@code SnSpec.builder().lang()}
+     */
+    public SnLang lang() {
+        if (lang == null) {
+            throw new UnsupportedOperationException(
+                    "Modulo lang no declarado: falta SnSpec.builder().lang()");
+        }
+        return lang;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */
