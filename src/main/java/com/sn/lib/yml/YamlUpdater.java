@@ -327,11 +327,12 @@ public final class YamlUpdater {
     // ------------------------------------------------------------------
 
     /**
-     * Pure prune: returns a copy of {@code lines} with every block whose key path does
-     * not exist in the resource removed, comments included. Opt-in only, via
-     * {@code managedPruning}; the default merge never deletes user keys.
+     * Pure prune entry: returns a copy of {@code lines} with every block whose key path
+     * does not exist in the resource removed, comments included. Opt-in only, via
+     * {@code managedPruning}; the default merge never deletes user keys. No I/O, safe
+     * for plain unit tests.
      */
-    static List<String> prune(List<String> resourceLines, List<String> lines) {
+    public static List<String> prune(List<String> resourceLines, List<String> lines) {
         Node resourceRoot = parse(resourceLines);
         Node diskRoot = parse(lines);
         List<int[]> removals = new ArrayList<>();

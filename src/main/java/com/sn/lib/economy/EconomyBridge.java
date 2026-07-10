@@ -65,10 +65,20 @@ public final class EconomyBridge {
     private final AtomicBoolean warnedNoBackend = new AtomicBoolean();
     private final AtomicBoolean warnedOffMain = new AtomicBoolean();
 
-    /** Creates the bridge for the given context and registers the Vault backend. */
+    /**
+     * Creates the bridge for the given context and registers the Vault backend.
+     * {@link VaultBackend} is the isolated hook class: its constructor links against the
+     * Vault API, so with Vault absent the instantiation throws a linkage error that is
+     * caught here (never propagated) and the bridge simply starts without that backend.
+     */
     public EconomyBridge(Sn ctx) {
         this.ctx = ctx;
-        registerBackend(VAULT, new VaultBackend(ctx));
+        try {
+            registerBackend(VAULT, new VaultBackend(ctx));
+        } catch (Throwable t) {
+            ctx.debug().log(() -> "Vault ausente del classpath: backend vault no registrado ("
+                    + t.getClass().getSimpleName() + ")");
+        }
     }
 
     /**

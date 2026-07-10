@@ -23,6 +23,33 @@ import com.sn.lib.yml.SnYml;
  * <p>{@code pagination} is resolved ONCE at load and defaults to false; page actions and
  * paged binds on sessions of a non-paginated GUI are no-ops. The definition and its
  * templates are immutable and shared by every per-viewer {@link GuiSession}.</p>
+ *
+ * <pre>
+ * Golden spec checklist (docs/menu-example.yml) - field by field, where it parses:
+ *   title, rows (1-6), open-sound, update-interval,     -> GuiDef.parse
+ *     inventory-type (lenient valueOf), pagination
+ *   items.&lt;id&gt;:
+ *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
+ *       custom-model-data, amount, glow, enchantments,     (re-read per viewer: locals,
+ *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [rgb], [center],
+ *       color RGB/HEX, trim-pattern, trim-material,         MiniMessage + legacy)
+ *       potion-effects
+ *     slots (int, list, ranges "0-8", mixed)            -> GuiItemDef.parse via SlotParser
+ *     update-interval (per item)                        -> GuiItemDef.parse
+ *     view-requirements, click-requirements             -> GuiItemDef.parse via RequirementEngine
+ *     click-actions, deny-actions                       -> GuiItemDef.parse; run by ActionEngine
+ *       ([player], [player-as-op], [console], [message], [sound], [close], [open],
+ *        [connect], [broadcastmessage], [actionbar], [title], [right-click]/[left-click]/
+ *        [shift-*-click] filters, [next-page], [previous-page], [set-page], [refresh-page],
+ *        [refresh-menu], custom tags via GuiManager.registerAction)
+ *     previous-page / next-page navigation items        -> GuiItemDef.parse (NavKind detected
+ *       with nav-disabled override (same appearance        from the pagination actions;
+ *       fields, no slots, no actions)                       nav-disabled parsed recursively)
+ *   templates.&lt;id&gt; (same fields, no slots)              -> GuiDef.parse into GuiTemplate;
+ *                                                           slots assigned via session binds
+ *   [rgb], [center][rgb] composable in any order and    -> SnText pipeline used by every
+ *     MiniMessage mixed with legacy codes                   string of the item render
+ * </pre>
  */
 public final class GuiDef {
 

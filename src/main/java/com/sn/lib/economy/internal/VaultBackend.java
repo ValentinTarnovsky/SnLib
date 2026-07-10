@@ -20,10 +20,12 @@ import net.milkbowl.vault.economy.EconomyResponse;
  * Vault-backed economy backend of one consumer context.
  *
  * <p>The {@link Economy} provider resolves through a per-owner {@link SoftDependency}
- * over the {@link RegisteredServiceProvider}, so a missing or disabled Vault never leaks
- * a linkage error and a consumer disable releases the hook. Every write hops to the main
- * thread (Economy is always main thread) and reports the real
- * {@link EconomyResponse#transactionSuccess()} outcome.</p>
+ * over the {@link RegisteredServiceProvider}, so a disabled Vault never leaks a linkage
+ * error and a consumer disable releases the hook. This is the ISOLATED hook class: it
+ * only links when the Vault API classes are present, so {@code EconomyBridge}
+ * instantiates it under a catch of {@code Throwable} and a server without Vault simply
+ * runs without this backend. Every write hops to the main thread (Economy is always main
+ * thread) and reports the real {@link EconomyResponse#transactionSuccess()} outcome.</p>
  */
 public final class VaultBackend implements EconomyBridge.Backend {
 

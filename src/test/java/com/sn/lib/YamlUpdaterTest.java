@@ -51,6 +51,42 @@ class YamlUpdaterTest {
     }
 
     @Test
+    void mergeInsertsWholeMissingSubsection() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("merge-resource.yml"), fixture("merge-old.yml"));
+        int header = merged.indexOf("# NEW in this version: storage backend.");
+        int section = merged.indexOf("storage:");
+        int type = merged.indexOf("  type: sqlite");
+        int prefix = merged.indexOf("  table-prefix: \"sn_\"");
+        assertTrue(header >= 0 && section == header + 1);
+        assertTrue(section < type && type < prefix);
+        // The new subsection lands between its resource siblings: settings before, messages after.
+        assertTrue(merged.indexOf("settings:") < section);
+        assertTrue(section < merged.indexOf("messages:"));
+    }
+
+    @Test
+    void pruneIsOptInAndRemovesOnlyKeysAbsentFromResource() throws IOException {
+        List<String> resource = fixture("merge-resource.yml");
+        List<String> merged = YamlUpdater.merge(resource, fixture("merge-old.yml"));
+        // Default merge path: the user's extra key survives.
+        assertTrue(merged.contains("  custom-flag: true"));
+        List<String> pruned = YamlUpdater.prune(resource, merged);
+        assertFalse(pruned.contains("  custom-flag: true"));
+        assertFalse(pruned.contains("  # User-added key: must survive every merge untouched."));
+        // Shared keys keep the user's values and the result still parses.
+        assertTrue(pruned.contains("  rows: 3"));
+        assertTrue(pruned.contains("  title: \"&bMy Custom Shop\""));
+        assertTrue(pruned.contains("  prefix: \"&7[MyShop]\""));
+        assertTrue(YamlUpdater.isParseable(String.join("\n", pruned)));
+    }
+
+    @Test
+    void pruneIsANoOpWhenDiskMatchesResourceStructure() throws IOException {
+        List<String> resource = fixture("merge-resource.yml");
+        assertEquals(resource, YamlUpdater.prune(resource, resource));
+    }
+
+    @Test
     void mergeIsIdempotentOnUpToDateFile() throws IOException {
         List<String> expected = fixture("merge-expected.yml");
         assertEquals(expected, YamlUpdater.merge(fixture("merge-resource.yml"), expected));

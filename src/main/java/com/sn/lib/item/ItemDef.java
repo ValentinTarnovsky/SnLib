@@ -36,6 +36,36 @@ import com.sn.lib.yml.SnYml;
  * <p>{@code max-stack-size} belongs to the appearance layer ({@link SnItem#maxStackSize});
  * it is not duplicated here. Interact requirements are parsed once at construction into an
  * immutable {@link Requirement} tree.</p>
+ *
+ * <pre>
+ * Golden spec checklist (docs/item-example.yml) - field by field, where it parses:
+ *   APPEARANCE: display-name, material (basehead),      -> SnItem.parse (re-read per viewer
+ *     custom-model-data, amount, glow, lore,               on every ItemRegistry.create)
+ *     enchantments, flags (HIDE_ALL, alias
+ *     HIDE_POTION_EFFECTS), color RGB/HEX,
+ *     trim-pattern, trim-material, potion-effects
+ *   PROPERTIES: unbreakable, max-stack-size             -> SnItem.parse (probe on 1.20.4)
+ *     droppable, moveable, placeable, tradeable,        -> ItemDef.parse; enforced by
+ *       despawnable, keep-on-death, cooldown               ItemPropertyListener
+ *   LOCKED MODE: locked (7 theft vectors +              -> ItemDef.parse; enforced by
+ *       write-through EquipmentBackup restore),            LockedItemListener
+ *     no-drop, no-manual-equip,
+ *     obtain-via ("" | COMMAND_ONLY)                    -> ObtainMode.parse
+ *   DURABILITY: custom-durability.max,                  -> ItemDef.parse; tracked by
+ *     damage-per-use, break-actions, lore-format           DurabilityTracker
+ *   INTERACT: the 8 variants (right/left x plain/       -> ItemDef.parse; fired by
+ *     shift/block/air *-click-actions), each with an       ItemInteractListener through
+ *     optional Java callback from the builder              ActionEngine
+ *   REQUIREMENTS: interact-requirements + deny-actions  -> RequirementEngine.parse
+ *   PICKUP/DROP: pickup-actions, drop-actions           -> ItemDef.parse; fired by
+ *                                                           ItemPropertyListener
+ *   HELD EFFECTS: held-effects.mainhand/offhand/armor   -> ItemDef.parse; applied by
+ *                                                           HeldEffectsTask
+ *   EQUIPMENT: equipment-slot (MAINHAND..FEET)          -> ItemDef.parse
+ *   RECIPE: type SHAPED/SHAPELESS/FURNACE/SMOKING/      -> Recipe.parse; registered by
+ *     BLASTING/CAMPFIRE/STONECUTTING with shape,           RecipeLoader
+ *     ingredients, input, experience, cooking-time
+ * </pre>
  */
 public final class ItemDef {
 

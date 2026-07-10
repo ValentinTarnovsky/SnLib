@@ -45,7 +45,10 @@ public final class HeadUtil {
             "texture-", "texture:", "base64-", "base64:", "basehead-"
     };
 
-    /** Access-order LRU; every access must synchronize on the map itself. */
+    /**
+     * Access-order LRU; every access must synchronize on the map itself. Server-wide
+     * static justified: bounded cache of texture profiles, not per-consumer data.
+     */
     private static final Map<String, PlayerProfile> PROFILE_CACHE =
             new LinkedHashMap<>(64, 0.75f, true) {
                 @Override
