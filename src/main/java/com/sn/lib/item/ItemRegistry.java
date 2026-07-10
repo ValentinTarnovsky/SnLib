@@ -1,18 +1,26 @@
 package com.sn.lib.item;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
+import com.sn.lib.event.EquipMethod;
+import com.sn.lib.event.SnArmourEquipEvent;
 import com.sn.lib.item.internal.DurabilityTracker;
+import com.sn.lib.item.internal.EquipmentBackup;
 import com.sn.lib.item.internal.ItemPropertyListener;
+import com.sn.lib.item.internal.LockedItemListener;
 import com.sn.lib.util.InvUtil;
 import com.sn.lib.util.TagIo;
 import com.sn.lib.yml.SnYml;
@@ -32,14 +40,36 @@ public final class ItemRegistry {
     /** PDC key name carrying the item id; namespaced per owner plugin by {@link TagIo}. */
     public static final String TAG_KEY = "snlib_item_id";
 
+    /** PDC flag key set on created stacks of a locked definition. */
+    public static final String TAG_LOCKED = "snlib_locked";
+
+    /** PDC flag key set on created stacks of a no-drop definition. */
+    public static final String TAG_NO_DROP = "snlib_no_drop";
+
+    /** PDC flag key set on created stacks of a no-manual-equip definition. */
+    public static final String TAG_NO_MANUAL_EQUIP = "snlib_no_manual_equip";
+
+    /** PDC flag key set on created stacks of a keep-on-death definition. */
+    public static final String TAG_KEEP_ON_DEATH = "snlib_keep_on_death";
+
+    /** PDC key carrying the obtain mode of restricted definitions. */
+    public static final String TAG_OBTAIN_VIA = "snlib_obtain_via";
+
+    /** The six player equipment slots; a fixed list keeps the source enum open. */
+    private static final List<EquipmentSlot> PLAYER_SLOTS = List.of(EquipmentSlot.HAND,
+            EquipmentSlot.OFF_HAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST,
+            EquipmentSlot.LEGS, EquipmentSlot.FEET);
+
     private final Sn ctx;
     private final JavaPlugin plugin;
+    private final EquipmentBackup backup;
     private final Map<String, ItemDef> defs = new ConcurrentHashMap<>();
 
     /** Creates the registry for the given context and tracks it for owner resolution. */
     public ItemRegistry(Sn ctx) {
         this.ctx = ctx;
         this.plugin = ctx.plugin();
+        this.backup = new EquipmentBackup(ctx);
         ItemPropertyListener.track(plugin, this);
     }
 
@@ -97,8 +127,88 @@ public final class ItemRegistry {
         }
         ItemStack stack = def.buildStack(viewer, phs);
         TagIo.set(stack, plugin, TAG_KEY, id.trim());
+        tagLockedFlags(stack, def);
         DurabilityTracker.initialize(plugin, def, stack);
         return stack;
+    }
+
+    /**
+     * Injects the item registered under {@code id} into the player's equipment slot
+     * (the command/API path of {@code obtain-via: COMMAND_ONLY}). The displaced real
+     * item is backed up write-through by the equipment backup, whose restore runs on
+     * quit and on shutdown. Fires a cancellable {@link SnArmourEquipEvent}
+     * ({@link EquipMethod#PICK_DROP}, marked programmatic) before touching the slot and
+     * the definition's {@code onApply} hook after.
+     *
+     * @return true when the item ended up equipped
+     */
+    public boolean apply(Player player, String id, EquipmentSlot slot) {
+        if (player == null || slot == null) {
+            return false;
+        }
+        ItemDef def = def(id);
+        if (def == null) {
+            plugin.getLogger().warning("apply de item desconocido '" + id
+                    + "': no esta registrado");
+            return false;
+        }
+        ItemStack stack = create(id, player);
+        if (stack == null) {
+            return false;
+        }
+        PlayerInventory inventory = player.getInventory();
+        ItemStack displaced = inventory.getItem(slot);
+        LockedItemListener.markProgrammatic(player.getUniqueId(), slot);
+        SnArmourEquipEvent equip = new SnArmourEquipEvent(player, EquipMethod.PICK_DROP,
+                slot, normalize(displaced), stack);
+        if (!equip.call()) {
+            return false;
+        }
+        backup.store(player, slot, displaced);
+        inventory.setItem(slot, stack);
+        BiConsumer<Player, ItemStack> onApply = def.onApply();
+        if (onApply != null) {
+            onApply.accept(player, stack);
+        }
+        return true;
+    }
+
+    /**
+     * Removes every applied instance of {@code id} from the player's equipment slots,
+     * restoring the backed-up real item of each slot (null empties it). Fires a
+     * cancellable {@link SnArmourEquipEvent} per slot and the definition's
+     * {@code onRemove} hook after each removal.
+     *
+     * @return true when at least one slot was restored
+     */
+    public boolean unapply(Player player, String id) {
+        if (player == null || id == null) {
+            return false;
+        }
+        ItemDef def = def(id);
+        PlayerInventory inventory = player.getInventory();
+        boolean removed = false;
+        for (EquipmentSlot slot : PLAYER_SLOTS) {
+            ItemStack current = inventory.getItem(slot);
+            if (!is(current, id)) {
+                continue;
+            }
+            ItemStack real = backup.peek(player.getUniqueId(), slot);
+            LockedItemListener.markProgrammatic(player.getUniqueId(), slot);
+            SnArmourEquipEvent equip = new SnArmourEquipEvent(player, EquipMethod.PICK_DROP,
+                    slot, current, real);
+            if (!equip.call()) {
+                continue;
+            }
+            backup.take(player.getUniqueId(), slot);
+            inventory.setItem(slot, real);
+            removed = true;
+            BiConsumer<Player, ItemStack> onRemove = def == null ? null : def.onRemove();
+            if (onRemove != null) {
+                onRemove.accept(player, current);
+            }
+        }
+        return removed;
     }
 
     /**
@@ -166,5 +276,28 @@ public final class ItemRegistry {
             InvUtil.giveItems(player, part);
             remaining -= chunk;
         }
+    }
+
+    /** Writes the locked-mode PDC flags declared by the definition onto the stack. */
+    private void tagLockedFlags(ItemStack stack, ItemDef def) {
+        if (def.locked()) {
+            TagIo.set(stack, plugin, TAG_LOCKED, "true");
+        }
+        if (def.noDrop()) {
+            TagIo.set(stack, plugin, TAG_NO_DROP, "true");
+        }
+        if (def.noManualEquip()) {
+            TagIo.set(stack, plugin, TAG_NO_MANUAL_EQUIP, "true");
+        }
+        if (def.keepOnDeath()) {
+            TagIo.set(stack, plugin, TAG_KEEP_ON_DEATH, "true");
+        }
+        if (def.obtainVia() != ObtainMode.UNRESTRICTED) {
+            TagIo.set(stack, plugin, TAG_OBTAIN_VIA, def.obtainVia().name());
+        }
+    }
+
+    private static @Nullable ItemStack normalize(@Nullable ItemStack item) {
+        return item == null || item.getType().isAir() ? null : item;
     }
 }

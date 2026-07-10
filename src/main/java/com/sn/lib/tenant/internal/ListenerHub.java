@@ -13,6 +13,7 @@ import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.internal.QuitCleanupListener;
 import com.sn.lib.item.internal.ItemInteractListener;
 import com.sn.lib.item.internal.ItemPropertyListener;
+import com.sn.lib.item.internal.LockedItemListener;
 
 /**
  * Single inscription point for every shared listener of the library.
@@ -33,6 +34,7 @@ public final class ListenerHub {
         inscribe(new ArmourEquipListener());
         inscribe(new ItemPropertyListener());
         inscribe(new ItemInteractListener());
+        inscribe(new LockedItemListener());
     }
 
     private ListenerHub() {

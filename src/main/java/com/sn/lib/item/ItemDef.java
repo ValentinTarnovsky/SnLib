@@ -95,6 +95,9 @@ public final class ItemDef {
     private final @Nullable BiConsumer<Player, ItemStack> onLeftClickBlock;
     private final @Nullable BiConsumer<Player, ItemStack> onLeftClickAir;
 
+    private final @Nullable BiConsumer<Player, ItemStack> onApply;
+    private final @Nullable BiConsumer<Player, ItemStack> onRemove;
+
     private ItemDef(Builder b) {
         this.yml = b.yml;
         this.path = b.path;
@@ -142,6 +145,8 @@ public final class ItemDef {
         this.onRightClickAir = b.onRightClickAir;
         this.onLeftClickBlock = b.onLeftClickBlock;
         this.onLeftClickAir = b.onLeftClickAir;
+        this.onApply = b.onApply;
+        this.onRemove = b.onRemove;
     }
 
     /** Starts the universal programmatic builder; no YML file is required. */
@@ -436,6 +441,16 @@ public final class ItemDef {
         return onLeftClickAir;
     }
 
+    /** Java hook run after {@link ItemRegistry#apply} injects the item, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onApply() {
+        return onApply;
+    }
+
+    /** Java hook run after {@link ItemRegistry#unapply} removes the item, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onRemove() {
+        return onRemove;
+    }
+
     private static List<String> copy(@Nullable List<String> list) {
         if (list == null || list.isEmpty()) {
             return List.of();
@@ -500,6 +515,8 @@ public final class ItemDef {
         private BiConsumer<Player, ItemStack> onRightClickAir;
         private BiConsumer<Player, ItemStack> onLeftClickBlock;
         private BiConsumer<Player, ItemStack> onLeftClickAir;
+        private BiConsumer<Player, ItemStack> onApply;
+        private BiConsumer<Player, ItemStack> onRemove;
 
         private Builder() {
         }
@@ -551,6 +568,64 @@ public final class ItemDef {
         /** Whether the item is kept on death and returned on respawn; default false. */
         public Builder keepOnDeath(boolean keepOnDeath) {
             this.keepOnDeath = keepOnDeath;
+            return this;
+        }
+
+        /** Keeps the item on death and returns it on respawn. */
+        public Builder keepOnDeath() {
+            return keepOnDeath(true);
+        }
+
+        /**
+         * Pins the item to its slot: none of the seven extraction vectors (click, drag,
+         * manual equip, hand swap, drop, death drops, hopper move) can pull it out.
+         * Created stacks carry the PDC flag {@code snlib_locked}.
+         */
+        public Builder locked() {
+            return locked(true);
+        }
+
+        /** Whether the item is pinned to its slot; default false. */
+        public Builder locked(boolean locked) {
+            this.locked = locked;
+            return this;
+        }
+
+        /**
+         * Blocks dropping the item (hard alias of {@code droppable: false}). Created
+         * stacks carry the PDC flag {@code snlib_no_drop}.
+         */
+        public Builder noDrop() {
+            return noDrop(true);
+        }
+
+        /** Whether dropping the item is blocked; default false. */
+        public Builder noDrop(boolean noDrop) {
+            this.noDrop = noDrop;
+            return this;
+        }
+
+        /**
+         * Blocks manual equipping into armor slots. Created stacks carry the PDC flag
+         * {@code snlib_no_manual_equip}.
+         */
+        public Builder noManualEquip() {
+            return noManualEquip(true);
+        }
+
+        /** Whether manual equipping is blocked; default false. */
+        public Builder noManualEquip(boolean noManualEquip) {
+            this.noManualEquip = noManualEquip;
+            return this;
+        }
+
+        /**
+         * How the item may legitimately enter circulation; default
+         * {@link ObtainMode#UNRESTRICTED}. Restricted stacks carry the PDC key
+         * {@code snlib_obtain_via}.
+         */
+        public Builder obtainVia(ObtainMode mode) {
+            this.obtainVia = mode == null ? ObtainMode.UNRESTRICTED : mode;
             return this;
         }
 
@@ -721,6 +796,18 @@ public final class ItemDef {
         /** Java callback for a left click in the air. */
         public Builder onLeftClickAir(BiConsumer<Player, ItemStack> callback) {
             this.onLeftClickAir = callback;
+            return this;
+        }
+
+        /** Java hook run with the injected stack after {@link ItemRegistry#apply}. */
+        public Builder onApply(BiConsumer<Player, ItemStack> callback) {
+            this.onApply = callback;
+            return this;
+        }
+
+        /** Java hook run with the removed stack after {@link ItemRegistry#unapply}. */
+        public Builder onRemove(BiConsumer<Player, ItemStack> callback) {
+            this.onRemove = callback;
             return this;
         }
 
