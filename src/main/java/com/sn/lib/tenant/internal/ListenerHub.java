@@ -7,6 +7,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginManager;
 
 import com.sn.lib.SnLibPlugin;
+import com.sn.lib.event.internal.ArmourEquipListener;
 import com.sn.lib.hook.HookListener;
 import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.internal.QuitCleanupListener;
@@ -27,6 +28,7 @@ public final class ListenerHub {
         inscribe(new HookListener(SoftDependency::forEachRegistered));
         inscribe(new TenantSweeper());
         inscribe(new QuitCleanupListener());
+        inscribe(new ArmourEquipListener());
     }
 
     private ListenerHub() {
