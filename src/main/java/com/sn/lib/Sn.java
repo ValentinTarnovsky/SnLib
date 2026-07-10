@@ -3,6 +3,7 @@ package com.sn.lib;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.papi.SnPapi;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.yml.YmlManager;
 
@@ -20,6 +21,7 @@ public final class Sn {
     private final JavaPlugin plugin;
     private final SnSpec spec;
     private final SnScheduler scheduler;
+    private final SnPapi papi;
     private final YmlManager yml;
     private final SnDebug debug;
 
@@ -30,6 +32,7 @@ public final class Sn {
         this.plugin = plugin;
         this.spec = spec;
         this.scheduler = new SnScheduler(plugin);
+        this.papi = new SnPapi(this);
         this.yml = spec.config() == null ? null : new YmlManager(this, spec.config());
         this.debug = new SnDebug(plugin, yml == null ? null : yml.config());
     }
@@ -70,6 +73,14 @@ public final class Sn {
      */
     public SnDebug debug() {
         return debug;
+    }
+
+    /**
+     * PlaceholderAPI bridge of the owning plugin; available in every context. Every
+     * apply returns the text intact when PlaceholderAPI is absent.
+     */
+    public SnPapi papi() {
+        return papi;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */

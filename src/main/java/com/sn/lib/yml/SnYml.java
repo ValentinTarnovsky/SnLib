@@ -22,6 +22,7 @@ import org.bukkit.entity.Player;
 
 import com.sn.lib.Sn;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.papi.SnPapi;
 import com.sn.lib.text.SnText;
 
 /**
@@ -389,11 +390,12 @@ public final class SnYml {
     }
 
     /**
-     * PAPI application point, reached only on the primary thread. Identity until the papi
-     * module wires the per-context expansion service here.
+     * PAPI application point, reached only on the primary thread; delegates to the
+     * context papi service (identity while the context is still under construction).
      */
     private String applyPapi(Player viewer, String s) {
-        return s;
+        SnPapi papi = ctx.papi();
+        return papi == null ? s : papi.apply(viewer, s);
     }
 
     private Void drainPendingWrites() {
