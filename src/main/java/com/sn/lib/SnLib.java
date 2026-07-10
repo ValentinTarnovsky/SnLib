@@ -19,7 +19,7 @@ import org.jetbrains.annotations.Nullable;
  *       the semver contract and may change without notice.</li>
  *   <li><b>(c) Compatibility.</b> Runtime floor 1.20.4, target 1.21.8; unknown versions
  *       (1.22+) start with a WARN and never hard-fail. Java 21. 100% Paper/Adventure API:
- *       NMS, packets and {@code InventoryView} are PROHIBITED. {@code Sound},
+ *       NMS, packets and the inventory-view class (Inventory-View) are PROHIBITED. {@code Sound},
  *       {@code Particle} and {@code ItemFlag} are treated as open sets (never
  *       switch/EnumSet over them). Lenient aliases with WARN:
  *       {@code HIDE_POTION_EFFECTS} to {@code HIDE_ADDITIONAL_TOOLTIP} and
