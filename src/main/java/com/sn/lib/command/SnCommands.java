@@ -15,8 +15,9 @@ import com.sn.lib.lang.SnLang;
  * Command module of a consumer context, reached through {@code sn.commands()}.
  *
  * <p>Every root built here injects a {@code reload} subcommand (permission
- * {@code <plugin>.admin.reload}, runs the context reload and confirms with
- * {@code snlib.reload-done}) and a generated {@code help} subcommand; both are
+ * {@code <plugin>.admin.reload}, delegates to the context reload manager through
+ * {@code Sn.reloadAll()} and confirms with {@code snlib.reload-done}) and a generated
+ * {@code help} subcommand; both are
  * replaceable by declaring subcommands with those names and removable via
  * {@link RootBuilder#withoutDefaults()}. When the spec declared {@code debugCommand()},
  * a {@code debug} subcommand (permission {@code <plugin>.admin.debug}) toggles the
@@ -62,6 +63,14 @@ public final class SnCommands {
      */
     public void unregisterAll() {
         BukkitCommandRegistry.unregisterAll(ctx.plugin());
+    }
+
+    /**
+     * Re-registers every root of the owning plugin and refreshes the client command
+     * trees; the re-register step of the context reload flow.
+     */
+    public void reregisterAll() {
+        BukkitCommandRegistry.reregisterAll(ctx.plugin());
     }
 
     /** Builder of one root command tree. */

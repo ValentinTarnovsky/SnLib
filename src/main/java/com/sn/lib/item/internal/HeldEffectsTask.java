@@ -81,6 +81,13 @@ public final class HeldEffectsTask {
         }
     }
 
+    /** Restarts the timer when any tracked definition remains; the reload re-track path. */
+    public synchronized void restart() {
+        if (!byId.isEmpty()) {
+            ensureStarted();
+        }
+    }
+
     private synchronized void ensureStarted() {
         if (handle == null || handle.isCancelled()) {
             handle = ctx.scheduler().timer(PERIOD_TICKS, PERIOD_TICKS, this::tick);

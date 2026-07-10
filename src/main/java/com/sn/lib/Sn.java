@@ -13,6 +13,7 @@ import com.sn.lib.gui.GuiManager;
 import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
+import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.yml.YmlManager;
 
@@ -41,6 +42,7 @@ public final class Sn {
     private final GuiManager guis;
     private final SnDb db;
     private final SnCommands commands;
+    private final ReloadManager reload;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -75,6 +77,7 @@ public final class Sn {
                         yml == null ? null : yml.config().getSection("database")))
                 : null;
         this.commands = new SnCommands(this, lang, spec.debugCommand());
+        this.reload = new ReloadManager(this);
     }
 
     /** Consumer plugin that owns this context. */
@@ -214,6 +217,16 @@ public final class Sn {
         return commands;
     }
 
+    /**
+     * Reload orchestrator of the owning plugin; available in every context. Rebuilds the
+     * declared modules in a strict order and re-dispatches the reloadables registered
+     * through {@link ReloadManager#register}; the default {@code reload} subcommand and
+     * {@code /snlib reload <plugin>} delegate here.
+     */
+    public ReloadManager reload() {
+        return reload;
+    }
+
     /** True once teardown of this context started; module I/O must go synchronous. */
     public boolean isShuttingDown() {
         return shuttingDown;
@@ -237,7 +250,8 @@ public final class Sn {
         }
     }
 
-    /** Reloads every reloadable module owned by this context. */
+    /** Reloads every module owned by this context; delegates to the reload manager. */
     public void reloadAll() {
+        reload.reloadPlugin();
     }
 }

@@ -132,6 +132,11 @@ public final class GuiManager {
         load();
     }
 
+    /** Snapshot of the open sessions of THIS context; the reload flow's reopen source. */
+    public List<GuiSession> openSessions() {
+        return new ArrayList<>(SESSIONS.forOwner(plugin));
+    }
+
     /** Closes every open GUI session of THIS context. */
     public void closeAll() {
         closeAll(plugin);

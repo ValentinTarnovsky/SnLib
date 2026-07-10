@@ -68,6 +68,7 @@ public final class ItemRegistry {
     private final RecipeLoader recipes;
     private final HeldEffectsTask heldEffects;
     private final Map<String, ItemDef> defs = new ConcurrentHashMap<>();
+    private volatile @Nullable SnYml itemsSource;
 
     /** Creates the registry for the given context and tracks it for owner resolution. */
     public ItemRegistry(Sn ctx) {
@@ -110,6 +111,7 @@ public final class ItemRegistry {
 
     /** Registers every top-level section of {@code itemsFile} as one item definition. */
     public void loadAll(SnYml itemsFile) {
+        this.itemsSource = itemsFile;
         ConfigurationSection root = itemsFile.getSection("");
         if (root == null) {
             return;
@@ -119,6 +121,37 @@ public final class ItemRegistry {
                 register(id, itemsFile);
             }
         }
+    }
+
+    /**
+     * Cancels the per-context render/update tasks of the module (the held-effects
+     * timer); the reload flow restarts them after re-reading the definitions.
+     */
+    public void cancelTasks() {
+        heldEffects.stop();
+    }
+
+    /**
+     * Re-registers every definition of the items file previously loaded through
+     * {@link #loadAll} (a fresh parse of the reloaded yml) and restarts the held-effects
+     * timer when any tracked definition remains. Programmatic definitions stay
+     * registered untouched.
+     */
+    public void reload() {
+        SnYml source = itemsSource;
+        if (source != null) {
+            loadAll(source);
+        }
+        heldEffects.restart();
+    }
+
+    /**
+     * Recipe cycle of the reload flow, main thread only: removes every recipe key of
+     * this owner from the server and re-adds the recipes of every registered definition.
+     */
+    public void reloadRecipes() {
+        recipes.unregisterAll();
+        recipes.registerAll(Map.copyOf(defs));
     }
 
     /** Definition registered under {@code id}, or null. */

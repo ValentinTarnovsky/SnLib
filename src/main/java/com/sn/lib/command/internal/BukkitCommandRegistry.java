@@ -81,6 +81,16 @@ public final class BukkitCommandRegistry {
         COMMANDS.removeOwner(owner);
     }
 
+    /**
+     * Re-registers every root of the owner in place; the reload flow's re-register step.
+     * Each register pass refreshes the online players' command trees.
+     */
+    public static void reregisterAll(JavaPlugin owner) {
+        for (RootCommand command : new ArrayList<>(COMMANDS.forOwner(owner))) {
+            register(owner, command);
+        }
+    }
+
     /** Sweep callback: also runs when the tenant sweeper removes a disabled owner's key. */
     private static void sweep(RootCommand command) {
         detach(command);
