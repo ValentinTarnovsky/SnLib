@@ -11,13 +11,13 @@ import org.bukkit.event.server.PluginEnableEvent;
  * Shared listener that activates/deactivates every registered {@link SoftDependency} live
  * when its target plugin enables or disables.
  *
- * <p>The iteration source is injected (unit-testable without a registry); step 16 bridges
- * it to {@code TenantRegistry.forEachOwner} over the per-owner SoftDependency registry.</p>
+ * <p>The iteration source is injected (unit-testable without a registry); the production
+ * instance inscribed in the ListenerHub is bridged to
+ * {@link SoftDependency#forEachRegistered} over the per-owner SoftDependency registry.</p>
  *
- * <p><b>Wiring note (literal):</b> this listener is defined here unit-testable; it is
- * INSCRIBED into the ListenerHub only in step 16 (which retro-inscribes it), and the
- * {@code registerEvents} call happens UNIQUELY in the SnLibPlugin bootstrap of step 31.
- * Never register it anywhere else.</p>
+ * <p><b>Wiring note (literal):</b> this listener is defined here unit-testable and is
+ * INSCRIBED into the ListenerHub; the {@code registerEvents} call happens UNIQUELY in
+ * the SnLibPlugin bootstrap of step 31. Never register it anywhere else.</p>
  */
 public final class HookListener implements Listener {
 

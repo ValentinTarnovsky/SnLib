@@ -1,6 +1,7 @@
 package com.sn.lib.hook;
 
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
@@ -8,20 +9,24 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.tenant.TenantRegistry;
+
 /**
  * Reactive soft-dependency hook keyed by its owning plugin.
  *
  * <p>The hook resolves lazily against the target plugin (present, enabled, semver gate,
  * optional required class) and is activated/deactivated live by {@link HookListener} when
- * the target enables or disables. Every instance stores its {@code owner} and exposes
- * {@link #owner()} for deferred inscription: the per-owner
- * {@code TenantRegistry<SoftDependency<?>>} is created in step 16, which registers each
- * instance under its owner so a consumer disable removes its hooks without touching other
- * consumers.</p>
+ * the target enables or disables. Every instance is registered under its owner in a
+ * per-owner {@link TenantRegistry}, so a consumer disable removes its hooks (and
+ * force-disables them through the sweep callback) without touching other consumers.</p>
  *
  * @param <T> hook adapter type produced by the factory
  */
 public final class SoftDependency<T> {
+
+    /** Server-wide static justified: the registry itself; contents keyed per owning plugin. */
+    private static final TenantRegistry<SoftDependency<?>> REGISTRY =
+            new TenantRegistry<>(SoftDependency::forceDisable);
 
     private final JavaPlugin owner;
     private final String pluginName;
@@ -47,7 +52,23 @@ public final class SoftDependency<T> {
      * instantiation boundary.
      */
     public static <T> SoftDependency<T> of(JavaPlugin owner, String pluginName, Supplier<T> factory) {
-        return new SoftDependency<>(owner, pluginName, factory);
+        SoftDependency<T> dependency = new SoftDependency<>(owner, pluginName, factory);
+        REGISTRY.add(owner, dependency);
+        return dependency;
+    }
+
+    /** Applies the action to every registered hook of every owner; HookListener's iteration source. */
+    public static void forEachRegistered(Consumer<SoftDependency<?>> action) {
+        REGISTRY.forEachOwner((owner, hooks) -> hooks.forEach(action));
+    }
+
+    /** Parks every hook (of any owner) targeting {@code pluginName}; the sweeper's notification. */
+    public static void targetDisabled(String pluginName) {
+        forEachRegistered(dependency -> {
+            if (dependency.pluginName().equalsIgnoreCase(pluginName)) {
+                dependency.deactivate();
+            }
+        });
     }
 
     /** Requires the target's version to be at least {@code version} (semver gate). */

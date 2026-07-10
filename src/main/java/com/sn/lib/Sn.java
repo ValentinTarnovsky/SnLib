@@ -118,8 +118,16 @@ public final class Sn {
         return shuttingDown;
     }
 
-    /** Shuts down every module owned by this context and releases its registrations. */
+    /**
+     * Shuts down every module owned by this context and releases its registrations.
+     * Idempotent: only the first call runs the teardown, and it flips the context to
+     * synchronous-write mode before anything else.
+     */
     public void shutdown() {
+        if (shuttingDown) {
+            return;
+        }
+        shuttingDown = true;
     }
 
     /** Reloads every reloadable module owned by this context. */

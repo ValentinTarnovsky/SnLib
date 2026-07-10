@@ -1,10 +1,16 @@
 package com.sn.lib;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
+
+import com.sn.lib.tenant.internal.TenantSweeper;
 
 /**
  * Entry point and context registry of SnLib.
@@ -31,8 +37,16 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class SnLib {
 
-    /** Server-wide static justified: single context registry, keyed by owning plugin. */
-    private static final Map<JavaPlugin, Sn> CONTEXTS = new ConcurrentHashMap<>();
+    /**
+     * Server-wide static justified: single context registry, keyed by owning plugin and
+     * insertion-ordered so the sweeper cascade shuts down in reverse registration order.
+     * The tenant sweeper removes the WHOLE key when an owner disables.
+     */
+    private static final Map<Plugin, Sn> CONTEXTS = new LinkedHashMap<>();
+
+    static {
+        TenantSweeper.bindContexts(new ContextAccessImpl());
+    }
 
     private SnLib() {
     }
@@ -50,7 +64,9 @@ public final class SnLib {
      */
     static Sn init(JavaPlugin plugin, SnSpec spec) {
         Sn ctx = new Sn(plugin, spec);
-        CONTEXTS.put(plugin, ctx);
+        synchronized (CONTEXTS) {
+            CONTEXTS.put(plugin, ctx);
+        }
         return ctx;
     }
 
@@ -58,6 +74,29 @@ public final class SnLib {
      * Context of a consumer plugin, or null if that plugin never initialized against SnLib.
      */
     public static @Nullable Sn context(JavaPlugin plugin) {
-        return CONTEXTS.get(plugin);
+        synchronized (CONTEXTS) {
+            return CONTEXTS.get(plugin);
+        }
+    }
+
+    /** Access the tenant sweeper uses to detach context keys without widening the API. */
+    private static final class ContextAccessImpl implements TenantSweeper.ContextAccess {
+
+        @Override
+        public boolean detach(Plugin owner, Sn expected) {
+            synchronized (CONTEXTS) {
+                return CONTEXTS.remove(owner, expected);
+            }
+        }
+
+        @Override
+        public List<Sn> detachAllReversed() {
+            synchronized (CONTEXTS) {
+                List<Sn> all = new ArrayList<>(CONTEXTS.values());
+                CONTEXTS.clear();
+                Collections.reverse(all);
+                return all;
+            }
+        }
     }
 }
