@@ -8,6 +8,7 @@ import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.db.DbConfig;
 import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.economy.EconomyBridge;
 import com.sn.lib.gui.GuiManager;
 import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.lang.SnLang;
@@ -35,6 +36,7 @@ public final class Sn {
     private final ActionEngine actions;
     private final SnLang lang;
     private final Cooldowns cooldowns;
+    private final EconomyBridge economy;
     private final ItemRegistry items;
     private final GuiManager guis;
     private final SnDb db;
@@ -53,6 +55,7 @@ public final class Sn {
         this.actions = new ActionEngine(this);
         this.lang = spec.lang() ? new SnLang(this, yml == null ? null : yml.config()) : null;
         this.cooldowns = new Cooldowns(this);
+        this.economy = new EconomyBridge(this);
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
         if (itemsFile != null) {
@@ -151,6 +154,16 @@ public final class Sn {
                     "Modulo lang no declarado: falta SnSpec.builder().lang()");
         }
         return lang;
+    }
+
+    /**
+     * Economy bridge of the owning plugin; available in every context. Operations resolve
+     * Vault when present, then the command backend configured via
+     * {@link EconomyBridge#useCommandBackend}; with no backend available they WARN once
+     * and report failure.
+     */
+    public EconomyBridge economy() {
+        return economy;
     }
 
     /**
