@@ -4,6 +4,7 @@ import org.bstats.bukkit.Metrics;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.command.internal.SnLibCommand;
 import com.sn.lib.compat.SnVersion;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
@@ -62,6 +63,7 @@ public final class SnLibPlugin extends JavaPlugin {
         ListenerHub.registerAll(this);
         Sn ctx = SnLib.init(this, buildSelfSpec());
         this.selfCtx = ctx;
+        SnLibCommand.register(this, ctx);
         if (ctx.yml().config().getBoolean("bstats", true)) {
             this.metrics = new Metrics(this, BSTATS_SERVICE_ID);
         }
