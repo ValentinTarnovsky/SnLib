@@ -243,9 +243,18 @@
                 <configuration>
                     <parameter>
                         <ignoreMissingOldVersion>true</ignoreMissingOldVersion>
+                        <!-- ignoreMissingClasses: el jar shadeado incluye mysql-connector-j
+                             sin relocar, cuyas clases X DevAPI referencian protobuf (excluido
+                             del shade adrede); japicmp no debe exigir ese classpath. -->
+                        <ignoreMissingClasses>true</ignoreMissingClasses>
                         <excludes>
                             <exclude>com.sn.lib.**.internal.**</exclude>
                             <exclude>com.sn.lib.libs.**</exclude>
+                            <!-- Shadeadas SIN relocar (JNI/driver): no son API de SnLib. -->
+                            <exclude>com.mysql.**</exclude>
+                            <exclude>org.sqlite.**</exclude>
+                            <exclude>org.slf4j.**</exclude>
+                            <exclude>google.protobuf.**</exclude>
                         </excludes>
                         <onlyModified>true</onlyModified>
                         <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
