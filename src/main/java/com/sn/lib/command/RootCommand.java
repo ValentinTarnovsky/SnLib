@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 
 import org.bukkit.command.Command;
@@ -38,15 +39,21 @@ import com.sn.lib.text.SnText;
 public final class RootCommand extends Command implements Registrable {
 
     /** Server-wide static justified: constant default templates mirroring snlib-messages.yml. */
-    private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
-            "snlib.no-permission", "&cYou do not have permission to use this command.",
-            "snlib.usage", "&cUsage: &f{usage}",
-            "snlib.invalid-number", "&cInvalid number: &f{value}",
-            "snlib.player-not-found", "&cPlayer not found: &f{value}",
-            "snlib.unknown-subcommand", "&cUnknown subcommand: &f{value}",
-            "snlib.reload-done", "&aConfiguration reloaded.",
-            "snlib.help.header", "&6&lCommands",
-            "snlib.help.entry", "&e{usage} &8- &7{permission}");
+    private static final Map<String, String> DEFAULT_MESSAGES = Map.ofEntries(
+            Map.entry("snlib.no-permission", "&cYou do not have permission to use this command."),
+            Map.entry("snlib.usage", "&cUsage: &f{usage}"),
+            Map.entry("snlib.invalid-number", "&cInvalid number: &f{value}"),
+            Map.entry("snlib.invalid-value", "&cInvalid value: &f{value}"),
+            Map.entry("snlib.out-of-range", "&cValue must be between &f{min} &cand &f{max}&c: &f{value}"),
+            Map.entry("snlib.player-not-found", "&cPlayer not found: &f{value}"),
+            Map.entry("snlib.unknown-subcommand", "&cUnknown subcommand: &f{value}"),
+            Map.entry("snlib.reload-done", "&aConfiguration reloaded."),
+            Map.entry("snlib.help.header", "&6&lCommands"),
+            Map.entry("snlib.help.entry", "&e{usage} &8- &7{permission}"),
+            Map.entry("snlib.help.footer", "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"));
+
+    /** Entries per generated help page. */
+    private static final int HELP_PAGE_SIZE = 8;
 
     private final Sn ctx;
     private final @Nullable SnLang lang;
@@ -81,7 +88,7 @@ public final class RootCommand extends Command implements Registrable {
             }
             if (!hasSub(all, "help")) {
                 all.add(Sub.of("help", null, "Shows the available commands",
-                        context -> sendHelp(context.sender())));
+                        context -> sendHelp(context.sender(), pageFrom(context.raw(0)))));
             }
         }
         if (debugCommand && !hasSub(all, "debug")) {
@@ -137,11 +144,24 @@ public final class RootCommand extends Command implements Registrable {
             send(sender, "snlib.usage", Ph.of("usage", usageOf(sub)));
             return true;
         }
+        for (Condition condition : sub.conditions) {
+            int at = condition.index();
+            if (at >= 0 && at < subArgs.length && !condition.test().test(subArgs[at])) {
+                send(sender, "snlib.usage", Ph.of("usage", usageOf(sub)));
+                return true;
+            }
+        }
         Map<String, Object> values = new LinkedHashMap<>();
         int index = 0;
+        int lastIndex = sub.args.size() - 1;
         for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
+            String token = subArgs[index];
+            if (index == lastIndex && isGreedy(entry.getValue())) {
+                token = String.join(" ",
+                        Arrays.copyOfRange(subArgs, index, subArgs.length));
+            }
             try {
-                values.put(entry.getKey(), entry.getValue().parse(subArgs[index]));
+                values.put(entry.getKey(), entry.getValue().parse(token));
             } catch (Arg.ArgParseException e) {
                 send(sender, e.langKey(), e.phs());
                 return true;
@@ -194,15 +214,32 @@ public final class RootCommand extends Command implements Registrable {
         }
         int argIndex = args.length - 2;
         if (argIndex >= sub.args.size()) {
-            return List.of();
+            if (sub.args.isEmpty()) {
+                return List.of();
+            }
+            Arg<?> last = argAt(sub, sub.args.size() - 1);
+            if (!isGreedy(last)) {
+                return List.of();
+            }
+            List<String> greedySuggestions = last.suggest(sender, args[args.length - 1]);
+            return greedySuggestions == null ? List.of() : greedySuggestions;
         }
         List<String> suggestions = argAt(sub, argIndex).suggest(sender, args[args.length - 1]);
         return suggestions == null ? List.of() : suggestions;
     }
 
-    /** Generated help: header plus one entry per visible subcommand the sender may use. */
+    /** Generated help, first page. */
     private void sendHelp(CommandSender sender) {
-        send(sender, "snlib.help.header");
+        sendHelp(sender, 1);
+    }
+
+    /**
+     * Generated help: header plus one entry per visible subcommand the sender may use,
+     * paginated through {@link Page}; a footer with the page indicator appears only
+     * when the entries span several pages.
+     */
+    private void sendHelp(CommandSender sender, int pageNumber) {
+        List<Sub> permitted = new ArrayList<>();
         for (Sub sub : subs) {
             if (!sub.visible) {
                 continue;
@@ -211,10 +248,40 @@ public final class RootCommand extends Command implements Registrable {
             if (permission != null && !sender.hasPermission(permission)) {
                 continue;
             }
+            permitted.add(sub);
+        }
+        Page<Sub> page = Page.of(permitted, HELP_PAGE_SIZE);
+        int current = page.clamp(pageNumber);
+        send(sender, "snlib.help.header");
+        for (Sub sub : page.page(current)) {
+            String permission = effectivePermission(sub);
             send(sender, "snlib.help.entry",
                     Ph.of("usage", usageOf(sub)),
                     Ph.of("permission", permission == null ? "" : permission));
         }
+        if (page.totalPages() > 1) {
+            send(sender, "snlib.help.footer",
+                    Ph.of("page", current),
+                    Ph.of("total", page.totalPages()),
+                    Ph.of("command", getName()));
+        }
+    }
+
+    /** Optional help page token; anything unparseable falls back to page 1. */
+    private static int pageFrom(@Nullable String raw) {
+        if (raw == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    /** Whether the arg consumes every remaining token (only factory args can). */
+    private static boolean isGreedy(Arg<?> arg) {
+        return arg instanceof Args.SnArg<?> snArg && snArg.greedy();
     }
 
     /** Effective permission of the node: its own or, when absent, the inherited root one. */
@@ -237,8 +304,15 @@ public final class RootCommand extends Command implements Registrable {
             return sub.usage;
         }
         StringBuilder out = new StringBuilder("/").append(getName()).append(' ').append(sub.name);
-        for (String argName : sub.args.keySet()) {
-            out.append(" <").append(argName).append('>');
+        int index = 0;
+        int lastIndex = sub.args.size() - 1;
+        for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
+            out.append(" <").append(entry.getKey());
+            if (index == lastIndex && isGreedy(entry.getValue())) {
+                out.append("...");
+            }
+            out.append('>');
+            index++;
         }
         return out.toString();
     }
@@ -276,6 +350,14 @@ public final class RootCommand extends Command implements Registrable {
         sender.sendMessage(SnText.color(SnText.applyLocals(template, phs)));
     }
 
+    /**
+     * Declarative raw-token condition declared through
+     * {@link SubCommandBuilder#when(int, Predicate)}: a failing token at {@code index}
+     * rejects the invocation with the usage message before any typed parsing.
+     */
+    record Condition(int index, Predicate<String> test) {
+    }
+
     /** Immutable subcommand node; built by {@link SubCommandBuilder}. */
     static final class Sub {
 
@@ -286,11 +368,13 @@ public final class RootCommand extends Command implements Registrable {
         final String description;
         final boolean visible;
         final Map<String, Arg<?>> args;
+        final List<Condition> conditions;
         final @Nullable Consumer<CommandContext> executor;
 
         Sub(String name, List<String> aliases, @Nullable String permission,
                 @Nullable String usage, String description, boolean visible,
-                Map<String, Arg<?>> args, @Nullable Consumer<CommandContext> executor) {
+                Map<String, Arg<?>> args, List<Condition> conditions,
+                @Nullable Consumer<CommandContext> executor) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
             List<String> lowered = new ArrayList<>(aliases.size());
             for (String alias : aliases) {
@@ -302,13 +386,14 @@ public final class RootCommand extends Command implements Registrable {
             this.description = description;
             this.visible = visible;
             this.args = Collections.unmodifiableMap(new LinkedHashMap<>(args));
+            this.conditions = List.copyOf(conditions);
             this.executor = executor;
         }
 
         static Sub of(String name, @Nullable String permission, String description,
                 Consumer<CommandContext> executor) {
             return new Sub(name, List.of(), permission, null, description, true,
-                    Map.of(), executor);
+                    Map.of(), List.of(), executor);
         }
     }
 }

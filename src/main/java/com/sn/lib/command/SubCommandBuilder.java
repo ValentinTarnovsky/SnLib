@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -20,6 +21,7 @@ public final class SubCommandBuilder {
     private final String name;
     private final List<String> aliases = new ArrayList<>();
     private final Map<String, Arg<?>> args = new LinkedHashMap<>();
+    private final List<RootCommand.Condition> conditions = new ArrayList<>();
 
     private @Nullable String permission;
     private @Nullable String usage;
@@ -74,7 +76,21 @@ public final class SubCommandBuilder {
         return this;
     }
 
-    /** Handler run once permission, argument count and typed parsing all pass. */
+    /**
+     * Declarative condition over the raw token at {@code index} (0-based among the
+     * subcommand arguments): a failing token rejects the invocation with the usage
+     * message before any typed parsing runs.
+     */
+    public SubCommandBuilder when(int index, Predicate<String> condition) {
+        if (index < 0) {
+            throw new IllegalArgumentException("Indice de condicion negativo: " + index);
+        }
+        Objects.requireNonNull(condition, "condition");
+        conditions.add(new RootCommand.Condition(index, condition));
+        return this;
+    }
+
+    /** Handler run once permission, argument count, conditions and typed parsing all pass. */
     public SubCommandBuilder executes(Consumer<CommandContext> executor) {
         this.executor = Objects.requireNonNull(executor, "executor");
         return this;
@@ -87,6 +103,6 @@ public final class SubCommandBuilder {
 
     RootCommand.Sub build() {
         return new RootCommand.Sub(name, aliases, permission, usage, description,
-                visible, args, executor);
+                visible, args, conditions, executor);
     }
 }

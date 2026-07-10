@@ -10,6 +10,10 @@ snlib:
   usage: "&cUsage: &f{usage}"
   # Sent when an argument expected a number; {value} is the rejected input.
   invalid-number: "&cInvalid number: &f{value}"
+  # Sent when an argument value is not one of the accepted options; {value} is the rejected input.
+  invalid-value: "&cInvalid value: &f{value}"
+  # Sent when a numeric argument falls outside its allowed range; {min}/{max} bound it and {value} is the rejected input.
+  out-of-range: "&cValue must be between &f{min} &cand &f{max}&c: &f{value}"
   # Sent when an argument expected an online player; {value} is the rejected input.
   player-not-found: "&cPlayer not found: &f{value}"
   # Sent when the given subcommand does not exist; {value} is the unknown input.
@@ -21,3 +25,5 @@ snlib:
     header: "&6&lCommands"
     # One line per subcommand visible to the sender; {usage} is its syntax and {permission} its permission node.
     entry: "&e{usage} &8- &7{permission}"
+    # Printed after the entries only when the help spans several pages; {command} is the root command name.
+    footer: "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"
