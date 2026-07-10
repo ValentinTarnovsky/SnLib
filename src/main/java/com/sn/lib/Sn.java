@@ -18,6 +18,9 @@ public final class Sn {
     private final JavaPlugin plugin;
     private final SnScheduler scheduler;
 
+    /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
+    volatile boolean shuttingDown;
+
     Sn(JavaPlugin plugin) {
         this.plugin = plugin;
         this.scheduler = new SnScheduler(plugin);
@@ -31,6 +34,11 @@ public final class Sn {
     /** Folia-aware scheduler bound to the owning plugin; available in every context. */
     public SnScheduler scheduler() {
         return scheduler;
+    }
+
+    /** True once teardown of this context started; module I/O must go synchronous. */
+    public boolean isShuttingDown() {
+        return shuttingDown;
     }
 
     /** Shuts down every module owned by this context and releases its registrations. */
