@@ -3,6 +3,7 @@ package com.sn.lib;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.action.ActionEngine;
+import com.sn.lib.bossbar.BossBarUtil;
 import com.sn.lib.command.SnCommands;
 import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.db.DbConfig;
@@ -10,6 +11,7 @@ import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.economy.EconomyBridge;
 import com.sn.lib.gui.GuiManager;
+import com.sn.lib.hologram.HologramUtil;
 import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.item.internal.EquipmentBackup;
@@ -49,6 +51,8 @@ public final class Sn {
     private final SnLang lang;
     private final Cooldowns cooldowns;
     private final EconomyBridge economy;
+    private final BossBarUtil bossbars;
+    private final HologramUtil holograms;
     private final ItemRegistry items;
     private final GuiManager guis;
     private final SnDb db;
@@ -69,6 +73,8 @@ public final class Sn {
         this.lang = spec.lang() ? new SnLang(this, yml == null ? null : yml.config()) : null;
         this.cooldowns = new Cooldowns(this);
         this.economy = new EconomyBridge(this);
+        this.bossbars = new BossBarUtil(this);
+        this.holograms = new HologramUtil(this);
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
         if (itemsFile != null) {
@@ -178,6 +184,26 @@ public final class Sn {
      */
     public EconomyBridge economy() {
         return economy;
+    }
+
+    /**
+     * Boss bar service of the owning plugin; available in every context. Bars are
+     * Adventure boss bars (zero packets) with titles rendered through the SnText
+     * pipeline; quitting viewers are dropped automatically and the context teardown
+     * hides every bar of this owner.
+     */
+    public BossBarUtil bossbars() {
+        return bossbars;
+    }
+
+    /**
+     * Hologram service of the owning plugin; available in every context. Holograms are
+     * real TextDisplay entities marked in the PDC; the context teardown deletes this
+     * owner's entities and the library purges orphaned markers on chunk load and at
+     * startup.
+     */
+    public HologramUtil holograms() {
+        return holograms;
     }
 
     /**
@@ -296,8 +322,12 @@ public final class Sn {
         papi.unregisterAll();
         // 11. Release the BungeeCord outgoing channel if [connect] registered it.
         actions.shutdown();
-        // 12. Teardown hooks of the extra modules (bossbars hideAll, holograms
-        //     deleteAll, discord drain) slot HERE, before the generic removeOwner.
+        // 12. Teardown hooks of the extra modules, before the generic removeOwner: hide
+        //     this owner's bossbars and delete its TextDisplay holograms so they do not
+        //     linger as orphans until the next startup purge (discord drain slots here
+        //     too once that module exists).
+        bossbars.hideAll();
+        holograms.deleteAll();
         // 13. Remove this owner's key from EVERY tenant registry and detach the context.
         TenantRegistry.sweepOwner(plugin);
         SnLib.detach(plugin, this);

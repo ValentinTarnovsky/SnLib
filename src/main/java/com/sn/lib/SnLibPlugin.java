@@ -6,6 +6,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.command.internal.SnLibCommand;
 import com.sn.lib.compat.SnVersion;
+import com.sn.lib.hologram.internal.HologramChunkListener;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
 import com.sn.lib.util.HeadUtil;
@@ -67,6 +68,7 @@ public final class SnLibPlugin extends JavaPlugin {
         if (ctx.yml().config().getBoolean("bstats", true)) {
             this.metrics = new Metrics(this, BSTATS_SERVICE_ID);
         }
+        ctx.scheduler().sync(this::purgeOrphanHolograms);
         getLogger().info("SnLib " + getPluginMeta().getVersion()
                 + " enabled (API level " + SnApi.LEVEL + ")");
     }
@@ -93,6 +95,19 @@ public final class SnLibPlugin extends JavaPlugin {
                 + (SnVersion.PATCH > 0 ? "." + SnVersion.PATCH : "");
         getLogger().info("Servidor detectado: " + detected
                 + (SnVersion.isFolia() ? " (Folia)" : ""));
+    }
+
+    /**
+     * Startup scan for orphaned hologram entities. Deferred to the first tick because
+     * SnLib enables at STARTUP, before any world loads and before any consumer registers
+     * its holograms; by the first tick both happened and every marked TextDisplay without
+     * a live registration is a leftover from a previous run.
+     */
+    private void purgeOrphanHolograms() {
+        int purged = HologramChunkListener.purgeLoadedWorlds();
+        if (purged > 0) {
+            getLogger().info("Purgados " + purged + " hologramas huerfanos de arranques previos");
+        }
     }
 
     private static SnSpec buildSelfSpec() {
