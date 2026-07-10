@@ -324,7 +324,11 @@ public final class YamlUpdater {
     }
 
     private static void pruneOldBackups(File dir, String prefix) {
-        File[] backups = dir.listFiles((d, name) -> name.startsWith(prefix) && name.endsWith(".yml"));
+        // Match exacto old-<base>-<yyyyMMdd-HHmmss>.yml: un prefijo suelto mezclaria los
+        // backups de otro archivo cuyo nombre extiende la base (config vs config-extra).
+        java.util.regex.Pattern stamped = java.util.regex.Pattern.compile(
+                java.util.regex.Pattern.quote(prefix) + "\\d{8}-\\d{6}\\.yml");
+        File[] backups = dir.listFiles((d, name) -> stamped.matcher(name).matches());
         if (backups == null || backups.length <= BACKUPS_KEPT) {
             return;
         }

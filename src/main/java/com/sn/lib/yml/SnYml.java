@@ -55,8 +55,13 @@ public final class SnYml {
 
     private final Object saveLock = new Object();
     private String pendingSnapshot;
+    private long pendingSeq;
     private CompletableFuture<?> pendingWrite;
     private boolean writeScheduled;
+
+    private final Object ioLock = new Object();
+    private long saveSeq;
+    private long lastAttemptedSeq;
 
     SnYml(Sn ctx, File file) {
         this.ctx = ctx;
@@ -245,14 +250,17 @@ public final class SnYml {
     public void save() {
         String snapshot = yaml.saveToString();
         if (ctx.isShuttingDown()) {
+            long seq;
             synchronized (saveLock) {
                 pendingSnapshot = null;
+                seq = ++saveSeq;
             }
-            writeToDisk(snapshot);
+            writeToDisk(snapshot, seq);
             return;
         }
         synchronized (saveLock) {
             pendingSnapshot = snapshot;
+            pendingSeq = ++saveSeq;
             if (!writeScheduled) {
                 writeScheduled = true;
                 CompletableFuture<?> write = ctx.scheduler().supplyAsync(this::drainPendingWrites);
@@ -288,12 +296,14 @@ public final class SnYml {
             }
         }
         String snapshot;
+        long seq;
         synchronized (saveLock) {
             snapshot = pendingSnapshot;
+            seq = pendingSeq;
             pendingSnapshot = null;
         }
         if (snapshot != null) {
-            writeToDisk(snapshot);
+            writeToDisk(snapshot, seq);
         }
     }
 
@@ -379,28 +389,38 @@ public final class SnYml {
     private Void drainPendingWrites() {
         while (true) {
             String snapshot;
+            long seq;
             synchronized (saveLock) {
                 snapshot = pendingSnapshot;
+                seq = pendingSeq;
                 pendingSnapshot = null;
                 if (snapshot == null) {
                     writeScheduled = false;
                     return null;
                 }
             }
-            writeToDisk(snapshot);
+            writeToDisk(snapshot, seq);
         }
     }
 
-    private void writeToDisk(String content) {
-        try {
-            Path parent = file.toPath().getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
+    private void writeToDisk(String content, long seq) {
+        synchronized (ioLock) {
+            // Un snapshot mas viejo que uno ya intentado JAMAS pisa el estado nuevo
+            // (carrera drain async vs save sincrono de teardown).
+            if (seq <= lastAttemptedSeq) {
+                return;
             }
-            Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            ctx.plugin().getLogger().warning(
-                    "No se pudo guardar " + file.getName() + ": " + e.getMessage());
+            lastAttemptedSeq = seq;
+            try {
+                Path parent = file.toPath().getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                ctx.plugin().getLogger().warning(
+                        "No se pudo guardar " + file.getName() + ": " + e.getMessage());
+            }
         }
     }
 
