@@ -5,6 +5,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.sn.lib.action.ActionEngine;
 import com.sn.lib.cooldown.Cooldowns;
 import com.sn.lib.debug.SnDebug;
+import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.papi.SnPapi;
 import com.sn.lib.scheduler.SnScheduler;
@@ -30,6 +31,7 @@ public final class Sn {
     private final ActionEngine actions;
     private final SnLang lang;
     private final Cooldowns cooldowns;
+    private final ItemRegistry items;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -44,6 +46,16 @@ public final class Sn {
         this.actions = new ActionEngine(this);
         this.lang = spec.lang() ? new SnLang(this, yml == null ? null : yml.config()) : null;
         this.cooldowns = new Cooldowns(this);
+        this.items = new ItemRegistry(this);
+        String itemsFile = spec.items();
+        if (itemsFile != null) {
+            if (yml != null) {
+                items.loadAll(yml.managed(itemsFile));
+            } else {
+                plugin.getLogger().warning("items(\"" + itemsFile + "\") declarado sin config(): "
+                        + "el archivo no se monta y sn.items() queda solo programatico");
+            }
+        }
     }
 
     /** Consumer plugin that owns this context. */
@@ -123,6 +135,15 @@ public final class Sn {
                     "Modulo lang no declarado: falta SnSpec.builder().lang()");
         }
         return lang;
+    }
+
+    /**
+     * Item registry of the owning plugin; available in every context and works with zero
+     * files: definitions come from {@code ItemDef.builder()}, from YML sections or from
+     * the items file declared via {@code SnSpec.builder().items(...)}.
+     */
+    public ItemRegistry items() {
+        return items;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */

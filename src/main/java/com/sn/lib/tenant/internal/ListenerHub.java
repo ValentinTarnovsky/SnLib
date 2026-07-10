@@ -11,6 +11,7 @@ import com.sn.lib.event.internal.ArmourEquipListener;
 import com.sn.lib.hook.HookListener;
 import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.internal.QuitCleanupListener;
+import com.sn.lib.item.internal.ItemPropertyListener;
 
 /**
  * Single inscription point for every shared listener of the library.
@@ -29,6 +30,7 @@ public final class ListenerHub {
         inscribe(new TenantSweeper());
         inscribe(new QuitCleanupListener());
         inscribe(new ArmourEquipListener());
+        inscribe(new ItemPropertyListener());
     }
 
     private ListenerHub() {
