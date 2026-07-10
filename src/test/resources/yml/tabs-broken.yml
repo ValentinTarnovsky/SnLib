@@ -1,0 +1,18 @@
+# Golden fixture: tab-indented YAML that YamlPreprocessor must repair.
+root:
+	name: "Sn	Lib"
+	id: 7
+mixed:
+	 	deep: "two words"
+items:
+	- "first"
+	- "second	entry"
+block: |
+  keep	me
+  	starts with tab
+  last line
+after: done
+folded: >-
+  alpha
+  beta
+tail: ok
