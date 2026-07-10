@@ -49,7 +49,7 @@ public final class SnLib {
      * @return the registered context
      */
     static Sn init(JavaPlugin plugin, SnSpec spec) {
-        Sn ctx = new Sn(plugin);
+        Sn ctx = new Sn(plugin, spec);
         CONTEXTS.put(plugin, ctx);
         return ctx;
     }

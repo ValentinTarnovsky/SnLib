@@ -3,6 +3,7 @@ package com.sn.lib;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sn.lib.scheduler.SnScheduler;
+import com.sn.lib.yml.YmlManager;
 
 /**
  * Per-plugin SnLib context: the handle through which a consumer reaches every module
@@ -16,19 +17,43 @@ import com.sn.lib.scheduler.SnScheduler;
 public final class Sn {
 
     private final JavaPlugin plugin;
+    private final SnSpec spec;
     private final SnScheduler scheduler;
+    private final YmlManager yml;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
 
-    Sn(JavaPlugin plugin) {
+    Sn(JavaPlugin plugin, SnSpec spec) {
         this.plugin = plugin;
+        this.spec = spec;
         this.scheduler = new SnScheduler(plugin);
+        this.yml = spec.config() == null ? null : new YmlManager(this, spec.config());
     }
 
     /** Consumer plugin that owns this context. */
     public JavaPlugin plugin() {
         return plugin;
+    }
+
+    /** Module declaration this context was initialized with. */
+    SnSpec spec() {
+        return spec;
+    }
+
+    /**
+     * Yml manager of the owning plugin: managed/seedOnly/data files plus the mounted
+     * main config.
+     *
+     * @throws UnsupportedOperationException if the spec did not declare the config
+     *         module via {@code SnSpec.builder().config(...)}
+     */
+    public YmlManager yml() {
+        if (yml == null) {
+            throw new UnsupportedOperationException(
+                    "Modulo yml no declarado: falta SnSpec.builder().config(\"config.yml\")");
+        }
+        return yml;
     }
 
     /** Folia-aware scheduler bound to the owning plugin; available in every context. */

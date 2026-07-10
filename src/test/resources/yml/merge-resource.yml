@@ -1,0 +1,21 @@
+# SnLib golden merge fixture: resource (new jar baseline).
+# Top-level comment block stays attached to the first key.
+settings:
+  # How many rows the menu uses.
+  rows: 6
+  # Title shown at the top of the menu.
+  title: "&aShop"
+  # NEW in this version: sound played on open.
+  open-sound: BLOCK_CHEST_OPEN
+
+# NEW in this version: storage backend.
+storage:
+  # sqlite or mysql.
+  type: sqlite
+  # Table prefix for every SnLib table.
+  table-prefix: "sn_"
+
+messages:
+  prefix: "&7[Shop]"
+  # NEW in this version: shown when the menu is locked.
+  locked: "&cThis menu is locked."

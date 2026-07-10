@@ -1,0 +1,11 @@
+# SnLib golden merge fixture: disk (user file from an older version).
+settings:
+  # How many rows the menu uses.
+  rows: 3
+  # Title shown at the top of the menu.
+  title: "&bMy Custom Shop"
+  # User-added key: must survive every merge untouched.
+  custom-flag: true
+
+messages:
+  prefix: "&7[MyShop]"

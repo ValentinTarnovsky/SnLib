@@ -1,0 +1,5 @@
+# SnLib golden fixture: deliberately invalid YAML (unclosed quote and unclosed flow collection).
+settings:
+  rows: "three
+  broken-list: [1, 2
+    nested: {a=b

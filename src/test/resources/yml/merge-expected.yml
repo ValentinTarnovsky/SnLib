@@ -1,0 +1,22 @@
+# SnLib golden merge fixture: disk (user file from an older version).
+settings:
+  # How many rows the menu uses.
+  rows: 3
+  # Title shown at the top of the menu.
+  title: "&bMy Custom Shop"
+  # NEW in this version: sound played on open.
+  open-sound: BLOCK_CHEST_OPEN
+  # User-added key: must survive every merge untouched.
+  custom-flag: true
+
+# NEW in this version: storage backend.
+storage:
+  # sqlite or mysql.
+  type: sqlite
+  # Table prefix for every SnLib table.
+  table-prefix: "sn_"
+
+messages:
+  prefix: "&7[MyShop]"
+  # NEW in this version: shown when the menu is locked.
+  locked: "&cThis menu is locked."
