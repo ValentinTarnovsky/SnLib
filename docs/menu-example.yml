@@ -1,0 +1,170 @@
+# ═══════════════════════════════════════════════════════════════════
+# MENU LIB - GUI Configuration Schema (golden spec)
+# ═══════════════════════════════════════════════════════════════════
+# One GUI per file inside the plugin's guis/ folder.
+# Every field documented here is supported natively by SnLib: if the config
+# user sets a supported field, it ALREADY works without plugin code.
+
+title: string # default: "Menu"
+rows: 1-6 # default: 3
+open-sound: id # default: ''
+update-interval: int (in ticks) # every update-interval ticks, the menu will update all its information, including items, title, and rows. If set to 0, the menu will not update automatically. # defalt: 0
+inventory-type: string # default: "CHEST" (can be any of the following: CHEST, DISPENSER, DROPPER, HOPPER, FURNACE, WORKBENCH, ENCHANTING, BREWING, ANVIL, BEACON, SHULKER_BOX, BARREL, etc)
+
+# ═══════════════════════════════════════════════════════════════════
+# PAGINATION - OPT-IN per menu
+# ═══════════════════════════════════════════════════════════════════
+# pagination: true  -> the GUI keeps ONE GuiSession + ONE Inventory PER VIEWER
+#                      (real page-state per player: the same GUI can serve N
+#                      players on different pages at the same time).
+#                      [next-page]/[previous-page]/[set-page]/[refresh-page]
+#                      work, and bindPaged fills the paged slots via API.
+# pagination: false -> (default) pagination actions are silent no-ops with a
+#                      debug note, and bindPaged WARNs once.
+pagination: true/false # default: false
+
+items:
+  item-id: #can be anything as long it is unique
+    display-name: string # default: ""
+    material: string (can resolve basehead-base64) #default: "STONE"
+    custom-model-data: int # default: 0
+    amount: int # default: 1
+    slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6]
+    glow: true/false # default: false
+    enchantments: list ex: [enchantment-id, level] or [enchantment-id, level, enchantment-id, level] # default: []
+    flags: # default: []
+    - string (can be any of the following: HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS)
+    - create a HIDE_ALL flag by adding all of the above flags to the list
+    color: RGB # 235, 64, 52 or HEX # FF0000 (for any item that supports color, like leather armor) # default: ""
+    trim-pattern: string (for leather armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+    trim-material: string (for leather armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+    potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
+    update-interval: int (in ticks) # every update-interval ticks, the item will update all its information, including items, title, and rows. If set to 0, the item will not update automatically. # defalt: 0
+    lore: list (each line of lore) # default: []
+    click-requirements: list of requirements to click this item, placeholders that have to match in order to click this item, if it doesn't match, the action will not be performed # default: []
+      - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
+      - "%placeholder% = 1" #ex: %vault_balance% = 1
+      - "%placeholder% != 1" #ex: %vault_balance% != 1
+    view-requirements: list of requirements to view this item, placeholders that have to match in order to view this item, if it doesn't match, the item will not be displayed # default: []
+      - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
+      - "%placeholder% = 1" #ex: %vault_balance% = 1
+      - "%placeholder% != 1" #ex: %vault_balance% != 1
+    deny-actions: all same actions as click-actions but with "deny" instead of "click" but the actions will be performed only if the click-requirements are not met # default: []
+    click-actions: # list of actions to perform when the item is clicked,
+      - "[player] spawn"          # run command as player
+      - "[player-as-op] give %player% diamond 1" # run command as op player
+      - "[right-click] spawn"     # run command as player when right-click
+      - "[left-click] spawn"      # run command as player when left-click
+      - "[shift-left-click] spawn"     # run command as player when shift-left-click
+      - "[shift-right-click] spawn"     # run command as player when shift-right-click
+      - "[console] give %player% diamond 1" # run command as console
+      - "[message] &aWelcome!"    # send message to player
+      - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP" # play sound
+      - "[close]"                 # close the menu
+      - "[open] gui-id"        # open another menu
+      - "[connect] lobby"         # BungeeCord server switch
+      - "[broadcastmessage] &e%player% joined!" # broadcast
+      - "[actionbar] &aItem purchased!" # action bar message
+      - "[title] &6Welcome;&eEnjoy your stay;20;40;20" # title message (title;subtitle;fadeIn;stay;fadeOut)
+      - "[next-page]" # next page (pagination: true only)
+      - "[previous-page]" # previous page (pagination: true only)
+      - "[refresh-page]" # refresh page (pagination: true only)
+      - "[set-page]" # set page (pagination: true only)
+      - "[refresh-menu]" # refresh menu
+      - "[custom]" #custom actions that plugins can create not need to be "custom" can be any string and the plugin will register its own action
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PAGINATION NAVIGATION ITEMS (only meaningful with pagination: true)
+  # ═══════════════════════════════════════════════════════════════════
+  # Navigation items are regular items whose click-actions use the pagination
+  # actions. Each one supports an optional "nav-disabled" section: an item
+  # override rendered in the SAME slots INSTEAD of the navigation item when
+  # there is no page to go to (first page for previous, last page for next).
+  # nav-disabled supports the same appearance fields as a regular item
+  # (display-name, material, custom-model-data, amount, glow, lore, flags...)
+  # but no slots and no actions: a disabled arrow never fires anything.
+
+  previous-page:
+    display-name: "[rgb]&lPrevious Page"
+    material: ARROW
+    slots: [45]
+    click-actions:
+      - "[previous-page]"
+      - "[sound] UI_BUTTON_CLICK"
+    nav-disabled: # shown on the first page instead of this item
+      display-name: "&7No previous page"
+      material: GRAY_STAINED_GLASS_PANE
+      lore:
+        - "&8You are on the first page"
+
+  next-page:
+    display-name: "[center][rgb]Next Page"
+    material: ARROW
+    slots: [53]
+    click-actions:
+      - "[next-page]"
+      - "[sound] UI_BUTTON_CLICK"
+    nav-disabled: # shown on the last page instead of this item
+      display-name: "<gray>No next page</gray> &8(last page)"
+      material: GRAY_STAINED_GLASS_PANE
+      lore:
+        - "&8You are on the last page"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # TEXT PIPELINE EXAMPLES (SnText)
+  # ═══════════════════════════════════════════════════════════════════
+  # [rgb]    -> per-character gradient interpolated over 7 fixed anchors
+  #             (#F300F3,#5555FF,#55FFFF,#55FF55,#FCFF21,#FF9B00,#FF5327).
+  #             Pre-existing COLOR codes are OVERRIDDEN; FORMAT codes
+  #             (&l &o &n &m &k) are PRESERVED.
+  # [center] -> centers the line at 154px, applied over the legacy-colored
+  #             string (gradient already interpolated) as the LAST step
+  #             before rendering to Component.
+  # Both prefix tags are composable in ANY order: [center][rgb] == [rgb][center].
+  # Legacy codes (&a, &#RRGGBB) and MiniMessage tags render together.
+
+  example-text-item:
+    display-name: "[rgb]&lEpic Gradient Title"
+    material: NETHER_STAR
+    slots: [22]
+    lore:
+      - "[center][rgb]Centered gradient line"
+      - "[rgb][center]Same result, tags in any order"
+      - "[center]&eCentered legacy-only line"
+      - "<bold><#55FFFF>MiniMessage</#55FFFF></bold> &7mixed with &alegacy codes"
+      - "&7Hex legacy: &#FF9B00orange &7plus <italic>MiniMessage italic</italic>"
+
+# ═══════════════════════════════════════════════════════════════════
+# TEMPLATES - Reusable items for plugin developers
+# ═══════════════════════════════════════════════════════════════════
+# Templates are IDENTICAL to items but WITHOUT "slots:".
+# The plugin developer decides dynamically which slot(s) to place them in via Java API.
+# The config user can customize the appearance freely (material, lore, actions, etc).
+# Templates can use custom placeholders defined by the plugin (e.g. %index%, %warp_name%).
+#
+# Usage example (backpack plugin):
+#   - Plugin defines: mochilas-slots: [0,1,2,3,4]
+#   - Plugin code decides per-player: slot 0 -> "mochila-disponible", slots 1-4 -> "mochila-bloqueada"
+#   - Config user customizes the look of each template
+
+templates:
+  template-id: # can be anything as long it is unique
+    # Supports ALL the same fields as a regular item:
+    display-name: string # default: ""
+    material: string (can resolve basehead-base64) # default: "STONE"
+    custom-model-data: int # default: 0
+    amount: int # default: 1
+    # NO "slots:" - the plugin assigns slots dynamically
+    glow: true/false # default: false
+    enchantments: list # default: []
+    flags: list # default: []
+    color: RGB/HEX # default: ""
+    trim-pattern: string # default: "NONE"
+    trim-material: string # default: "NONE"
+    potion-effects: list # default: []
+    update-interval: int # default: 0
+    lore: list # default: []
+    click-requirements: list # default: []
+    view-requirements: list # default: []
+    deny-actions: list # default: []
+    click-actions: list # default: []

@@ -1,0 +1,182 @@
+# ═══════════════════════════════════════════════════════════════════
+# ITEM LIB - Physical Item Configuration Schema (golden spec)
+# ═══════════════════════════════════════════════════════════════════
+# This defines items that are given physically to players (inventory, drops, etc.)
+# NOT for GUI/menu items - use menu-example.yml for that.
+#
+# Plugin developers can reference any item-id defined here to give it
+# to players via API: sn.items().give(player, "item-id", amount).
+# Every ItemDef can also be built 100% programmatically via ItemDef.builder()
+# without any YML file; anything can be hardcoded if needed by the plugin.
+
+item-id: # can be anything as long it is unique
+  # ═══════════════════════════════════════
+  # APPEARANCE - How the item looks
+  # ═══════════════════════════════════════
+  display-name: string # default: ""
+  material: string (can resolve basehead-base64) # default: "STONE"
+  custom-model-data: int # default: 0
+  amount: int # default: 1
+  glow: true/false # default: false
+  lore: # default: []
+    - "&7Line 1"
+    - "&7Line 2"
+    - ""
+    - "&eSpecial item!"
+  enchantments: list ex: [enchantment-id, level] or [enchantment-id, level, enchantment-id, level] # default: []
+  flags: # default: []
+    - string (can be any of the following: HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS)
+    - create a HIDE_ALL flag by adding all of the above flags to the list
+  color: RGB # 235, 64, 52 or HEX # FF0000 (for any item that supports color, like leather armor) # default: ""
+  trim-pattern: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+  trim-material: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+  potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
+
+  # ═══════════════════════════════════════
+  # PROPERTIES - Item behavior
+  # ═══════════════════════════════════════
+  unbreakable: true/false # default: false
+  max-stack-size: int (1-64) # default: vanilla default for the material
+  droppable: true/false # whether the item can be dropped by the player # default: true
+  moveable: true/false # whether the item can be moved in inventories # default: true
+  placeable: true/false # whether the item can be placed as a block # default: true (only for blocks)
+  tradeable: true/false # whether the item can be traded with villagers or other players # default: true
+  despawnable: true/false # whether the item despawns when dropped on the ground # default: true
+  keep-on-death: true/false # whether the item is kept on death # default: false
+  cooldown: int (in ticks) # cooldown between uses/interactions, 0 = no cooldown # default: 0
+
+  # ═══════════════════════════════════════
+  # LOCKED MODE AND OBTAIN CONTROL
+  # ═══════════════════════════════════════
+  # locked: the item is pinned to its slot and cannot be extracted through any
+  # of the 7 theft vectors (drag, number-key swap, offhand swap, shift-move,
+  # drop, cursor pickup, hopper/inventory transfer). A real item displaced by
+  # a locked item is restored on quit and shutdown via write-through backup
+  # (default-on: the backup survives a server crash without onDisable).
+  locked: true/false # default: false
+  # no-drop: hard alias of droppable: false; blocks Q/drop and drag-out attempts.
+  no-drop: true/false # default: false
+  # no-manual-equip: the player cannot manually equip the item into armor or
+  # offhand slots (right-click equip, inventory click, number-key and drag).
+  no-manual-equip: true/false # default: false
+  # obtain-via: restricts how the item can legitimately enter circulation.
+  # "" (default) = unrestricted; COMMAND_ONLY = only via command or plugin API,
+  # crafting/mob-pickup/other acquisition paths are cancelled.
+  obtain-via: COMMAND_ONLY # default: ""
+
+  # ═══════════════════════════════════════
+  # DURABILITY - Custom durability system
+  # ═══════════════════════════════════════
+  # Use this for custom durability separate from vanilla durability.
+  # Useful for items that don't normally have durability (e.g. sticks, emeralds)
+  # or to override vanilla durability values.
+  custom-durability:
+    max: int # max durability # default: 0 (disabled)
+    damage-per-use: int # how much durability is lost per use # default: 1
+    break-actions: # actions when item breaks (durability reaches 0)
+      - "[sound] ENTITY_ITEM_BREAK"
+      - "[message] &cYour item has broken!"
+    lore-format: "&7Durability: &f%durability%/%max_durability%" # shown in lore, updated automatically # default: ""
+
+  # ═══════════════════════════════════════
+  # INTERACT ACTIONS - When the player interacts holding the item
+  # ═══════════════════════════════════════
+  # These actions fire when the player right/left clicks in the world
+  # (not in a GUI - for GUI actions use menu-example.yml)
+  right-click-actions: # default: []
+    - "[player] spawn"
+    - "[console] give %player% diamond 1"
+    - "[message] &aYou used the item!"
+    - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP"
+    - "[actionbar] &aCooldown: 5s"
+    - "[title] &6Title;&eSubtitle;20;40;20"
+    - "[broadcastmessage] &e%player% used a special item!"
+    - "[connect] lobby"
+    - "[particle] FLAME %player_x% %player_y% %player_z% 0.5 0.5 0.5 0.1 50" # particle type x y z offsetX offsetY offsetZ speed count
+    - "[potion] SPEED 200 1" # effect duration(ticks) amplifier
+    - "[remove-item]" # removes 1 of this item from the player
+    - "[remove-item] 5" # removes 5 of this item from the player
+    - "[custom]" # custom actions that plugins can create
+
+  left-click-actions: # default: []
+    - "[player] spawn"
+
+  shift-right-click-actions: # default: []
+    - "[message] &7Shift right click!"
+
+  shift-left-click-actions: # default: []
+    - "[message] &7Shift left click!"
+
+  right-click-block-actions: # when right-clicking on a block specifically # default: []
+    - "[message] &7You right-clicked a block!"
+
+  right-click-air-actions: # when right-clicking in the air specifically # default: []
+    - "[message] &7You right-clicked in the air!"
+
+  left-click-block-actions: # when left-clicking on a block specifically # default: []
+    - "[message] &7You left-clicked a block!"
+
+  left-click-air-actions: # when left-clicking in the air specifically # default: []
+    - "[message] &7You left-clicked in the air!"
+
+  # ═══════════════════════════════════════
+  # INTERACT REQUIREMENTS - Conditions to use the item
+  # ═══════════════════════════════════════
+  interact-requirements: # default: []
+    - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
+    - "%placeholder% = 1" #ex: %vault_balance% = 1
+  deny-actions: # actions when requirements are NOT met # default: []
+    - "[message] &cYou can't use this item!"
+    - "[sound] ENTITY_VILLAGER_NO"
+
+  # ═══════════════════════════════════════
+  # PICKUP / DROP ACTIONS
+  # ═══════════════════════════════════════
+  pickup-actions: # when the player picks up this item # default: []
+    - "[message] &aYou picked up a special item!"
+    - "[sound] ITEM_PICKUP"
+
+  drop-actions: # when the player drops this item # default: []
+    - "[message] &cYou dropped a special item!"
+
+  # ═══════════════════════════════════════
+  # HELD EFFECTS - Effects while holding the item
+  # ═══════════════════════════════════════
+  # These effects are applied continuously while the player holds the item
+  # (mainhand, offhand, or armor slot)
+  held-effects:
+    mainhand: # effects while in mainhand # default: []
+      - "SPEED 0" # effect amplifier (level - 1, so 0 = level 1)
+      - "HASTE 1"
+    offhand: # effects while in offhand # default: []
+      - "NIGHT_VISION 0"
+    armor: # effects while wearing as armor # default: []
+      - "RESISTANCE 1"
+      - "FIRE_RESISTANCE 0"
+
+  # ═══════════════════════════════════════
+  # EQUIPMENT SLOT - Where the item can be equipped
+  # ═══════════════════════════════════════
+  equipment-slot: string # restricts where the item can be placed # default: "" (any slot)
+  # Options: MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET
+
+  # ═══════════════════════════════════════
+  # CRAFTING RECIPE
+  # ═══════════════════════════════════════
+  # Define a custom crafting recipe for this item
+  recipe:
+    type: string # SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE, STONECUTTING # default: "" (no recipe)
+    # For SHAPED recipes:
+    shape:
+      - "DDD"
+      - "DSD"
+      - "DDD"
+    ingredients:
+      D: DIAMOND
+      S: STICK
+    # For SHAPELESS recipes:
+    # ingredients: [DIAMOND, DIAMOND, STICK]
+    # For FURNACE/SMOKING/BLASTING/CAMPFIRE:
+    # input: COBBLESTONE
+    # experience: 0.5
+    # cooking-time: 200 # in ticks

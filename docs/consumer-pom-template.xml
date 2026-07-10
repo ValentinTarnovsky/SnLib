@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  consumer-pom-template.xml
+  Template de pom.xml para plugins Sn que consumen SnLib (modelo standalone hard-depend).
+
+  COMO SE RESUELVE com.sn:snlib
+  1. Publicar SnLib al repositorio Maven local (.m2):
+       mvn install -f <ruta>/SnLib/pom.xml
+  2. JitPack NO soportado: el repo de SnLib es privado y JitPack no construye
+     repos privados. La UNICA via de resolucion es el .m2 local.
+  3. En runtime NADA de SnLib se shadea en el consumer: el server carga
+     SnLib.jar como plugin standalone en plugins/ y el consumer declara
+     depend: [SnLib] en su plugin.yml. Por eso el scope es provided y este
+     template NO incluye maven-shade-plugin para la lib. Si el consumer shadea
+     otras dependencias propias, JAMAS incluir com.sn:snlib en el shade.
+
+  BLOQUE plugin.yml MINIMO DEL CONSUMER
+
+    name: MyPlugin
+    main: com.sn.myplugin.MyPlugin
+    version: '1.0.0'
+    api-version: '1.20'
+    depend: [SnLib]
+    commands:
+      myplugin:
+        description: Comando principal de MyPlugin
+    permissions:
+      myplugin.admin:
+        description: Acceso administrativo completo de MyPlugin
+        default: op
+        children:
+          myplugin.admin.reload: true
+      myplugin.admin.reload:
+        description: Permite /myplugin reload
+        default: op
+
+  CLASE PRINCIPAL DEL CONSUMER (unica via de init: extender SnPlugin)
+
+    package com.sn.myplugin;
+
+    import com.sn.lib.SnApi;
+    import com.sn.lib.SnPlugin;
+    import com.sn.lib.SnSpec;
+
+    public final class MyPlugin extends SnPlugin {
+        protected int requiredApiLevel() { return SnApi.LEVEL; }
+        protected SnSpec buildSpec() {
+            return SnSpec.builder().config("config.yml").lang().guis().build();
+        }
+        protected void onInnerEnable() {
+            // registrar comandos, guis, items, db, etc. sobre el contexto Sn
+        }
+    }
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.sn</groupId>
+    <artifactId>myplugin</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- SnLib: SIEMPRE provided. Se resuelve del .m2 local (mvn install en SnLib).
+             En runtime la provee el plugin SnLib.jar instalado en plugins/. -->
+        <dependency>
+            <groupId>com.sn</groupId>
+            <artifactId>snlib</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>1.21.1-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <!-- SIN maven-shade-plugin para la lib: SnLib jamas se shadea en el consumer. -->
+        </plugins>
+    </build>
+</project>
