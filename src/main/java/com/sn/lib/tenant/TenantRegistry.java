@@ -51,19 +51,21 @@ public final class TenantRegistry<T> {
 
     /** Registers a value under its owner. */
     public void add(Plugin owner, T value) {
-        byOwner.computeIfAbsent(owner, key -> ConcurrentHashMap.newKeySet()).add(value);
+        // Mutacion dentro de compute: atomica por key contra el drop de remove(), asi una
+        // alta concurrente jamas cae en un set cuya key acaba de removerse.
+        byOwner.compute(owner, (key, values) -> {
+            Set<T> set = values == null ? ConcurrentHashMap.<T>newKeySet() : values;
+            set.add(value);
+            return set;
+        });
     }
 
     /** Unregisters a value, dropping the owner key once its set empties. */
     public void remove(Plugin owner, T value) {
-        Set<T> values = byOwner.get(owner);
-        if (values == null) {
-            return;
-        }
-        values.remove(value);
-        if (values.isEmpty()) {
-            byOwner.remove(owner, values);
-        }
+        byOwner.computeIfPresent(owner, (key, values) -> {
+            values.remove(value);
+            return values.isEmpty() ? null : values;
+        });
     }
 
     /** Unmodifiable view of the owner's values; empty when the owner has none. */
