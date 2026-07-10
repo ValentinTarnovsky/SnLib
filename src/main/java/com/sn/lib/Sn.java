@@ -2,6 +2,7 @@ package com.sn.lib;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
+import com.sn.lib.action.ActionEngine;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.papi.SnPapi;
 import com.sn.lib.scheduler.SnScheduler;
@@ -24,6 +25,7 @@ public final class Sn {
     private final SnPapi papi;
     private final YmlManager yml;
     private final SnDebug debug;
+    private final ActionEngine actions;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -35,6 +37,7 @@ public final class Sn {
         this.papi = new SnPapi(this);
         this.yml = spec.config() == null ? null : new YmlManager(this, spec.config());
         this.debug = new SnDebug(plugin, yml == null ? null : yml.config());
+        this.actions = new ActionEngine(this);
     }
 
     /** Consumer plugin that owns this context. */
@@ -81,6 +84,15 @@ public final class Sn {
      */
     public SnPapi papi() {
         return papi;
+    }
+
+    /**
+     * Action engine of the owning plugin; available in every context. Runs YML action
+     * lists of the form {@code [tag] argumento} and accepts custom tags via
+     * {@link ActionEngine#register}.
+     */
+    public ActionEngine actions() {
+        return actions;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */
