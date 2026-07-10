@@ -6,6 +6,7 @@ import com.sn.lib.action.ActionEngine;
 import com.sn.lib.bossbar.BossBarUtil;
 import com.sn.lib.command.SnCommands;
 import com.sn.lib.cooldown.Cooldowns;
+import com.sn.lib.cron.SnCron;
 import com.sn.lib.db.DbConfig;
 import com.sn.lib.db.SnDb;
 import com.sn.lib.debug.SnDebug;
@@ -53,6 +54,7 @@ public final class Sn {
     private final EconomyBridge economy;
     private final BossBarUtil bossbars;
     private final HologramUtil holograms;
+    private final SnCron cron;
     private final ItemRegistry items;
     private final GuiManager guis;
     private final SnDb db;
@@ -75,6 +77,7 @@ public final class Sn {
         this.economy = new EconomyBridge(this);
         this.bossbars = new BossBarUtil(this);
         this.holograms = new HologramUtil(this);
+        this.cron = new SnCron(this);
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
         if (itemsFile != null) {
@@ -204,6 +207,16 @@ public final class Sn {
      */
     public HologramUtil holograms() {
         return holograms;
+    }
+
+    /**
+     * Cron service of the owning plugin; available in every context. Jobs run on the main
+     * thread at the calendar instants of a 5-field cron subset or the daily/hourly
+     * shortcuts, re-armed after every run; jobs scheduled with {@code catchUp(true)}
+     * persist their last run to a data yml and fire one missed run on the next schedule.
+     */
+    public SnCron cron() {
+        return cron;
     }
 
     /**
