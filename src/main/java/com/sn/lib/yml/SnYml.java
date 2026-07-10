@@ -21,6 +21,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
 import com.sn.lib.Sn;
+import com.sn.lib.debug.SnDebug;
 import com.sn.lib.text.SnText;
 
 /**
@@ -360,15 +361,24 @@ public final class SnYml {
 
     /**
      * Locals first, then PAPI only on the primary thread. Off the main thread PAPI tokens
-     * are left intact (the debug module records the skip once it is wired).
+     * are left intact and the skip is recorded through the context debug service.
      */
     private String resolve(String s, Player viewer) {
         if (s == null || s.isEmpty()) {
             return s;
         }
         String out = SnText.applyLocals(s, this::localValue);
-        if (out.indexOf('%') >= 0 && Bukkit.isPrimaryThread()) {
-            out = applyPapi(viewer, out);
+        if (out.indexOf('%') >= 0) {
+            if (Bukkit.isPrimaryThread()) {
+                out = applyPapi(viewer, out);
+            } else {
+                SnDebug debug = ctx.debug();
+                if (debug != null) {
+                    String skipped = out;
+                    debug.log(() -> "PAPI omitido fuera del main thread en " + file.getName()
+                            + "; tokens intactos: " + skipped);
+                }
+            }
         }
         return out;
     }

@@ -2,6 +2,7 @@ package com.sn.lib;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
+import com.sn.lib.debug.SnDebug;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.yml.YmlManager;
 
@@ -20,6 +21,7 @@ public final class Sn {
     private final SnSpec spec;
     private final SnScheduler scheduler;
     private final YmlManager yml;
+    private final SnDebug debug;
 
     /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
     volatile boolean shuttingDown;
@@ -29,6 +31,7 @@ public final class Sn {
         this.spec = spec;
         this.scheduler = new SnScheduler(plugin);
         this.yml = spec.config() == null ? null : new YmlManager(this, spec.config());
+        this.debug = new SnDebug(plugin, yml == null ? null : yml.config());
     }
 
     /** Consumer plugin that owns this context. */
@@ -59,6 +62,14 @@ public final class Sn {
     /** Folia-aware scheduler bound to the owning plugin; available in every context. */
     public SnScheduler scheduler() {
         return scheduler;
+    }
+
+    /**
+     * Runtime debug service of the owning plugin; available in every context. Toggles
+     * persist to the main config when the yml module is declared, in memory otherwise.
+     */
+    public SnDebug debug() {
+        return debug;
     }
 
     /** True once teardown of this context started; module I/O must go synchronous. */
