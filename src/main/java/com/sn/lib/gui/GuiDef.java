@@ -40,9 +40,10 @@ import com.sn.lib.yml.SnYml;
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, amount, glow, enchantments,     (re-read per viewer: locals,
- *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [rgb], [center],
+ *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [small], [rgb], [center],
  *       color RGB/HEX, trim-pattern, trim-material,         MiniMessage + legacy)
- *       potion-effects
+ *       potion-effects, skull-owner (per-viewer
+ *       placeholders), attributes, damage
  *     slots (int, list, ranges "0-8", mixed) or key     -> GuiItemDef.parse via SlotParser
  *       (one layout char; declared slots win over key)     or the menu layout map
  *     update-interval (per item)                        -> GuiItemDef.parse
@@ -50,7 +51,10 @@ import com.sn.lib.yml.SnYml;
  *     click-actions, deny-actions                       -> GuiItemDef.parse; run by ActionEngine
  *       ([player], [player-as-op], [console], [message], [sound], [close], [open],
  *        [connect], [broadcastmessage], [actionbar], [title], [right-click]/[left-click]/
- *        [shift-*-click] filters, [next-page], [previous-page], [set-page], [refresh-page],
+ *        [shift-*-click] filters, exact guards [right-click-only]/[left-click-only],
+ *        generic [click=TYPE,...], sugar [middle-click]/[double-click]/[drop-click]/
+ *        [number-key]/[swap-offhand] ([click-block]/[click-air] always skip in a GUI),
+ *        [next-page], [previous-page], [set-page], [refresh-page],
  *        [refresh-menu], custom tags via GuiManager.registerAction)
  *     per-click matrix (specific-over-generic,          -> GuiItemDef.parse; resolved per
  *       field by field): right-click-actions,              ClickType by clickActionsFor /
@@ -63,8 +67,8 @@ import com.sn.lib.yml.SnYml;
  *       fields, no slots, no actions)                       every list; nav-disabled recursive)
  *   templates.&lt;id&gt; (same fields, no slots)              -> GuiDef.parse into GuiTemplate;
  *                                                           slots assigned via session binds
- *   [rgb], [center][rgb] composable in any order and    -> SnText pipeline used by every
- *     MiniMessage mixed with legacy codes                   string of the item render
+ *   [small], [rgb], [center] composable in any order    -> SnText pipeline used by every
+ *     and MiniMessage mixed with legacy codes               string of the item render
  * </pre>
  */
 public final class GuiDef {

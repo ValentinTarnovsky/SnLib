@@ -1,9 +1,9 @@
-# SnLib v1.0.0 - Documentacion tecnica del estado actual
+# SnLib v1.1.0 - Documentacion tecnica del estado actual
 
-> Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (113 archivos java), recursos, build y tests (19 suites).
+> Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main); actualizada el 2026-07-11 para la release 1.1.0.
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (121 archivos java), recursos, build y tests (21 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 187 tests JUnit verdes en 19 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.1.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 204 tests JUnit verdes en 21 suites; smoke gate verde en Paper 1.21.8 y 1.20.4 (v1.0.0; el smoke v1.1.0 se registra en el paso de release gate). La release 1.1.0 es 100% additive sobre 1.0.0 (API level 2, gate japicmp con baseline 1.0.0 activa); el smoke de 1.0.0 cerro 38/38 pasos en 46 commits atomicos.
 
 ## Indice
 
@@ -792,7 +792,7 @@ Ninguno. No hay marcadores TODO/FIXME/placeholder en `SnLang.java`, `SnDebug.jav
 
 ---
 
-# (Seccion generada automaticamente - estado actual de SnLib v1.0.0)
+# (Seccion generada automaticamente - estado actual de SnLib v1.1.0)
 
 ## 06. Scheduler, SoftDependency y Cron
 
@@ -1680,7 +1680,7 @@ No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitac
 
 ---
 
-# (Seccion generada - documentacion SnLib v1.0.0)
+# (Seccion generada - documentacion SnLib v1.1.0)
 
 ## 10. Eventos custom
 
@@ -2211,7 +2211,7 @@ No hay marcadores TODO/FIXME en el codigo del modulo. Limitaciones documentadas 
 
 ---
 
-# (Seccion 12 de la documentacion de SnLib v1.0.0)
+# (Seccion 12 de la documentacion de SnLib v1.1.0)
 
 ## 12. GUI
 
@@ -3094,15 +3094,15 @@ No hay marcadores TODO/FIXME/HACK en el codigo de este modulo. Limitaciones docu
 
 ---
 
-# (Seccion 16 de la documentacion de SnLib v1.0.0)
+# (Seccion 16 de la documentacion de SnLib v1.1.0)
 
 ## 16. Build, tests, specs golden y TODOs
 
-Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp y manifest con metadata Sn), los cuatro archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, pom template del consumer y reglas ProGuard del consumer), las 19 suites JUnit 5 de `src/test/java/com/sn/lib/` (187 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (bStats, degradacion 1.20.4, repo/release, pilotos y canary). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos).
+Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp ACTIVO contra la baseline 1.0.0 y manifest con metadata Sn), los cinco archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, spec de selection wand, pom template del consumer y reglas ProGuard del consumer), las 21 suites JUnit 5 de `src/test/java/com/sn/lib/` (204 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (degradacion 1.20.4, repo/release, pilotos y canary; el de bStats quedo resuelto en v1.1 con el service id real 32541). Tambien se registra el resultado del smoke gate v1.0.0 en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos); el smoke de la release 1.1.0 se ejecuta y registra en el paso de release gate (Paso 22 del plan v1.1).
 
 ### pom.xml (build de SnLib)
 `pom.xml`
-Coordenadas `com.sn:snlib:1.0.0`, packaging `jar`, nombre `SnLib`, descripcion "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compila con Java 21 (`maven.compiler.release=21`) y define la property `sn.api.level=1`, que el propio pom aclara como valor informativo del manifest: la constante real del handshake es `com.sn.lib.SnApi.LEVEL`.
+Coordenadas `com.sn:snlib:1.1.0`, packaging `jar`, nombre `SnLib`, descripcion "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compila con Java 21 (`maven.compiler.release=21`) y define la property `sn.api.level=2`, que el propio pom aclara como valor informativo del manifest: la constante real del handshake es `com.sn.lib.SnApi.LEVEL` (2 desde la release 1.1.0; historial en el Javadoc de SnApi).
 
 Repositorios declarados:
 
@@ -3129,7 +3129,7 @@ Dependencias exactas:
 
 Build:
 
-- `finalName`: `SnLib-${project.version}` (produce `SnLib-1.0.0.jar`).
+- `finalName`: `SnLib-${project.version}` (produce `SnLib-1.1.0.jar`).
 - Resources con `filtering=true` sobre `src/main/resources` (expansion de properties Maven en `plugin.yml`/`config.yml`).
 - `maven-compiler-plugin:3.13.0` y `maven-surefire-plugin:3.2.5` sin configuracion extra.
 - `maven-jar-plugin:3.4.1` - manifest con dos entradas propias: `Sn-Lib-Version: ${project.version}` y `Sn-Api-Level: ${sn.api.level}`.
@@ -3138,8 +3138,9 @@ Build:
   - Relocation `org.bstats` -> `com.sn.lib.libs.bstats`, con los mismos excludes.
   - `ServicesResourceTransformer`: preserva/mergea `META-INF/services` (el `SLF4JServiceProvider` del binding jdk14 y los drivers JDBC de sqlite/mysql).
   - Filtro global `*:*` que excluye `META-INF/*.SF`, `META-INF/*.DSA`, `META-INF/*.RSA`, `module-info.class` y `META-INF/versions/*/module-info.class` (firmas invalidas post-shade y descriptores de modulo ajenos).
-- `japicmp-maven-plugin:0.21.2` (fase `verify`, goal `cmp`) - gate de API publica additive-only:
-  - `ignoreMissingOldVersion=true`: en 1.0.0 no existe artefacto previo contra el cual comparar; el comentario del pom lo dice explicito: "baseline real desde 1.0.1".
+- `japicmp-maven-plugin:0.21.2` (fase `verify`, goal `cmp`) - gate de API publica additive-only, ACTIVO desde la release 1.1.0:
+  - `oldVersion` explicito: compara contra `com.sn:snlib:1.0.0` (jar), la baseline instalada en el `.m2` local por el release 1.0.0.
+  - `ignoreMissingOldVersion=false`: baseline ausente = build roto (ya no skip silencioso; hasta la 1.0.0 el gate era vacuo por no existir version previa).
   - `ignoreMissingClasses=true`: el jar shadeado incluye mysql-connector-j sin relocar, cuyas clases X DevAPI referencian protobuf (excluido del shade adrede); japicmp no debe exigir ese classpath.
   - Excludes del analisis: `com.sn.lib.**.internal.**`, `com.sn.lib.libs.**` (relocadas), y las shadeadas SIN relocar que no son API de SnLib: `com.mysql.**`, `org.sqlite.**`, `org.slf4j.**`, `google.protobuf.**`.
   - `onlyModified=true`, `breakBuildOnBinaryIncompatibleModifications=true`, `breakBuildOnSourceIncompatibleModifications=false`: rompe el build solo ante incompatibilidad BINARIA (regla additive-only), tolera incompatibilidades de fuente.
@@ -3188,21 +3189,21 @@ Template de `pom.xml` para plugins Sn que consumen SnLib bajo el modelo standalo
 - Resolucion de `com.sn:snlib`: 1) publicar SnLib al `.m2` local con `mvn install -f <ruta>/SnLib/pom.xml`; 2) JitPack NO soportado (el repo de SnLib es privado y JitPack no construye repos privados): la UNICA via de resolucion es el `.m2` local; 3) en runtime NADA de SnLib se shadea en el consumer: el server carga `SnLib.jar` como plugin standalone en `plugins/` y el consumer declara `depend: [SnLib]` en su plugin.yml. Por eso el scope es `provided` y el template NO incluye maven-shade-plugin para la lib; si el consumer shadea dependencias propias, JAMAS incluir `com.sn:snlib` en el shade.
 - Bloque `plugin.yml` minimo del consumer: `name`, `main`, `version`, `api-version: '1.20'`, `depend: [SnLib]`, comando principal y arbol de permisos `myplugin.admin` (default op) con hijo `myplugin.admin.reload`.
 - Clase principal del consumer (unica via de init: extender `SnPlugin`), con las tres firmas del contrato: `protected int requiredApiLevel()` retornando `SnApi.LEVEL`, `protected SnSpec buildSpec()` (ejemplo: `SnSpec.builder().config("config.yml").lang().guis().build()`) y `protected void onInnerEnable()` donde se registran comandos, guis, items, db, etc sobre el contexto Sn.
-- El pom en si: `com.sn:myplugin:1.0.0`, Java 21, repo papermc, dependencias `com.sn:snlib:1.0.0` (provided, del .m2 local; en runtime la provee `SnLib.jar` en `plugins/`) y `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), y solo `maven-compiler-plugin:3.13.0` en build (sin shade).
+- El pom en si: `com.sn:myplugin:1.0.0`, Java 21, repo papermc, dependencias `com.sn:snlib:1.1.0` (provided, del .m2 local; en runtime la provee `SnLib.jar` en `plugins/`) y `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), y solo `maven-compiler-plugin:3.13.0` en build (sin shade).
 
 ### docs/snlib-consumer-rules.pro (reglas ProGuard del consumer)
 `docs/snlib-consumer-rules.pro`
 Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate. Premisa: `SnLib.jar` es una LIBRERIA en runtime (plugin standalone en `plugins/`), NUNCA se ofusca ni se shadea en el consumer; se declara como `-libraryjars` igual que paper-api. Reglas:
 
-- `-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.0.0/snlib-1.0.0.jar` (ajustar la ruta al `.m2` local o al jar del release).
+- `-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar` (ajustar la ruta al `.m2` local o al jar del release).
 - `-dontwarn com.sn.lib.**`: SnLib no viaja dentro del jar del consumer; silenciar warnings de referencias a clases de la lib.
 - Keep del entrypoint: `-keep public class * extends com.sn.lib.SnPlugin` preservando `public <init>()`, `protected int requiredApiLevel()`, `protected com.sn.lib.SnSpec buildSpec()`, `protected void onInnerEnable()` y `protected void onInnerDisable()`. Razon: Bukkit instancia la clase por reflexion (main de plugin.yml) y SnLib invoca el handshake `requiredApiLevel()`.
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (19 suites, 187 tests, verdes)
+### Suites de tests (21 suites, 204 tests, verdes)
 
-Las 19 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest`, `com.sn.lib.update` de `UpdateCheckerJsonTest` y `com.sn.lib.util` de `PlayerLookupParseTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout, parse del update check y parse del lookup de Mojang). Total verificado con `mvn test`: 187 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 21 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest`, `com.sn.lib.update` de `UpdateCheckerJsonTest` y `com.sn.lib.util` de `PlayerLookupParseTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout, parse del update check, parse del lookup de Mojang, y el core de cuboides con los caminos null-safe de LocationUtil). Total verificado con `mvn test`: 204 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3476,14 +3477,41 @@ Las 19 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, 
 - `void shiftOverridesGenericDefaultsTrue()` - `shiftOverridesGeneric()` default true.
 - `void builderDisablesShiftOverridesGeneric()` - el builder puede apagarlo (en shift-click corren ambas variantes del par).
 
+### CuboidTest
+`src/test/java/com/sn/lib/CuboidTest.java`
+14 tests sobre el core puro de `com.sn.lib.region.Cuboid` (contencion, iteracion, tamanio, expand y serializacion); JVM puro: ningun test toca los metodos puente que requieren World.
+
+- `void normalizesCornersOnConstruction()` - el factory normaliza esquinas invertidas (min <= max por eje).
+- `void containsIsEdgeInclusive()` - contains acepta las 8 esquinas y los 6 centros de cara (bordes inclusivos).
+- `void containsRejectsOutsidePoints()` - un bloque fuera por cada uno de los 6 lados se rechaza.
+- `void containsIsWorldAware()` - la variante con worldName rechaza otro mundo y null.
+- `void sizeMatchesInclusiveVolume()` - size es el volumen inclusivo en long (un cuboide 2M x 301 x 2M supera Integer.MAX_VALUE sin overflow).
+- `void forEachVisitsEveryBlockExactlyOnce()` - forEach visita cada bloque exactamente una vez (27 en un 3x3x3).
+- `void forEachOnSingleBlockVisitsOne()` - un cuboide de un bloque visita exactamente ese bloque.
+- `void intersectsDetectsOverlapTouchingAndDisjoint()` - intersects: solapado true (simetrico), tocandose true, disjunto false, otro mundo false.
+- `void expandGrowsBothDirectionsAndClampsCollapse()` - expand crece en ambas direcciones por eje, un encogimiento que colapsa clampa a 1 de ancho sin tirar, y la instancia original queda intacta (inmutabilidad).
+- `void serializeUsesNormalizedMinMaxOrder()` - serialize emite `world;minX;minY;minZ;maxX;maxY;maxZ` normalizado.
+- `void serializeDeserializeRoundTripPreservesEquality()` - round-trip serialize/deserialize preserva equals y hashCode.
+- `void deserializeTrimsPartsLikeLocationSerializer()` - deserialize trimea espacios alrededor de cada parte.
+- `void deserializeReturnsNullOnMalformedInput()` - null, vacio, cantidad de partes incorrecta, numero invalido o mundo vacio devuelven null sin tirar.
+- `void deserializeRenormalizesSwappedCorners()` - un string con esquinas invertidas re-normaliza al deserializar.
+
+### LocationUtilTest
+`src/test/java/com/sn/lib/LocationUtilTest.java`
+3 tests sobre los caminos null-safe de `com.sn.lib.util.LocationUtil` (los unicos testeables sin World: `new Location(null, ...)` no toca estaticos de Bukkit); los caminos positivos world-aware quedan cubiertos por la delegacion en Cuboid (ya testeado) mas el smoke manual de release.
+
+- `void inCuboidNullSafePathsReturnFalse()` - inCuboid con location/corner null o location sin mundo devuelve false sin tirar.
+- `void distance2dNullSafePathsReturnInfinity()` - distance2d/distance2dSquared con null o sin mundo devuelven Double.POSITIVE_INFINITY.
+- `void distanceToBoxNullSafePathsReturnInfinity()` - distanceToBoxSquared con box/location null o location sin mundo devuelve Double.POSITIVE_INFINITY.
+
 ### Smoke gate de runtime
 
-Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real, en las dos puntas de la matriz soportada:
+Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real (release 1.0.0), en las dos puntas de la matriz soportada:
 
 - Paper 1.21.8 build 60 (target): verde.
 - Paper 1.20.4 build 499 (piso de runtime): verde.
 
-En 1.20.4 el arranque es en modo degradado via `SnCompat.probe` (features 1.21+ apagadas con WARN); el smoke valida que SnLib como plugin standalone enciende y apaga limpio en ambas versiones.
+En 1.20.4 el arranque es en modo degradado via `SnCompat.probe` (features 1.21+ apagadas con WARN); el smoke valida que SnLib como plugin standalone enciende y apaga limpio en ambas versiones. El smoke gate de la release 1.1.0 (mismo procedimiento, `/snlib version` esperando lib 1.1.0 + API level 2) se ejecuta y registra en el Paso 22 del plan v1.1.
 
 ### TODOs y limitaciones
 
@@ -3496,7 +3524,7 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Repo GitHub privado + release v1.0.0: pendientes de confirmacion.
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
-- japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
+- japicmp: RESUELTO en v1.1 - el gate additive-only quedo ACTIVO con `oldVersion` explicito `com.sn:snlib:1.0.0` e `ignoreMissingOldVersion=false` (baseline ausente = build roto); la baseline se re-pinnea a 1.1.0 en el proximo plan de release.
 
 ---
 ## 17. UpdateChecker (v1.1)
@@ -3546,7 +3574,7 @@ API publica:
 - `void jsonStringHandlesEscapedQuotes()` - des-escapa `\"`, `\\` y `\/` dentro del valor.
 - `void jsonStringMissingFieldReturnsNull()` - campo ausente, valor no-string y string sin cierre devuelven null.
 - `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` y `vanilla` intactos.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 187 tests en 19 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests; el paso 15 sumo UpdateCheckerJsonTest con 5 tests; el paso 16 sumo 6 tests de formatComma a NumberFormatterTest y PlayerLookupParseTest con 4 tests).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 204 tests en 21 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests; el paso 15 sumo UpdateCheckerJsonTest con 5 tests; el paso 16 sumo 6 tests de formatComma a NumberFormatterTest y PlayerLookupParseTest con 4 tests; el paso 18 sumo CuboidTest con 14 tests y LocationUtilTest con 3).
 
 ## 18. Region: seleccion de cuboides (v1.1)
 

@@ -5,7 +5,7 @@
 # NUNCA se ofusca ni se shadea en el consumer. Se declara como -libraryjars
 # igual que paper-api. Ajustar la ruta al .m2 local o al jar del release.
 
--libraryjars <user.home>/.m2/repository/com/sn/snlib/1.0.0/snlib-1.0.0.jar
+-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar
 
 # SnLib no viaja dentro del jar del consumer: silenciar cualquier warning
 # de referencias a clases de la lib.

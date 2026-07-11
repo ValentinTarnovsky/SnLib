@@ -9,11 +9,13 @@ package com.sn.lib;
  * {@code SnPlugin#requiredApiLevel()}: the required level is inlined into the consumer's
  * bytecode at compile time, so a consumer built against a newer level than the installed
  * SnLib.jar disables itself cleanly instead of failing with {@code NoSuchMethodError}.</p>
+ *
+ * <p>History: LEVEL 1 = release 1.0.0; LEVEL 2 = release 1.1.0.</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 1;
+    public static final int LEVEL = 2;
 
     private SnApi() {
     }

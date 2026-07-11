@@ -99,10 +99,14 @@ item-id: # can be anything as long it is unique
     - "[title] &6Title;&eSubtitle;20;40;20"
     - "[broadcastmessage] &e%player% used a special item!"
     - "[connect] lobby"
-    - "[particle] FLAME %player_x% %player_y% %player_z% 0.5 0.5 0.5 0.1 50" # particle type x y z offsetX offsetY offsetZ speed count
+    - "[particle] FLAME 50 0.5 0.5 0.5 0.1" # grammar: TYPE [count] [offX offY offZ] [extra]; spawns at the player
+    - "[particle] DUST 10 0.2 0.2 0.2 0.01 color=#FF9B00 size=1.5" # key=value options at the end: color= (#RRGGBB or R,G,B) and size= for DUST, to= for DUST_COLOR_TRANSITION, block= for block particles, item= for ITEM; unknown/incompatible options WARN once and are ignored
     - "[potion] SPEED 200 1" # effect duration(ticks) amplifier
-    - "[remove-item]" # removes 1 of this item from the player
-    - "[remove-item] 5" # removes 5 of this item from the player
+    - "[remove-item]" # removes 1 of this item from the main hand (v1.0.0 behaviour)
+    - "[remove-item] 5" # removes 5 of this item from the main hand
+    - "[remove-item] 3 offhand" # selector offhand: removes from the offhand instead
+    - "[remove-item] 1 id:mi-item" # selector id:<item-id>: removes a registered SnLib item scanning storage slots then offhand
+    - "[remove-item] 2 DIAMOND" # selector MATERIAL: removes by material, skipping any SnLib-tagged stack (use id: for custom items)
     - "[click-block] [message] &7Sobre un bloque" # only when the click hit a block
     - "[click-air] [message] &7Al aire" # only when the click hit the air
     - "[right-click-only] spawn" # pure RIGHT: excludes SHIFT_RIGHT

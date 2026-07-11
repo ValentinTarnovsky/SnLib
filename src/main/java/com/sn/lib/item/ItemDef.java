@@ -43,7 +43,10 @@ import com.sn.lib.yml.SnYml;
  *     custom-model-data, amount, glow, lore,               on every ItemRegistry.create)
  *     enchantments, flags (HIDE_ALL, alias
  *     HIDE_POTION_EFFECTS), color RGB/HEX,
- *     trim-pattern, trim-material, potion-effects
+ *     trim-pattern, trim-material, potion-effects,
+ *     skull-owner (name/UUID, cached lookup),
+ *     attributes (lenient resolution, UUID fallback
+ *     on 1.20.4), damage (vanilla, clamped)
  *   PROPERTIES: unbreakable, max-stack-size             -> SnItem.parse (probe on 1.20.4)
  *     droppable, moveable, placeable, tradeable,        -> ItemDef.parse; enforced by
  *       despawnable, keep-on-death, cooldown               ItemPropertyListener

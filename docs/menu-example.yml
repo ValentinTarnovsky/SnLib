@@ -253,6 +253,18 @@ items:
     material: GRAY_STAINED_GLASS_PANE
     key: f
 
+  # ═══════════════════════════════════════════════════════════════════
+  # PLAYER HEAD ITEM - skull-owner resolves placeholders PER VIEWER
+  # ═══════════════════════════════════════════════════════════════════
+  # skull-owner accepts a player name or UUID; with a placeholder each viewer
+  # sees their own resolved head. Requires material PLAYER_HEAD; an uncached
+  # name falls back to the default head with one WARN.
+  example-head-item:
+    display-name: "&eYour head, %player_name%"
+    material: PLAYER_HEAD
+    skull-owner: '%player_name%'
+    slots: [40]
+
 # ═══════════════════════════════════════════════════════════════════
 # CLOSE ACTIONS - menu-level (optional)
 # ═══════════════════════════════════════════════════════════════════
