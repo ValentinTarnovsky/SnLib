@@ -258,6 +258,11 @@
                         <excludes>
                             <exclude>com.sn.lib.**.internal.**</exclude>
                             <exclude>com.sn.lib.libs.**</exclude>
+                            <!-- SnBridge @SnExperimental: fuera del gate hasta migrar SnCredits
+                                 (ver docs/SNBRIDGE-SPEC.md seccion 3); al congelar se quitan
+                                 estos dos excludes y sube SnApi.LEVEL. -->
+                            <exclude>com.sn.lib.bridge.**</exclude>
+                            <exclude>com.sn.lib.velocity.**</exclude>
                             <!-- Shadeadas SIN relocar (JNI/driver): no son API de SnLib. -->
                             <exclude>com.mysql.**</exclude>
                             <exclude>org.sqlite.**</exclude>
