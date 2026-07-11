@@ -76,10 +76,12 @@ public final class SelectionSpec {
         this.dustSize = Math.max(0.1F, Math.min(4.0F, builder.dustSize));
         this.step = Math.max(0.1D, builder.step);
         this.refreshIntervalTicks = Math.max(1L, builder.refreshIntervalTicks);
-        this.renderDistance = builder.renderDistance;
+        // Minimos duros: un budget/distancia/volumen <= 0 (yml roto) degradaria el paso
+        // efectivo del renderer a negativo y colgaria el main thread en drawEdges.
+        this.renderDistance = Math.max(1, builder.renderDistance);
         this.visibility = builder.visibility;
-        this.particleBudget = builder.particleBudget;
-        this.maxRenderVolume = builder.maxRenderVolume;
+        this.particleBudget = Math.max(1, builder.particleBudget);
+        this.maxRenderVolume = Math.max(1L, builder.maxRenderVolume);
         this.maxVolume = builder.maxVolume;
         this.timeoutTicks = builder.timeoutTicks;
         this.completeEnds = builder.completeEnds;

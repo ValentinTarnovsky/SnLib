@@ -105,8 +105,9 @@ public final class SelectionRenderer implements Runnable {
             double points = Math.ceil(4.0D * span / step);
             if (points > spec.particleBudget()) {
                 // Sparser but WHOLE box: the effective step stretches so the budget
-                // covers every edge instead of cutting an edge halfway.
-                step = 4.0D * span / spec.particleBudget();
+                // covers every edge instead of cutting an edge halfway. The floor keeps
+                // the loop finite even if a future spec path skips the build() clamps.
+                step = Math.max(0.1D, 4.0D * span / spec.particleBudget());
             }
         }
         List<Player> viewers = viewers(owner, world, box, spec);
