@@ -24,6 +24,7 @@ public final class SnSpec {
     private final @Nullable String itemsName;
     private final boolean db;
     private final boolean debugCommand;
+    private final @Nullable String updatesRepo;
 
     private SnSpec(Builder builder) {
         this.configName = builder.configName;
@@ -32,6 +33,7 @@ public final class SnSpec {
         this.itemsName = builder.itemsName;
         this.db = builder.db;
         this.debugCommand = builder.debugCommand;
+        this.updatesRepo = builder.updatesRepo;
     }
 
     /** Creates a new spec builder. */
@@ -69,6 +71,11 @@ public final class SnSpec {
         return debugCommand;
     }
 
+    /** GitHub owner/repo of the update check, or null if it was not declared. */
+    public @Nullable String updates() {
+        return updatesRepo;
+    }
+
     /**
      * Builder for {@link SnSpec}. Every method is opt-in; omitted modules stay disabled.
      */
@@ -80,6 +87,7 @@ public final class SnSpec {
         private @Nullable String itemsName;
         private boolean db;
         private boolean debugCommand;
+        private @Nullable String updatesRepo;
 
         private Builder() {
         }
@@ -117,6 +125,15 @@ public final class SnSpec {
         /** Declares the runtime debug command. */
         public Builder debugCommand() {
             this.debugCommand = true;
+            return this;
+        }
+
+        /**
+         * Declares the notify-only update check against a GitHub repo, format
+         * {@code owner/repo}.
+         */
+        public Builder updates(String ownerRepo) {
+            this.updatesRepo = ownerRepo;
             return this;
         }
 

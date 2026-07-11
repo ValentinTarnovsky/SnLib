@@ -1,9 +1,9 @@
 # SnLib v1.0.0 - Documentacion tecnica del estado actual
 
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (109 archivos java), recursos, build y tests (17 suites).
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (109 archivos java), recursos, build y tests (18 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 172 tests JUnit verdes en 17 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 177 tests JUnit verdes en 18 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -23,6 +23,7 @@
 - [14. Base de datos y Economia](#14-base-de-datos-y-economia)
 - [15. BossBars, Hologramas, Leaderboards y Discord](#15-bossbars-hologramas-leaderboards-y-discord)
 - [16. Build, tests, specs golden y TODOs](#16-build-tests-specs-golden-y-todos)
+- [17. UpdateChecker (v1.1)](#17-updatechecker-v11)
 
 ---
 ## 01. Arquitectura y ciclo de vida
@@ -118,6 +119,7 @@ Accessors SIEMPRE disponibles (nunca tiran, esten o no declarados modulos):
 - `public SnCron cron()` - jobs en main thread en los instantes calendario de un subset cron de 5 campos o los shortcuts daily/hourly, re-armados tras cada corrida; los jobs con `catchUp(true)` persisten su ultima corrida a un data yml y disparan una corrida perdida en el proximo schedule.
 - `public LeaderboardCache leaderboards()` - cada board corre su query async a intervalo fijo y swapea un snapshot inmutable detras de una referencia volatile: getTop/positionOf/valueOf son lecturas de cache lock-free seguras para resolvers de PlaceholderAPI.
 - `public DiscordWebhook discord()` - los mensajes encolan FIFO y postean async por el HttpClient del JDK, honrando Retry-After en 429; el teardown drena lo que quede encolado.
+- `public UpdateChecker updates()` - update checker notify-only del plugin dueño (v1.1); sin `SnSpec.builder().updates(...)` ni `watch()`/`checkNow()` explicitos queda inerte (cero trafico). Ver seccion 17.
 - `public ItemRegistry items()` - registro de items; funciona con cero archivos: definiciones desde `ItemDef.builder()`, secciones YML o el archivo declarado via `SnSpec.builder().items(...)`.
 - `public SnCommands commands()` - modulo de comandos; los roots construidos aca inyectan subcomandos reload y help por defecto, tab-complete gateado por permiso, y se desregistran en shutdown.
 - `public ReloadManager reload()` - orquestador de reload; reconstruye los modulos declarados en orden estricto y re-despacha los reloadables registrados via `ReloadManager.register`; el subcomando `reload` default y `/snlib reload <plugin>` delegan aca.
@@ -138,7 +140,7 @@ Otros metodos:
 
 #### Logica interna: orden de construccion
 
-El constructor cablea en este orden: scheduler, papi, yml (null si `spec.config() == null`), debug (recibe la config o null), actions, lang (solo si `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, items. Si el spec declara items con archivo y HAY yml, hace `items.loadAll(yml.managed(itemsFile))`; si declara items SIN config, WARNea: `items("...") declarado sin config(): el archivo no se monta y sn.items() queda solo programatico`. Despues guis (solo si `spec.guis()`, con `guis.load()` inmediato), db (solo si `spec.db()`, con `DbConfig.load(plugin, yml.config().getSection("database"))` o seccion null sin yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) y reload.
+El constructor cablea en este orden: scheduler, papi, yml (null si `spec.config() == null`), debug (recibe la config o null), actions, lang (solo si `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (con `updates.watch(repo)` inmediato si el spec declaro `updates("owner/repo")`), items. Si el spec declara items con archivo y HAY yml, hace `items.loadAll(yml.managed(itemsFile))`; si declara items SIN config, WARNea: `items("...") declarado sin config(): el archivo no se monta y sn.items() queda solo programatico`. Despues guis (solo si `spec.guis()`, con `guis.load()` inmediato), db (solo si `spec.db()`, con `DbConfig.load(plugin, yml.config().getSection("database"))` o seccion null sin yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) y reload.
 
 #### Logica interna: los 13 pasos de shutdown()
 
@@ -156,7 +158,7 @@ Si `shuttingDown` ya era true, retorna sin hacer nada (idempotencia). Si no, eje
 9. `cooldowns.clearAll()` - store de cooldowns de este owner.
 10. `SoftDependency.forEachRegistered(...)` con `hook.forceDisable()` solo para hooks cuyo `owner() == plugin`, mas `papi.unregisterAll()` - integraciones propias: fuerza el disable de los hooks de soft-dependency de este owner y desregistra sus expansiones de PlaceholderAPI.
 11. `actions.shutdown()` - libera el canal saliente de BungeeCord si `[connect]` lo registro.
-12. `bossbars.hideAll()`, `holograms.deleteAll()`, `discord.drain()` - hooks de teardown de los modulos extra, antes del removeOwner generico: esconde las bossbars de este owner, borra sus hologramas TextDisplay para que no queden como huerfanos hasta la proxima purga de arranque, y drena los webhooks Discord encolados best-effort bajo un deadline corto.
+12. `bossbars.hideAll()`, `holograms.deleteAll()`, `discord.drain()`, `updates.shutdown()` - hooks de teardown de los modulos extra, antes del removeOwner generico: esconde las bossbars de este owner, borra sus hologramas TextDisplay para que no queden como huerfanos hasta la proxima purga de arranque, drena los webhooks Discord encolados best-effort bajo un deadline corto, y cancela los timers de watch del update checker liberando su HttpClient.
 13. `TenantRegistry.sweepOwner(plugin)` y `SnLib.detach(plugin, this)` - saca la key de este owner de TODOS los tenant registries y desmonta el contexto del registro global.
 
 #### Notas y gotchas
@@ -177,6 +179,7 @@ Declaracion inmutable de los modulos SnLib que usa un plugin consumidor. Parte d
 - `public @Nullable String items()` - nombre del archivo de items, o `null` si el modulo items no fue declarado con fuente YML.
 - `public boolean db()` - si se declaro el modulo de base de datos.
 - `public boolean debugCommand()` - si se declaro el comando de debug de runtime.
+- `public @Nullable String updates()` - repo GitHub `owner/repo` del update check (v1.1), o `null` si no se declaro.
 
 #### SnSpec.Builder (clase anidada publica)
 
@@ -188,6 +191,7 @@ Builder de `SnSpec`; cada metodo es opt-in, los modulos omitidos quedan deshabil
 - `public Builder items(String fileName)` - declara el modulo items respaldado por un archivo YML (por ejemplo `"items.yml"`).
 - `public Builder db()` - declara el modulo de base de datos.
 - `public Builder debugCommand()` - declara el comando de debug de runtime.
+- `public Builder updates(String ownerRepo)` - declara el update check notify-only contra un repo GitHub, formato `owner/repo` (v1.1; ver seccion 17).
 - `public SnSpec build()` - construye el spec inmutable.
 
 ### SnApi
@@ -3163,9 +3167,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (17 suites, 172 tests, verdes)
+### Suites de tests (18 suites, 177 tests, verdes)
 
-Las 17 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest` y `com.sn.lib.gui` de `ClickResolutionTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click y mascaras de layout). Total verificado con `mvn test`: 172 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 18 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest` y `com.sn.lib.update` de `UpdateCheckerJsonTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout y parse del update check). Total verificado con `mvn test`: 177 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3445,4 +3449,53 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
+
+---
+## 17. UpdateChecker (v1.1)
+
+Modulo de update-check PARA LOS PLUGINS CONSUMIDORES (no para SnLib misma): cada consumer lo configura contra SU repo de GitHub y recibe avisos cuando hay un release mas nuevo que la version instalada.
+
+### UpdateChecker
+`src/main/java/com/sn/lib/update/UpdateChecker.java`
+
+Clase `public final` del paquete nuevo `com.sn.lib.update`; una instancia por contexto, alcanzada via `sn.updates()` (accessor siempre disponible, nunca tira).
+
+Contrato duro del modulo:
+
+- **Notify-only ESTRICTO y PERMANENTE**: jamas descarga artefactos, jamas toca el jar corriendo, jamas hace auto-swap de ningun tipo (incompatible ademas con el modelo reload-nunca-recarga-clases). Los unicos outputs son un INFO en consola al detectar version nueva y un aviso de chat a los jugadores con permiso al join.
+- **100% opt-in**: un consumer que no declara `SnSpec.builder().updates("owner/repo")` ni llama `watch()`/`checkNow()` no genera NINGUN trafico ni estado (el accessor devuelve una instancia inerte).
+
+API publica:
+
+- `public UpdateChecker(Sn ctx, @Nullable SnYml config)` - instanciado por el contexto en construccion; `config` es la config principal montada del consumer (o `null` sin modulo yml).
+- `public void watch(String ownerRepo)` - arma el check periodico notify-only: primer check a los 60s del enable (`INITIAL_DELAY_TICKS = 1200`), despues cada 6 horas (`PERIOD_TICKS = 432000`), SIEMPRE off-main (`timerAsync`). Formato invalido (regex `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`): WARN "updates: repo invalido '<x>'; formato esperado owner/repo" y no hace nada. Re-watch del mismo repo reemplaza y cancela el timer previo. El watch vive por enable: el reload del consumer no lo rearma ni lo duplica.
+- `public void checkNow(String ownerRepo)` - UN check inmediato off-main sin timer; la via de "llamada explicita" para consumers que no declaran el repo en su spec. Misma validacion de formato.
+- `public static Listener joinListener()` - listener compartido de `PlayerJoinEvent` definido aca e inscripto en el ListenerHub (el `registerEvents` ocurre unicamente en el bootstrap de SnLibPlugin).
+- `public void shutdown()` - teardown idempotente invocado por el paso 12 de `Sn.shutdown()`: cancela todos los timers de watch y libera el HttpClient. La entrada de STATES de este owner NO se toca aca: la barre el `TenantRegistry.sweepOwner` del paso 13.
+
+#### Logica interna
+
+- Request: GET `https://api.github.com/repos/<repo>/releases/latest` con headers `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `User-Agent: SnLib-UpdateChecker`; timeouts 5s connect / 10s request (mismos valores que DiscordWebhook), HttpClient lazy per-instance con double-checked locking (patron exacto de `DiscordWebhook.client()`), `send` sincrono (ya corre en thread async).
+- **Token opcional para repos PRIVADOS**: se lee `update-check.token` de la config principal del CONSUMER en CADA check (toma cambios sin restart) y se manda como `Authorization: Bearer <token>` solo si no esta vacio. Token de solo-lectura recomendado; JAMAS se loguea.
+- Fallos (status != 200, IOException, InterruptedException con re-interrupcion): **warn-once por repo por enable** ("update check de '<repo>' fallo: <detalle>") y silencio despues.
+- Parse sin libreria JSON: helper package-private `static @Nullable String jsonString(String body, String field)` (escaner a mano: primera ocurrencia de `"field"` con comillas, salta espacios y `:`, exige `"` de apertura y lee hasta la de cierre des-escapando `\"`, `\\` y `\/`; formato inesperado devuelve null; asuncion documentada: en el payload de releases/latest la primera ocurrencia de `html_url` es la del release). Y `static String stripTagPrefix(String tag)`: trim + quita la `v`/`V` inicial SOLO si sigue un digito (`v1.4.0` -> `1.4.0`, `vanilla` intacto).
+- Deteccion: `SemverComparator.compareVersions(latest, current) > 0` contra `ctx.plugin().getPluginMeta().getVersion()`. Al detectar guarda un `Finding(latest, current, url)` en el estado del owner y emite el INFO "Version <latest> disponible, instalada <current>: <url>" SOLO en la primera deteccion o ante un release nuevo (sin re-INFO cada 6h); si ya no hay update la entrada se remueve.
+- Estado multi-tenant: `private static final TenantRegistry<UpdateState> STATES` (static server-wide justificado: lo lee el listener compartido; keyed por owner con sweep automatico en disable). `UpdateState` guarda el ctx, el permiso `<plugin>.admin.update` (nombre del plugin en lowercase) y el mapa repo -> `Finding`. El state se registra UNA sola vez por instancia (compareAndSet) en el primer `watch`/`checkNow`.
+- Aviso al join: el `JoinListener` recorre `STATES.forEachOwner`; por cada state con findings pendientes y jugador con `state.permission`, agenda `syncLater(40 ticks)` que re-chequea `player.isOnline()` y envia por cada finding `&e<Plugin> &7tiene una version nueva: &a<latest> &7(instalada &c<current>&7) &f<url>` via `SnText.color`. El consumer que quiera default-op debe declarar `<plugin>.admin.update` en SU plugin.yml; sin declararlo solo lo reciben quienes tengan el permiso explicito.
+
+#### Notas y gotchas
+
+- Los PAT de GitHub no contienen `%`: el pipeline de placeholders de `SnYml.getString` es no-op sobre el token.
+- `checkNow` y `watch` comparten el warn-once: el set `warnedRepos` es por instancia (por enable).
+- El Versionator de ManticLib (descarga + auto-swap de jars) queda registrado como anti-ejemplo: esa capacidad esta prohibida para siempre en este modulo.
+
+### UpdateCheckerJsonTest
+`src/test/java/com/sn/lib/update/UpdateCheckerJsonTest.java`
+5 tests JUnit puros (sin Bukkit init) sobre los helpers package-private `jsonString` y `stripTagPrefix`.
+
+- `void jsonStringExtractsTagName()` - payload minimo de release: extrae `v1.4.0` de `tag_name`.
+- `void jsonStringFirstHtmlUrlWins()` - con `html_url` del release y otro dentro de `author`, devuelve el primero.
+- `void jsonStringHandlesEscapedQuotes()` - des-escapa `\"`, `\\` y `\/` dentro del valor.
+- `void jsonStringMissingFieldReturnsNull()` - campo ausente, valor no-string y string sin cierre devuelven null.
+- `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` y `vanilla` intactos.
 - Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 172 tests en 17 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests).

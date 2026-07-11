@@ -24,6 +24,7 @@ import com.sn.lib.papi.SnPapi;
 import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.tenant.TenantRegistry;
+import com.sn.lib.update.UpdateChecker;
 import com.sn.lib.yml.YmlManager;
 
 /**
@@ -59,6 +60,7 @@ public final class Sn {
     private final SnCron cron;
     private final LeaderboardCache leaderboards;
     private final DiscordWebhook discord;
+    private final UpdateChecker updates;
     private final ItemRegistry items;
     private final GuiManager guis;
     private final SnDb db;
@@ -84,6 +86,11 @@ public final class Sn {
         this.cron = new SnCron(this);
         this.leaderboards = new LeaderboardCache(this);
         this.discord = new DiscordWebhook(this);
+        this.updates = new UpdateChecker(this, yml == null ? null : yml.config());
+        String updatesRepo = spec.updates();
+        if (updatesRepo != null) {
+            updates.watch(updatesRepo);
+        }
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
         if (itemsFile != null) {
@@ -245,6 +252,15 @@ public final class Sn {
     }
 
     /**
+     * Notify-only update checker of the owning plugin; available in every context.
+     * Without {@code SnSpec.builder().updates(...)} or an explicit {@link UpdateChecker#watch}
+     * / {@link UpdateChecker#checkNow} call it stays inert (zero traffic).
+     */
+    public UpdateChecker updates() {
+        return updates;
+    }
+
+    /**
      * Item registry of the owning plugin; available in every context and works with zero
      * files: definitions come from {@code ItemDef.builder()}, from YML sections or from
      * the items file declared via {@code SnSpec.builder().items(...)}.
@@ -362,11 +378,13 @@ public final class Sn {
         actions.shutdown();
         // 12. Teardown hooks of the extra modules, before the generic removeOwner: hide
         //     this owner's bossbars, delete its TextDisplay holograms so they do not
-        //     linger as orphans until the next startup purge, and drain the queued
-        //     Discord webhooks best-effort under a short deadline.
+        //     linger as orphans until the next startup purge, drain the queued Discord
+        //     webhooks best-effort under a short deadline, and cancel the update-check
+        //     watch timers releasing their HTTP client.
         bossbars.hideAll();
         holograms.deleteAll();
         discord.drain();
+        updates.shutdown();
         // 13. Remove this owner's key from EVERY tenant registry and detach the context.
         TenantRegistry.sweepOwner(plugin);
         SnLib.detach(plugin, this);

@@ -20,6 +20,7 @@ import com.sn.lib.internal.QuitCleanupListener;
 import com.sn.lib.item.internal.ItemInteractListener;
 import com.sn.lib.item.internal.ItemPropertyListener;
 import com.sn.lib.item.internal.LockedItemListener;
+import com.sn.lib.update.UpdateChecker;
 
 /**
  * Single inscription point for every shared listener of the library.
@@ -46,6 +47,7 @@ public final class ListenerHub {
         inscribe(new GuiClickListener());
         inscribe(new GuiProtectionListener());
         inscribe(PlayerDataCache.joinListener());
+        inscribe(UpdateChecker.joinListener());
         inscribe(new HologramChunkListener());
     }
 
