@@ -48,11 +48,36 @@ class SemverComparatorTest {
     }
 
     @Test
-    void snapshotSuffixIsIgnored() {
-        assertSame("1.0.0-SNAPSHOT", "1.0.0");
-        assertSame("2.11.6-DEV-SNAPSHOT", "2.11.6");
+    void preReleaseComparesLowerThanRelease() {
+        assertOlder("1.0.0-SNAPSHOT", "1.0.0");
+        assertOlder("2.11.6-DEV-SNAPSHOT", "2.11.6");
         assertOlder("1.9-SNAPSHOT", "2.0-SNAPSHOT");
         assertOlder("1.0.0-SNAPSHOT", "1.0.1");
+    }
+
+    @Test
+    void semverOrgPrecedenceTable() {
+        List<String> chain = List.of("1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta",
+                "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0");
+        for (int i = 0; i < chain.size() - 1; i++) {
+            assertOlder(chain.get(i), chain.get(i + 1));
+        }
+    }
+
+    @Test
+    void numericIdentifiersCompareNumerically() {
+        assertOlder("1.0.0-alpha.9", "1.0.0-alpha.10");
+    }
+
+    @Test
+    void numericIsLowerThanAlphanumeric() {
+        assertOlder("1.0.0-1", "1.0.0-alpha");
+    }
+
+    @Test
+    void buildMetadataIsIgnored() {
+        assertSame("1.0.0+build.5", "1.0.0");
+        assertSame("1.0.0-alpha+001", "1.0.0-alpha");
     }
 
     @Test

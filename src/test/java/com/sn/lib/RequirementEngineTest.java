@@ -134,4 +134,81 @@ class RequirementEngineTest {
         assertTrue(req.test(null, resolver(Map.of("points", "150"))));
         assertFalse(req.test(null, resolver(Map.of("points", "50"))));
     }
+
+    @Test
+    void parenthesesGroupOrOverAnd() {
+        Requirement grouped = RequirementEngine.parse(List.of("(%a% = 1 || %b% = 1) && %c% = 2"));
+        Requirement ungrouped = RequirementEngine.parse(List.of("%a% = 1 || %b% = 1 && %c% = 2"));
+        Function<String, String> values = resolver(Map.of("a", "1", "b", "0", "c", "0"));
+        assertFalse(grouped.test(null, values));
+        assertTrue(ungrouped.test(null, values));
+        assertTrue(grouped.test(null, resolver(Map.of("a", "0", "b", "1", "c", "2"))));
+        assertFalse(grouped.test(null, resolver(Map.of("a", "0", "b", "0", "c", "2"))));
+    }
+
+    @Test
+    void nestedParenthesesParse() {
+        Requirement req = RequirementEngine.parse(List.of("((%a% = 1 && %b% = 2) || %c% = 3)"));
+        assertTrue(req.test(null, resolver(Map.of("a", "1", "b", "2", "c", "0"))));
+        assertTrue(req.test(null, resolver(Map.of("a", "0", "b", "0", "c", "3"))));
+        assertFalse(req.test(null, resolver(Map.of("a", "1", "b", "0", "c", "0"))));
+    }
+
+    @Test
+    void quotedOperandKeepsConnectorsLiteral() {
+        Requirement req = RequirementEngine.parse(List.of("%rank% = 'VIP && MVP'"));
+        assertTrue(req.test(null, resolver(Map.of("rank", "VIP && MVP"))));
+        assertFalse(req.test(null, resolver(Map.of("rank", "VIP"))));
+    }
+
+    @Test
+    void quotedOperandKeepsParensLiteral() {
+        Requirement req = RequirementEngine.parse(List.of("%tag% = \"(admin)\""));
+        assertTrue(req.test(null, resolver(Map.of("tag", "(admin)"))));
+        assertFalse(req.test(null, resolver(Map.of("tag", "admin"))));
+    }
+
+    @Test
+    void quotesAreStrippedFromOperand() {
+        Requirement req = RequirementEngine.parse(List.of("%rank% = 'VIP'"));
+        assertTrue(req.test(null, resolver(Map.of("rank", "VIP"))));
+        assertFalse(req.test(null, resolver(Map.of("rank", "'VIP'"))));
+    }
+
+    @Test
+    void operatorInsideQuotesIsNotAnOperator() {
+        Requirement req = RequirementEngine.parse(List.of("%x% = 'a >= b'"));
+        assertTrue(req.test(null, resolver(Map.of("x", "a >= b"))));
+        assertFalse(req.test(null, resolver(Map.of("x", "c"))));
+    }
+
+    @Test
+    void unbalancedParenFailsOpenWithWarn() {
+        List<String> warnings = new ArrayList<>();
+        Requirement req = RequirementEngine.parse(List.of("(%a% = 1 && %b% = 2"), warnings::add);
+        assertTrue(req.test(null, resolver(Map.of("a", "0", "b", "0"))));
+        assertEquals(1, warnings.size());
+        assertTrue(warnings.get(0).contains("(%a% = 1"));
+    }
+
+    @Test
+    void strayCloseParenFailsOpenWithWarn() {
+        List<String> warnings = new ArrayList<>();
+        Requirement req = RequirementEngine.parse(List.of("%a% = 1)"), warnings::add);
+        assertTrue(req.test(null, resolver(Map.of("a", "0"))));
+        assertEquals(1, warnings.size());
+    }
+
+    @Test
+    void unquotedLegacyExpressionsKeepTheirTree() {
+        Requirement mixed = RequirementEngine.parse(List.of("%a% = 1 || %b% = 1 && %c% = 1"));
+        assertTrue(mixed.test(null, resolver(Map.of("a", "0", "b", "1", "c", "1"))));
+        assertFalse(mixed.test(null, resolver(Map.of("a", "0", "b", "1", "c", "0"))));
+        Requirement range = RequirementEngine.parse(List.of("%level% > 0 && %level% < 10"));
+        assertTrue(range.test(null, resolver(Map.of("level", "5"))));
+        assertFalse(range.test(null, resolver(Map.of("level", "10"))));
+        Requirement ne = RequirementEngine.parse(List.of("%rank% != vip"));
+        assertFalse(ne.test(null, resolver(Map.of("rank", "VIP"))));
+        assertTrue(ne.test(null, resolver(Map.of("rank", "mvp"))));
+    }
 }

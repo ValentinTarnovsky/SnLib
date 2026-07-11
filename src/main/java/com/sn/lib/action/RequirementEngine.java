@@ -16,9 +16,12 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Grammar per line: comparisons {@code left OP right} with operators {@code >},
  * {@code <}, {@code >=}, {@code <=}, {@code =}, {@code ==} and {@code !=}, joined by
- * {@code &&} and {@code ||}; AND binds tighter than OR. The lines of a list are joined
- * with an implicit AND. Parsing happens ONCE at load; placeholders stay as raw tokens
- * and are resolved on every {@link Requirement#test} through the caller's resolver.</p>
+ * {@code &&} and {@code ||} (AND binds tighter than OR) and groupable with parentheses.
+ * An operand may be quoted with {@code '} or {@code "}: inside the quoted region the
+ * connectors, the parentheses and the operator symbols stay literal, and the quotes
+ * themselves are stripped from the final operand. The lines of a list are joined with
+ * an implicit AND. Parsing happens ONCE at load; placeholders stay as raw tokens and
+ * are resolved on every {@link Requirement#test} through the caller's resolver.</p>
  *
  * <p>Coercion at evaluation time: when both sides parse as doubles the comparison is
  * numeric; otherwise {@code =}/{@code !=} compare lexicographically case-insensitive,
@@ -45,6 +48,21 @@ public final class RequirementEngine {
 
         Op(String symbol) {
             this.symbol = symbol;
+        }
+    }
+
+    private enum TokenType {
+        LPAREN, RPAREN, AND, OR, TEXT
+    }
+
+    private record Token(TokenType type, String text) {
+    }
+
+    /** Internal control-flow signal: any malformation fails the whole line open. */
+    private static final class MalformedLineException extends RuntimeException {
+
+        MalformedLineException() {
+            super(null, null, false, false);
         }
     }
 
@@ -82,38 +100,176 @@ public final class RequirementEngine {
     }
 
     /**
-     * One line: {@code ||} branches of {@code &&} chains (AND binds tighter). Any
-     * malformed comparison turns the WHOLE line into an always-true requirement with one
-     * WARN, so a broken config never locks players out.
+     * One line: tokenizer plus recursive descent. Any malformation (unclosed {@code (},
+     * stray {@code )} or leftover tokens, empty parentheses, dangling connector, or a
+     * text run that is not a comparison) turns the WHOLE line into an always-true
+     * requirement with one WARN, so a broken config never locks players out.
      */
     private static Requirement parseLine(String line, Consumer<String> warn) {
-        List<Requirement> orParts = new ArrayList<>();
-        for (String orPart : split(line, "||")) {
-            List<Requirement> andParts = new ArrayList<>();
-            for (String andPart : split(orPart, "&&")) {
-                Requirement comparison = parseComparison(andPart, warn);
-                if (comparison == null) {
-                    warn.accept("Requirement malformado: '" + line + "'; se evalua como true");
-                    return ALWAYS_TRUE;
-                }
-                andParts.add(comparison);
+        try {
+            List<Token> tokens = tokenize(line);
+            int[] pos = {0};
+            Requirement expr = parseExpr(tokens, pos, warn);
+            if (pos[0] < tokens.size()) {
+                throw new MalformedLineException();
             }
-            orParts.add(andParts.size() == 1 ? andParts.get(0) : new AllOf(andParts));
+            return expr;
+        } catch (MalformedLineException e) {
+            warn.accept("Requirement malformado: '" + line + "'; se evalua como true");
+            return ALWAYS_TRUE;
         }
-        return orParts.size() == 1 ? orParts.get(0) : new AnyOf(orParts);
     }
 
-    /** Null when malformed: no operator, or an empty operand on either side. */
+    /**
+     * One-pass character scan producing {@code LPAREN}, {@code RPAREN}, {@code AND}
+     * ({@code &&}), {@code OR} ({@code ||}) and TEXT runs. A {@code '} or {@code "}
+     * outside quotes opens a quoted region in which nothing is tokenized (connectors
+     * and parentheses flow into the TEXT run) until the same closing character; the
+     * quotes are kept inside the token (parseComparison strips them). An unclosed
+     * quote leniently extends the region to the end of the line. Whitespace is kept
+     * inside TEXT runs; runs of only whitespace between structural tokens are dropped.
+     */
+    private static List<Token> tokenize(String line) {
+        List<Token> out = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
+        char quote = 0;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (quote != 0) {
+                text.append(c);
+                if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                quote = c;
+                text.append(c);
+                continue;
+            }
+            if (c == '(') {
+                flushText(out, text);
+                out.add(new Token(TokenType.LPAREN, "("));
+                continue;
+            }
+            if (c == ')') {
+                flushText(out, text);
+                out.add(new Token(TokenType.RPAREN, ")"));
+                continue;
+            }
+            if (c == '&' && i + 1 < line.length() && line.charAt(i + 1) == '&') {
+                flushText(out, text);
+                out.add(new Token(TokenType.AND, "&&"));
+                i++;
+                continue;
+            }
+            if (c == '|' && i + 1 < line.length() && line.charAt(i + 1) == '|') {
+                flushText(out, text);
+                out.add(new Token(TokenType.OR, "||"));
+                i++;
+                continue;
+            }
+            text.append(c);
+        }
+        flushText(out, text);
+        return out;
+    }
+
+    private static void flushText(List<Token> out, StringBuilder text) {
+        if (text.isEmpty()) {
+            return;
+        }
+        String run = text.toString();
+        text.setLength(0);
+        if (!run.isBlank()) {
+            out.add(new Token(TokenType.TEXT, run));
+        }
+    }
+
+    /** {@code expr := and ('||' and)*} */
+    private static Requirement parseExpr(List<Token> tokens, int[] pos, Consumer<String> warn) {
+        List<Requirement> branches = new ArrayList<>();
+        branches.add(parseAnd(tokens, pos, warn));
+        while (peek(tokens, pos) == TokenType.OR) {
+            pos[0]++;
+            branches.add(parseAnd(tokens, pos, warn));
+        }
+        return branches.size() == 1 ? branches.get(0) : new AnyOf(branches);
+    }
+
+    /** {@code and := primary ('&&' primary)*} */
+    private static Requirement parseAnd(List<Token> tokens, int[] pos, Consumer<String> warn) {
+        List<Requirement> parts = new ArrayList<>();
+        parts.add(parsePrimary(tokens, pos, warn));
+        while (peek(tokens, pos) == TokenType.AND) {
+            pos[0]++;
+            parts.add(parsePrimary(tokens, pos, warn));
+        }
+        return parts.size() == 1 ? parts.get(0) : new AllOf(parts);
+    }
+
+    /** {@code primary := '(' expr ')' | comparison} */
+    private static Requirement parsePrimary(List<Token> tokens, int[] pos, Consumer<String> warn) {
+        if (pos[0] >= tokens.size()) {
+            throw new MalformedLineException();
+        }
+        Token token = tokens.get(pos[0]);
+        if (token.type() == TokenType.LPAREN) {
+            pos[0]++;
+            if (peek(tokens, pos) == TokenType.RPAREN) {
+                throw new MalformedLineException();
+            }
+            Requirement inner = parseExpr(tokens, pos, warn);
+            if (peek(tokens, pos) != TokenType.RPAREN) {
+                throw new MalformedLineException();
+            }
+            pos[0]++;
+            return inner;
+        }
+        if (token.type() == TokenType.TEXT) {
+            pos[0]++;
+            Requirement comparison = parseComparison(token.text(), warn);
+            if (comparison == null) {
+                throw new MalformedLineException();
+            }
+            return comparison;
+        }
+        throw new MalformedLineException();
+    }
+
+    private static @Nullable TokenType peek(List<Token> tokens, int[] pos) {
+        return pos[0] < tokens.size() ? tokens.get(pos[0]).type() : null;
+    }
+
+    /**
+     * Null when malformed: no operator outside quotes, or an empty operand on either
+     * side. The operator scan tracks quote state so symbols inside {@code '...'} or
+     * {@code "..."} stay literal. Each operand is trimmed and then stripped of ONE pair
+     * of balanced quotes wrapping the whole operand; the inner content is NOT re-trimmed
+     * (a quoted operand keeps its inner and edge spaces).
+     */
     private static @Nullable Requirement parseComparison(String raw, Consumer<String> warn) {
         String text = raw.trim();
         if (text.isEmpty()) {
             return null;
         }
+        char quote = 0;
         for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                quote = c;
+                continue;
+            }
             for (Op op : Op.values()) {
                 if (text.startsWith(op.symbol, i)) {
-                    String left = text.substring(0, i).trim();
-                    String right = text.substring(i + op.symbol.length()).trim();
+                    String left = stripQuotes(text.substring(0, i).trim());
+                    String right = stripQuotes(text.substring(i + op.symbol.length()).trim());
                     if (left.isEmpty() || right.isEmpty()) {
                         return null;
                     }
@@ -122,6 +278,18 @@ public final class RequirementEngine {
             }
         }
         return null;
+    }
+
+    /** Strips ONE pair of balanced quotes wrapping the whole operand; anything else is kept. */
+    private static String stripQuotes(String operand) {
+        if (operand.length() >= 2) {
+            char first = operand.charAt(0);
+            char last = operand.charAt(operand.length() - 1);
+            if (first == last && (first == '\'' || first == '"')) {
+                return operand.substring(1, operand.length() - 1);
+            }
+        }
+        return operand;
     }
 
     private static String resolve(String token, @Nullable Function<String, String> resolver) {
@@ -144,19 +312,6 @@ public final class RequirementEngine {
         if (WARNED.add(message)) {
             LOGGER.warning("[SnLib] " + message);
         }
-    }
-
-    /** Splits on the literal connector; the grammar has no quoting or parentheses. */
-    private static List<String> split(String text, String connector) {
-        List<String> out = new ArrayList<>();
-        int start = 0;
-        int index;
-        while ((index = text.indexOf(connector, start)) >= 0) {
-            out.add(text.substring(start, index));
-            start = index + connector.length();
-        }
-        out.add(text.substring(start));
-        return out;
     }
 
     private record AllOf(List<Requirement> parts) implements Requirement {

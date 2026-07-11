@@ -3,7 +3,7 @@
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
 > Cobertura: todas las clases de `src/main/java/com/sn/lib` (106 archivos java), recursos, build y tests (12 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 121 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 134 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -823,7 +823,7 @@ Metodos estaticos:
 - `public static void targetDisabled(String pluginName)` - "estaciona" (deactivate) todos los hooks de cualquier owner que apunten a `pluginName`; notificacion usada por el sweeper. La comparacion de nombres es case-insensitive.
 
 Metodos de instancia:
-- `public SoftDependency<T> minVersion(String version)` - exige que la version del target sea al menos `version` (gate semver via `SemverComparator`); invalida la resolucion actual y devuelve `this` (fluido).
+- `public SoftDependency<T> minVersion(String version)` - exige que la version del target sea al menos `version` (gate semver via `SemverComparator`, con precedencia de pre-release: un target `-SNAPSHOT` instalado NO satisface la release pelada); invalida la resolucion actual y devuelve `this` (fluido).
 - `public SoftDependency<T> requiresClass(String className)` - exige que `className` sea cargable desde el classloader del plugin target (`Class.forName(name, false, loader)`, sin inicializar); tambien invalida y devuelve `this`.
 - `public JavaPlugin owner()` - plugin dueño del hook; usado para la inscripcion diferida en el registry por owner.
 - `public String pluginName()` - nombre del plugin target al que este hook se liga.
@@ -838,7 +838,7 @@ Metodos package-private (llamados por `HookListener`):
 
 #### Logica interna
 - `resolve()` (privado, `synchronized`): si no esta `disabled` ni `resolved`, busca el target via `Bukkit.getPluginManager().getPlugin(pluginName)`; solo instancia si el target existe, esta habilitado, pasa `versionOk` y pasa `classOk`. Siempre deja `resolved = true` (resultado negativo cacheado hasta un `invalidate`/`refresh`).
-- `versionOk(Plugin)`: sin `minVersion` pasa siempre; si `SemverComparator.compareVersions(instalada, requerida) < 0` loguea WARN en el logger del OWNER: "Hook '<target>' requiere version >= X (instalada: Y); hook deshabilitado".
+- `versionOk(Plugin)`: sin `minVersion` pasa siempre; si `SemverComparator.compareVersions(instalada, requerida) < 0` loguea WARN en el logger del OWNER: "Hook '<target>' requiere version >= X (instalada: Y); hook deshabilitado". La comparacion aplica la precedencia semver de pre-release: un target `2.0.0-SNAPSHOT` instalado ya NO pasa un `minVersion("2.0.0")` (cambio de comportamiento documentado para el changelog de 1.1.0).
 - `classOk(Plugin)`: atrapa `ClassNotFoundException` y `LinkageError`; en falla loguea WARN "Hook '<target>': clase requerida <clase> no encontrada; hook deshabilitado".
 - `instantiate()`: boundary aislado de instanciacion; la factory corre SOLO aca y cualquier `Throwable` (incluido `NoClassDefFoundError` de un adapter compilado contra una API ausente) se atrapa con WARN "Hook '<target>' fallo al instanciar: ..." devolviendo null, asi un hook roto nunca se propaga al caller.
 
@@ -862,16 +862,18 @@ Listener compartido que activa/desactiva en vivo cada `SoftDependency` registrad
 ### SemverComparator
 `src/main/java/com/sn/lib/hook/SemverComparator.java`
 
-Comparador de versiones puramente numerico para los gates de version de plugins. Sin dependencia de Bukkit. Implementa `Comparator<String>`.
+Comparador de versiones puro para los gates de version de plugins, con precedencia semver de pre-release. Sin dependencia de Bukkit. Implementa `Comparator<String>`.
 
 - `public int compare(String left, String right)` - delega en `compareVersions` (permite usarlo como `Comparator`).
-- `public static int compareVersions(String left, String right)` - negativo cuando `left` es mas vieja que `right`, cero cuando son equivalentes, positivo cuando es mas nueva.
+- `public static int compareVersions(String left, String right)` - negativo cuando `left` es mas vieja que `right`, cero cuando son equivalentes, positivo cuando es mas nueva. Ignora build metadata (`+...`) en ambos lados.
 
 #### Logica interna
-- Compara segmento a segmento como NUMEROS (cualquier cantidad de digitos por segmento, entonces `1.10 > 1.9`).
-- Segmentos finales faltantes cuentan como 0 (`1.2 == 1.2.0`).
-- Los sufijos calificadores desde el primer `-` (como `-SNAPSHOT`) se IGNORAN: `1.2.0-SNAPSHOT` compara igual que `1.2.0`.
-- Parsing tolerante: `null` se trata como cadena vacia; de cada segmento se toma solo el prefijo numerico (`leadingNumber`), y un segmento sin prefijo numerico cuenta como 0. Nunca tira excepcion.
+- Build metadata: todo desde el primer `+` se ignora (`1.0.0+build.5` == `1.0.0`, item 10 de semver.org).
+- El core se compara segmento a segmento como NUMEROS (cualquier cantidad de digitos por segmento, entonces `1.10 > 1.9`); segmentos finales faltantes cuentan como 0 (`1.2 == 1.2.0`).
+- Con cores empatados, una version CON pre-release (todo desde el primer `-`) PRECEDE a la release pelada: `2.0.0-SNAPSHOT < 2.0.0`. Un pre-release vacio tras el `-` (`"1.0.0-"`) cuenta lenientemente como sin calificador.
+- Dos pre-releases comparan por identificadores separados por `.` de izquierda a derecha: ambos all-digits -> comparacion numerica sin overflow (por largo del string sin ceros a la izquierda y despues lexicografica); numerico < alfanumerico; ambos alfanumericos -> orden ASCII case-sensitive (`String.compareTo`). Si todos los identificadores compartidos empatan, gana el que tiene MAS identificadores (`1.0.0-alpha < 1.0.0-alpha.1`).
+- Escalera completa de semver.org cubierta por test: `1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0`.
+- Parsing tolerante: `null` se trata como cadena vacia; de cada segmento del core se toma solo el prefijo numerico (`leadingNumber`), y un segmento sin prefijo numerico cuenta como 0. Nunca tira excepcion.
 
 ### SnCron
 `src/main/java/com/sn/lib/cron/SnCron.java`
@@ -938,7 +940,7 @@ No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitac
 - `SnCron` con `catchUp(true)` requiere el modulo yml del contexto (`SnSpec.builder().config(...)`); sin el, el job corre igual pero WARNea una vez y el last-run no persiste.
 - El catch-up dispara a lo sumo UN run perdido por re-agendado, no repone cada instante saltado.
 - `CronExpr` es un subset: sin segundos, sin nombres de mes/dia, sin macros `@...` ni extensiones Quartz (`L`/`W`/`#`); expresiones que nunca matchean cortan por `MAX_ADJUSTMENTS = 5000` con `IllegalStateException`.
-- `SemverComparator` ignora los calificadores post `-` (un `-SNAPSHOT` compara igual que la release) y trata segmentos no numericos como 0; es un comparador numerico puro, no semver completo (sin precedencia de pre-release).
+- `SemverComparator` aplica la precedencia semver de pre-release (un `-SNAPSHOT` compara MENOR que la release pelada; cambio de comportamiento respecto de 1.0.0: el gate `minVersion` ahora rechaza un target `-SNAPSHOT` cuando el hook exige la release) e ignora el build metadata (`+...`); los segmentos no numericos del core siguen contando como 0 (comparador tolerante, no un validador semver estricto).
 
 ---
 
@@ -1298,11 +1300,12 @@ Enum interno (privado) `Op` con los operadores de comparacion: `GE(">=")`, `LE("
 
 #### Gramatica y precedencia
 
-- Por linea: comparaciones `left OP right` unidas por `&&` y `||`; AND liga MAS fuerte que OR (la linea se parte primero por `||`, y cada rama por `&&`).
+- Por linea: comparaciones `left OP right` unidas por `&&` y `||`, con AND ligando MAS fuerte que OR, y agrupables con parentesis. Descenso recursivo sobre la lista de tokens: `expr := and ('||' and)*` (-> `AnyOf`), `and := primary ('&&' primary)*` (-> `AllOf`), `primary := '(' expr ')' | comparacion`.
 - Entre lineas de una lista: AND implicito.
-- El split de `||`/`&&` es LITERAL: no hay quoting ni parentesis en la gramatica; un operando no puede contener esas secuencias.
-- Deteccion del operador (`parseComparison`): se escanea la linea de izquierda a derecha y en cada indice se prueban los operadores en orden de declaracion del enum, asi `>=` gana sobre `>`. Operando vacio a cualquier lado, o ausencia de operador, hacen la comparacion invalida.
-- Fail-open: una comparacion malformada convierte la LINEA ENTERA en always-true con un solo WARN ("Requirement malformado: '<linea>'; se evalua como true"), para que una config rota nunca deje jugadores afuera.
+- Quoting: un operando puede envolverse en `'` o `"`; dentro de la region quoted los conectores, los parentesis y los simbolos de operador quedan LITERALES (tanto el tokenizer como el scan de operadores trackean el estado de comillas). Al parsear la comparacion se quita UN par de comillas balanceadas que envuelva el operando completo (primer char == ultimo char, ambos `'` o ambos `"`, largo >= 2); el contenido interno NO se re-trimea (un operando quoted preserva espacios internos y de borde). Una comilla sin cerrar extiende la region lenientemente hasta el fin de la linea, sin WARN propio.
+- Deteccion del operador (`parseComparison`): se escanea el texto de izquierda a derecha FUERA de comillas y en cada indice se prueban los operadores en orden de declaracion del enum, asi `>=` gana sobre `>`. Operando vacio (tras el strip de comillas) a cualquier lado, o ausencia de operador, hacen la comparacion invalida.
+- Fail-open: cualquier malformacion (comparacion invalida, `(` sin cierre, `)` suelto o tokens sobrantes al terminar la expresion, parentesis vacios, conector colgante) convierte la LINEA ENTERA en always-true con un solo WARN ("Requirement malformado: '<linea>'; se evalua como true"), para que una config rota nunca deje jugadores afuera.
+- Cambio de interpretacion respecto de 1.0.0 (aceptado): un operando que contenia `(`, `)`, `&&` o `||` literales sin comillas ahora requiere quoting; sin quotear, la linea cae en fail-open (true + WARN), nunca bloquea jugadores. Toda expresion sin comillas ni parentesis produce un arbol IDENTICO al de 1.0.0.
 
 #### Coercion en evaluacion
 
@@ -1314,7 +1317,7 @@ En cada `test`, ambos tokens se resuelven via el resolver (resolver null o resul
 
 #### Logica interna
 
-Los nodos del arbol son records privados: `AllOf` (AND con short-circuit, copia defensiva `List.copyOf`), `AnyOf` (OR con short-circuit) y `Comparison` (hoja que retiene los tokens crudos y el sink de warn). `ALWAYS_TRUE` es el requirement constante para inputs vacios y lineas malformadas.
+Los nodos del arbol son records privados: `AllOf` (AND con short-circuit, copia defensiva `List.copyOf`), `AnyOf` (OR con short-circuit) y `Comparison` (hoja que retiene los tokens crudos ya des-quoteados y el sink de warn). El parseo por linea es un tokenizer de UNA pasada (tokens `LPAREN`/`RPAREN`/`AND`/`OR`/`TEXT`, quote-aware; el whitespace se conserva dentro de los runs TEXT pero los runs de solo whitespace entre tokens estructurales se descartan) seguido del descenso recursivo con indice mutable; las malformaciones cortan via una excepcion interna (`MalformedLineException`) que `parseLine` traduce al WARN unico. `ALWAYS_TRUE` es el requirement constante para inputs vacios y lineas malformadas.
 
 ### Requirement
 `src/main/java/com/sn/lib/action/Requirement.java`
@@ -1377,7 +1380,7 @@ No hay marcadores TODO/FIXME explicitos en ninguno de los archivos del alcance. 
 
 - `[particle]` soporta los dataTypes `Void`, `Particle.DustOptions` (opciones `color=`/`size=`, defaults Color.RED y 1.0f), `Particle.DustTransition` (`color=`/`to=`/`size=`), `BlockData` (`block=MATERIAL` obligatorio) e `ItemStack` (`item=MATERIAL` obligatorio); cualquier otro `dataType` (ej. Vibration, Trail) sigue ignorandose con WARN ("requiere datos no soportados").
 - `[remove-item]` cubre mano principal (default), `offhand`, material (`MATERIAL`, excluyendo stacks tagueados por SnLib) e `id:<item-id>`; el barrido por selector alcanza los slots de storage 0-35 mas la offhand (no toca armadura ni cursor) y no hay soporte de slot arbitrario.
-- La gramatica de requirements no tiene quoting ni parentesis: el split de `||` y `&&` es literal, por lo que un operando no puede contener esas secuencias ni agruparse.
+- La gramatica de requirements soporta agrupamiento con `( )` y quoting de operandos con `'` o `"`; la contracara es que un operando con `(`, `)`, `&&`, `||` o simbolos de operador literales ahora DEBE quotearse (sin comillas la linea cae en fail-open con WARN, nunca bloquea jugadores).
 - La resolucion PAPI es main-thread only por diseño: fuera del primary thread los tokens quedan intactos (con nota de debug), no hay cola ni fallback async.
 - Los resolvers de expansiones tienen contrato cache-only (memoria precomputada); el holder no ofrece variante async para resolvers con I/O.
 
@@ -3043,9 +3046,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (12 suites, 121 tests, verdes)
+### Suites de tests (12 suites, 134 tests, verdes)
 
-Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 121 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 134 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3061,12 +3064,16 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 
 ### SemverComparatorTest
 `src/test/java/com/sn/lib/SemverComparatorTest.java`
-6 tests sobre `com.sn.lib.hook.SemverComparator` (metodo estatico `compareVersions(String, String)` y la clase como `Comparator<String>`), la comparacion de versiones usada por el sistema de hooks.
+10 tests sobre `com.sn.lib.hook.SemverComparator` (metodo estatico `compareVersions(String, String)` y la clase como `Comparator<String>`), la comparacion de versiones usada por el sistema de hooks.
 
 - `void comparesSegmentsNumericallyNotLexically()` - segmentos numericos, no lexicograficos: 1.9 < 1.10, 1.99.9 < 1.100.0.
 - `void supportsSegmentsOfAnyDigitCount()` - segmentos de cualquier cantidad de digitos (1.2.345 < 1.2.1000).
 - `void missingTrailingSegmentsCountAsZero()` - segmentos finales ausentes valen 0: "1.2" == "1.2.0", "1" == "1.0.0"; soporta 4 segmentos ("1.2" < "1.2.0.1").
-- `void snapshotSuffixIsIgnored()` - el sufijo tras `-` se ignora: "1.0.0-SNAPSHOT" == "1.0.0", "2.11.6-DEV-SNAPSHOT" == "2.11.6".
+- `void preReleaseComparesLowerThanRelease()` - un pre-release precede a la release pelada: "1.0.0-SNAPSHOT" < "1.0.0", "2.11.6-DEV-SNAPSHOT" < "2.11.6" (el pre-release "DEV-SNAPSHOT" es UN identificador: el split es por `.`).
+- `void semverOrgPrecedenceTable()` - la escalera completa de semver.org par a par: alpha < alpha.1 < alpha.beta < beta < beta.2 < beta.11 < rc.1 < release.
+- `void numericIdentifiersCompareNumerically()` - identificadores numericos comparan como numeros: alpha.9 < alpha.10.
+- `void numericIsLowerThanAlphanumeric()` - un identificador numerico es menor que uno alfanumerico: "1.0.0-1" < "1.0.0-alpha".
+- `void buildMetadataIsIgnored()` - el build metadata `+...` se ignora: "1.0.0+build.5" == "1.0.0", "1.0.0-alpha+001" == "1.0.0-alpha".
 - `void equalVersionsCompareAsZero()` - versiones iguales comparan 0 ("0.0.0" == "0").
 - `void comparatorInstanceSortsAscending()` - la instancia como Comparator ordena listas ascendente semver.
 
@@ -3131,7 +3138,7 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 
 ### RequirementEngineTest
 `src/test/java/com/sn/lib/RequirementEngineTest.java`
-13 tests sobre `com.sn.lib.action.RequirementEngine.parse(List<String>)` / `parse(List<String>, Consumer<String>)` y el arbol inmutable `com.sn.lib.action.Requirement` evaluado con `test(player, resolver)`: el motor de click/view/interact-requirements. Usa un resolver mock que reemplaza tokens `%key%`.
+22 tests sobre `com.sn.lib.action.RequirementEngine.parse(List<String>)` / `parse(List<String>, Consumer<String>)` y el arbol inmutable `com.sn.lib.action.Requirement` evaluado con `test(player, resolver)`: el motor de click/view/interact-requirements. Usa un resolver mock que reemplaza tokens `%key%`.
 
 - `void numericAndChainWithinOneLine()` - `>` y `<` encadenados con `&&` en una linea; los limites quedan excluidos.
 - `void linesJoinWithImplicitAnd()` - varias lineas de la lista se unen con AND implicito.
@@ -3146,6 +3153,15 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 - `void nullEmptyAndBlankInputAlwaysPass()` - null, lista vacia y lineas en blanco siempre pasan.
 - `void nullResolverLeavesTokensUntouched()` - resolver null deja los tokens intactos (los literales evaluan, los `%x%` no matchean).
 - `void placeholdersResolveAtTestTimeNotParseTime()` - los placeholders se resuelven en cada `test`, no al parsear: el mismo Requirement da resultados distintos con valores distintos.
+- `void parenthesesGroupOrOverAnd()` - `(a || b) && c` agrupa distinto que la misma linea sin parentesis (el grupo cambia el resultado).
+- `void nestedParenthesesParse()` - parentesis anidados `((a && b) || c)` parsean y evaluan.
+- `void quotedOperandKeepsConnectorsLiteral()` - `%rank% = 'VIP && MVP'`: el `&&` dentro de comillas es literal, no conector.
+- `void quotedOperandKeepsParensLiteral()` - `%tag% = "(admin)"`: los parentesis dentro de comillas son literales.
+- `void quotesAreStrippedFromOperand()` - las comillas se quitan del operando final (el valor resuelto matchea sin comillas).
+- `void operatorInsideQuotesIsNotAnOperator()` - `%x% = 'a >= b'` evalua EQ, no GE: los simbolos de operador dentro de comillas son literales.
+- `void unbalancedParenFailsOpenWithWarn()` - `(` sin cierre cae en fail-open: always-true con UN warn en el sink.
+- `void strayCloseParenFailsOpenWithWarn()` - `)` suelto al final de la linea cae en fail-open con un warn.
+- `void unquotedLegacyExpressionsKeepTheirTree()` - expresiones estilo 1.0.0 (sin comillas ni parentesis) producen el mismo arbol y los mismos resultados que antes.
 
 ### CronNextRunTest
 `src/test/java/com/sn/lib/CronNextRunTest.java`
@@ -3249,4 +3265,4 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 121 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 134 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10).
