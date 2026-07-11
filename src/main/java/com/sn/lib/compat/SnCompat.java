@@ -38,7 +38,9 @@ public final class SnCompat {
     }
 
     /**
-     * Reflectively looks up a public method, once, caching hit and miss.
+     * Reflectively looks up a public method, once, caching hit and miss. The cache key
+     * includes the parameter types, so two overloads of the same method name never
+     * collide in the cache.
      *
      * <p>Classloader guard: only server API and JDK classes are probeable. If {@code owner}
      * was loaded by a PluginClassLoader other than SnLib's own, this warns once and returns
@@ -58,7 +60,14 @@ public final class SnCompat {
                     + " solo clases de la API del server/JDK");
             return null;
         }
-        String key = owner.getName() + "#" + name;
+        StringBuilder sig = new StringBuilder(owner.getName()).append('#').append(name).append('(');
+        for (int i = 0; i < params.length; i++) {
+            if (i > 0) {
+                sig.append(',');
+            }
+            sig.append(params[i].getName());
+        }
+        String key = sig.append(')').toString();
         Method cached = CACHE.get(key);
         if (cached != null) {
             return cached;

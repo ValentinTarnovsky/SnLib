@@ -31,6 +31,7 @@ public final class Cooldowns {
     private final Sn ctx;
 
     private volatile boolean sweepScheduled;
+    private boolean sweepWarned;
     private @Nullable TaskHandle sweepTask;
 
     public Cooldowns(Sn ctx) {
@@ -96,6 +97,7 @@ public final class Cooldowns {
             task = sweepTask;
             sweepTask = null;
             sweepScheduled = false;
+            sweepWarned = false;
         }
         if (task != null) {
             try {
@@ -132,11 +134,15 @@ public final class Cooldowns {
             try {
                 sweepTask = ctx.scheduler()
                         .timerAsync(SWEEP_PERIOD_TICKS, SWEEP_PERIOD_TICKS, this::sweepExpired);
+                sweepScheduled = true;
             } catch (Throwable t) {
-                ctx.plugin().getLogger().warning(
-                        "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: " + t);
+                // Left unscheduled on purpose: the next tryUse* retries; the WARN fires once.
+                if (!sweepWarned) {
+                    sweepWarned = true;
+                    ctx.plugin().getLogger().warning(
+                            "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: " + t);
+                }
             }
-            sweepScheduled = true;
         }
     }
 

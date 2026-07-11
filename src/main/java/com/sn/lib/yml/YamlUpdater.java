@@ -478,6 +478,22 @@ public final class YamlUpdater {
         return n;
     }
 
+    /**
+     * Strips one pair of balanced quotes wrapping the whole key ({@code 'foo'} or
+     * {@code "foo"} become {@code foo}); anything else is returned untouched. Used only
+     * for comparison: inserted lines always keep the textual form of the resource.
+     */
+    private static String unquoteKey(String key) {
+        if (key.length() >= 2) {
+            char first = key.charAt(0);
+            char last = key.charAt(key.length() - 1);
+            if (first == last && (first == '\'' || first == '"')) {
+                return key.substring(1, key.length() - 1);
+            }
+        }
+        return key;
+    }
+
     private static int findUnquotedColon(String s) {
         char quote = 0;
         for (int j = 0; j < s.length(); j++) {
@@ -544,8 +560,9 @@ public final class YamlUpdater {
             if (k == null) {
                 return null;
             }
+            String wanted = unquoteKey(k);
             for (Node c : children) {
-                if (k.equals(c.key)) {
+                if (wanted.equals(unquoteKey(c.key))) {
                     return c;
                 }
             }

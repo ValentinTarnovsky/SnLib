@@ -3,7 +3,7 @@
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
 > Cobertura: todas las clases de `src/main/java/com/sn/lib` (106 archivos java), recursos, build y tests (12 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 134 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 137 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -273,11 +273,11 @@ Puntos version-sensibles reales documentados en el Javadoc de la clase:
 - `ItemFlag.HIDE_ADDITIONAL_TOOLTIP` (alias del legacy `HIDE_POTION_EFFECTS`).
 
 Metodos publicos:
-- `public static @Nullable Method probe(Class<?> owner, String name, Class<?>... params)` - lookup reflectivo de un metodo publico via `owner.getMethod(name, params)`, hecho una sola vez, cacheando tanto el hit como el miss. Devuelve el `Method` o null cuando falta en este server (un WARN, miss cacheado). `owner` debe ser una clase de la API del server o del JDK.
+- `public static @Nullable Method probe(Class<?> owner, String name, Class<?>... params)` - lookup reflectivo de un metodo publico via `owner.getMethod(name, params)`, hecho una sola vez, cacheando tanto el hit como el miss. La key de cache incluye los tipos de parametros, asi que dos overloads del mismo nombre nunca colisionan. Devuelve el `Method` o null cuando falta en este server (un WARN, miss cacheado). `owner` debe ser una clase de la API del server o del JDK.
 - `public static <T> T since(int minor, Supplier<T> modern, Supplier<T> fallback)` - gate por version: devuelve `modern.get()` cuando `SnVersion.supports(minor)`, si no `fallback.get()` con un WARN por call site. El WARN reporta: `API de 1.<minor>+ no disponible en <MAJOR>.<MINOR>.<PATCH>; usando fallback`.
 
 Logica interna:
-- `CACHE` (`ConcurrentHashMap<String, Method>`): hits cacheados, key `owner.getName() + "#" + name` (los tipos de parametros NO forman parte de la key, ver gotchas).
+- `CACHE` (`ConcurrentHashMap<String, Method>`): hits cacheados, key `owner.getName() + "#" + name + "(" + tipos de parametros unidos por "," + ")"` (ej `org.bukkit.inventory.meta.ItemMeta#setMaxStackSize(java.lang.Integer)`); la misma key se usa en `MISSING` y como tag del `warnOnce` del miss.
 - `MISSING` (`ConcurrentHashMap.newKeySet()`): keys probeadas y no encontradas en este server. Existe como set separado porque un `ConcurrentHashMap` no puede contener valores null, asi que el centinela de miss vive aca.
 - `WARNED` (`ConcurrentHashMap.newKeySet()`): tags ya avisados; `warnOnce(tag, message)` solo loguea `[SnLib] <message>` via `Bukkit.getLogger().warning(...)` si `WARNED.add(tag)` es true (primera vez).
 - `private static boolean isForeignPluginClass(Class<?> owner)` - guard de classloader del probe. Chequeo basado en nombre: devuelve false si el loader de `owner` es null (clases del JDK/bootstrap) o es el mismo classloader de `SnCompat` (clases de SnLib). Si no, recorre la jerarquia de clases del loader (`getClass()` y superclases) buscando un nombre que termine en `PluginClassLoader`; true si lo encuentra. Cubre tanto `org.bukkit.plugin.java.PluginClassLoader` como el `PaperPluginClassLoader` de Paper sin referenciar API interna del server.
@@ -289,7 +289,7 @@ Guard de classloader del probe (detalle):
 - Motivo (del Javadoc): un `Method` retiene su `Class` declarante y por lo tanto su `PluginClassLoader`; cachearlo en el estatico `CACHE` de SnLib leakearia el classloader del plugin consumidor a traves de reloads.
 
 Notas y gotchas:
-- La key de cache de `probe` es solo `owner#nombre`, sin los tipos de parametros: dos probes del mismo nombre de metodo con firmas distintas sobre la misma clase colisionan en cache (el segundo devuelve el `Method` cacheado del primero, o el miss cacheado). En la practica los puntos version-sensibles conocidos no tienen overloads probeados, pero es una limitacion real del diseño actual.
+- La key de cache de `probe` incluye los tipos de parametros (`owner#nombre(tipos)`), asi que dos probes del mismo nombre de metodo con firmas distintas sobre la misma clase cachean por separado y nunca colisionan.
 - El rechazo por classloader ajeno NO se cachea a proposito (solo se dedupea el WARN via `WARNED`): cada llamada re-evalua el guard y devuelve null, evitando retener referencias al loader ajeno.
 - Threading: todo el estado es `ConcurrentHashMap` / `newKeySet()`, por lo que `probe`, `since` y `warnOnce` son seguros desde cualquier thread. `Bukkit.getLogger()` tambien es thread-safe. No hay requerimiento de main thread en este modulo.
 - `since` evalua `fallback.get()` (o `modern.get()`) de forma lazy via `Supplier`, asi el branch no tomado nunca se construye.
@@ -297,7 +297,7 @@ Notas y gotchas:
 - Estaticos server-wide permitidos por el contrato de SnLib: los resultados de probe describen al server, no a un consumidor.
 
 TODOs y limitaciones:
-- Ninguno (no hay TODO/FIXME/placeholder en los archivos del alcance). Limitaciones de diseño ya notadas arriba: key de cache de `probe` sin tipos de parametros, y `probe` limitado a metodos publicos de clases de API del server/JDK.
+- Ninguno (no hay TODO/FIXME/placeholder en los archivos del alcance). Limitacion de diseño ya notada arriba: `probe` limitado a metodos publicos de clases de API del server/JDK.
 
 ---
 
@@ -569,7 +569,7 @@ Constantes (privadas): `BACKUP_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHm
 
 #### Logica interna: algoritmo Node / insertions
 
-Parser propio (`parse(List<String>)`) que construye un arbol de `Node` (clase interna privada: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `children`, y `findChild(String)` por igualdad literal de key). Recorre linea a linea con un stack:
+Parser propio (`parse(List<String>)`) que construye un arbol de `Node` (clase interna privada: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `children`, y `findChild(String)` que compara keys normalizadas via `unquoteKey`: una key envuelta en comillas balanceadas `'...'` o `"..."` cuenta igual que la misma sin comillas). Recorre linea a linea con un stack:
 
 - Lineas vacias o de comentario acumulan `pendingCommentStart`: los comentarios que preceden a una key forman parte de su bloque (`blockStart`), y tambien marcan el limite (`boundary`) al cerrar bloques anteriores, asi un comentario "cuelga" de la key que le sigue y no de la anterior.
 - Items de lista (`- ` o `-` solo) se saltean: son parte del VALOR del nodo actual; los comentarios encima quedan adjuntos a lo que originalmente encabezaban (tipicamente la key padre).
@@ -600,7 +600,7 @@ Prune (`collectRemovals`): espejo del merge - cada hijo del DISCO ausente del re
 - Sin `config-version`: la comparacion es estructural contra el recurso en cada arranque; agregar una key al recurso del jar alcanza para que llegue a todos los servers.
 - El gate se chequea DESPUES de calcular el resultado y solo si difiere: un arranque sin cambios no loguea nada aunque el gate este en false.
 - La exencion del config propio existe para que la key `update-configs` misma pueda llegar por merge en el primer arranque post-upgrade.
-- `findChild` compara keys por texto literal: una key quoted (`"a":`) y la misma sin quotes cuentan como distintas.
+- `findChild` compara keys normalizando el quoting (`unquoteKey`): `foo`, `'foo'` y `"foo"` cuentan como la misma key tanto en el plan de inserciones como en el prune. La normalizacion es SOLO para comparar: al insertar se copia verbatim la forma textual del recurso y las lineas existentes en disco jamas se reformatean.
 - Limitacion documentada en el Javadoc: la indentacion se asume con espacios y consistente entre recurso y disco (ambos salen del mismo baseline del plugin).
 
 ### YmlManager
@@ -622,14 +622,14 @@ Constantes (privadas): `GATE_KEY = "update-configs"`, `GATE_COMMENT = "# Master 
 
 #### Logica interna
 - `mountConfig()` (privado): llama `YamlUpdater.update(plugin, configPath, disk, false, null, true)` - gate null y `gateExempt=true`: el config propio SIEMPRE mergea. Despues `ensureGateKey(disk)` y registra la entry con `isConfig=true`.
-- `mount(String rawPath, Mode mode, boolean prune)` (privado): normaliza el path y, bajo lock, si ya existe una entry para ese path devuelve su `SnYml` SIN re-ejecutar nada: el modo lo decide el PRIMER mount de cada path; un mount posterior con otro modo devuelve silenciosamente la instancia existente. Para MANAGED corre `YamlUpdater.update(..., prune, gateFile(), false)` (sujeto al gate), para SEED_ONLY `seedIfMissing`, para PLAIN nada.
+- `mount(String rawPath, Mode mode, boolean prune)` (privado): normaliza el path y, bajo lock, si ya existe una entry para ese path devuelve su `SnYml` SIN re-ejecutar nada: el modo lo decide el PRIMER mount de cada path. Un mount posterior con otro modo (o distinto prune) devuelve la instancia existente y loguea un WARN unico por path (`yml '<path>' ya montado en modo <MODO>; se ignora el modo <MODO>`, con nombres `MANAGED`/`MANAGED_PRUNING`/`SEED_ONLY`/`PLAIN` via el helper `describe`, dedup en el set `modeConflictWarned` accedido bajo el lock de `entries`). Para MANAGED corre `YamlUpdater.update(..., prune, gateFile(), false)` (sujeto al gate), para SEED_ONLY `seedIfMissing`, para PLAIN nada.
 - `ensureGateKey(File disk)` (privado): garantiza que `update-configs` exista en el config de DISCO. Si el archivo no existe, lo crea con solo el comentario y `update-configs: true`. Si existe, lo parsea (preprocesado); si la key ya esta, no toca nada; si falta, APPENDEA al final una linea en blanco (solo si la ultima linea no esta vacia), el `GATE_COMMENT` y `update-configs: true`. Errores de I/O o parseo -> WARN "No se pudo seedear la key update-configs en <file>: <msg>".
 - `gateFile()` / `fileFor(String)` (privados): resuelven archivos contra `ctx.plugin().getDataFolder()`; el gate es el config declarado en el spec, no un `config.yml` hardcodeado.
 - `normalize(String)` (privado estatico): backslashes a `/` y recorta slashes iniciales, para que `"gui\\menu.yml"` y `"/gui/menu.yml"` keyeen igual.
 - `snapshot()` (privado): copia de las entries bajo lock para iterar sin retener el monitor.
 
 #### Notas y gotchas
-- El modo de un archivo queda clavado en el primer mount: pedir `managed("x.yml")` y despues `data("x.yml")` devuelve el mismo `SnYml` managed sin warning.
+- El modo de un archivo queda clavado en el primer mount: pedir `managed("x.yml")` y despues `data("x.yml")` devuelve el mismo `SnYml` managed, con un WARN unico por path que hace visible el conflicto (el comportamiento no cambia: el primer mount manda).
 - En `reloadAll` el merge del config corre antes que el de los demas archivos porque `entries` es `LinkedHashMap` y el config se inserta en el constructor: el valor fresco de `update-configs` (incluso recien mergeado) gobierna el resto del ciclo.
 - `ensureGateKey` escribe el archivo directo (append de lineas), no via `SnYml.save()`: ocurre antes de crear el `SnYml` del config.
 
@@ -638,10 +638,10 @@ Constantes (privadas): `GATE_KEY = "update-configs"`, `GATE_COMMENT = "# Master 
 No hay marcadores TODO/FIXME/XXX en los archivos del alcance. Limitaciones documentadas en el codigo/Javadoc:
 
 - `YamlUpdater`: asume indentacion con espacios y consistente entre recurso y disco (ambos provienen del mismo baseline del plugin); no maneja tabs en el algoritmo de merge (eso lo cubre el preprocesador en la LECTURA, no en el merge de lineas).
-- `YamlUpdater.parse`: los items de lista se tratan como valor del nodo actual, por lo que los comentarios encima de un item de lista quedan adjuntos a la key padre; las keys se comparan por texto literal (quoted vs unquoted son distintas).
+- `YamlUpdater.parse`: los items de lista se tratan como valor del nodo actual, por lo que los comentarios encima de un item de lista quedan adjuntos a la key padre; las keys se comparan normalizando el quoting balanceado (quoted vs unquoted cuentan igual).
 - `YamlPreprocessor`: el digito de indentacion de un block scalar (`|2`) se acepta pero no se usa para calcular el indent del contenido; la deteccion es relativa al indent de la linea header.
 - `YamlUpdater.update` / `YmlManager.mount` / `reloadAll`: I/O sincrona por diseño, valida solo en onEnable y en el comando reload (excepcion documentada a la regla de I/O async).
-- `YmlManager.mount`: el modo queda fijado por el primer mount del path; mounts posteriores con otro modo no advierten ni re-ejecutan merges.
+- `YmlManager.mount`: el modo queda fijado por el primer mount del path; mounts posteriores con otro modo no re-ejecutan merges (advierten con un WARN unico por path).
 
 ---
 
@@ -733,19 +733,24 @@ Los valores default usan color codes legacy `&` (ej. `&cYou do not have permissi
 
 `src/main/java/com/sn/lib/debug/SnDebug.java`
 
-Servicio de debug en runtime de un contexto consumidor (clase `public final`), alcanzado via `sn.debug()`: toggleable sin restart, con categorias string, suppliers lazy y persistencia de cada toggle. El output va al logger del server con el prefijo `[<PluginName>][DEBUG] `.
+Servicio de debug en runtime de un contexto consumidor (clase `public final`), alcanzado via `sn.debug()`: toggleable sin restart, con categorias string, suppliers lazy y persistencia de cada toggle. El output va al logger del server prefijado por canal: `info` emite con `[<PluginName>][INFO] `, `log` con `[<PluginName>][DEBUG] ` y `trace` con `[<PluginName>][TRACE] `.
 
 Enum publico:
 
-- `public enum Level { OFF, INFO, DEBUG, TRACE }` - Umbral de verbosidad. Las llamadas a `log` emiten a severidad `DEBUG`: `OFF` e `INFO` las silencian, `DEBUG` y `TRACE` las dejan pasar.
+- `public enum Level { OFF, INFO, DEBUG, TRACE }` - Umbral de verbosidad, escalera creciente `OFF < INFO < DEBUG < TRACE`. Cada canal emite desde su escalon: `info` desde `INFO`, `log` desde `DEBUG` y `trace` solo en `TRACE`; `OFF` silencia todos los canales.
 
 Metodos publicos:
 
-- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: arma el prefijo y, si hay yml de respaldo (el config principal montado), restaura `debug.enabled` (default false), `debug.level` (default `DEBUG`; valor invalido loguea WARN "Valor invalido en debug.level: 'X', usando DEBUG" y usa `DEBUG`) y `debug.categories` (normalizadas a lowercase trim). Con storage null los toggles viven solo en memoria.
+- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: arma los tres prefijos (`[Plugin][INFO] `/`[Plugin][DEBUG] `/`[Plugin][TRACE] `) y, si hay yml de respaldo (el config principal montado), restaura `debug.enabled` (default false), `debug.level` (default `DEBUG`; valor invalido loguea WARN "Valor invalido en debug.level: 'X', usando DEBUG" y usa `DEBUG`) y `debug.categories` (normalizadas a lowercase trim). Con storage null los toggles viven solo en memoria.
+- `public void info(String message)` - Loguea en el canal INFO cuando el master toggle esta encendido y el nivel es al menos `INFO`.
+- `public void info(Supplier<String> message)` - Variante lazy del canal INFO (el supplier no se evalua si el canal no emite).
 - `public void log(String message)` - Loguea el mensaje cuando el output de debug esta habilitado.
 - `public void log(Supplier<String> message)` - Construye y loguea el mensaje lazy, SOLO si el output esta habilitado (el supplier no se evalua si esta apagado).
 - `public void log(String category, Supplier<String> message)` - Construye y loguea lazy bajo una categoria, honrando el filtro de categorias; el output se prefija ademas con `[<categoria normalizada>] `.
+- `public void trace(Supplier<String> message)` - Variante lazy del canal TRACE: emite solo con master toggle encendido y nivel `TRACE`.
+- `public void trace(String category, Supplier<String> message)` - Canal TRACE bajo categoria, honrando el MISMO filtro de categorias que `log(category, ...)` (filtro vacio deja pasar todo); el output se prefija ademas con `[<categoria normalizada>] `.
 - `public boolean enabled()` - True mientras se emite output: master toggle encendido y nivel al menos `DEBUG` (comparacion por `ordinal()`).
+- `public boolean tracing()` - True mientras el canal TRACE emite: master toggle encendido y nivel `TRACE` (analogo a `enabled()`).
 - `public boolean enabled(String category)` - True cuando la categoria pasa: `enabled()` y filtro vacio o conteniendo la categoria (normalizada).
 - `public boolean toggle()` - Invierte el master toggle, lo persiste y devuelve el nuevo estado.
 - `public boolean toggle(String category)` - Agrega la categoria al filtro, o la quita si ya estaba, y persiste. Devuelve true cuando la categoria quedo dentro del filtro; un filtro vacio deja pasar toda categoria.
@@ -754,14 +759,15 @@ Metodos publicos:
 
 #### Logica interna
 
-- `private void print(String message)` - Emite via `Bukkit.getLogger().info(prefix + message)`: el logger GLOBAL del server, no el logger del plugin, y a severidad INFO de java.util.logging (el "DEBUG" es parte del prefijo textual).
+- `private void print(String prefix, String message)` - Emite via `Bukkit.getLogger().info(prefix + message)`: el logger GLOBAL del server, no el logger del plugin, y siempre a severidad INFO de java.util.logging (el "INFO"/"DEBUG"/"TRACE" es parte del prefijo textual del canal).
+- `private boolean infoEnabled()` - Gate interno del canal INFO: master toggle encendido y nivel al menos `INFO`.
 - `private void persist()` - No-op sin storage. Con storage escribe `debug.enabled`, `debug.level` (nombre del enum) y `debug.categories` (lista ordenada alfabeticamente) via `SnYml.set` mas `SnYml.save()`. Segun el Javadoc de la clase, el save es coalesced async en runtime y sincronico cuando el contexto dueño esta en shutdown.
 - `private Level parseLevel(String raw)` - `Level.valueOf` sobre el valor trim + uppercase `Locale.ROOT`; invalido cae a `DEBUG` con WARN en el logger del plugin.
 - `private static String normalize(String category)` - Trim + lowercase `Locale.ROOT`; se aplica en toda entrada y consulta de categorias.
 
 #### Notas y gotchas
 
-- Nivel `INFO` es contraintuitivo: como TODA llamada a `log` emite a severidad `DEBUG`, el nivel `INFO` silencia el output igual que `OFF`. En la practica hoy solo hay dos estados efectivos para `log`: {OFF, INFO} silencioso vs {DEBUG, TRACE} emitiendo; `TRACE` no habilita hoy ningun output adicional respecto de `DEBUG`.
+- Tres canales con umbrales reales: `info` emite desde `INFO`, `log` desde `DEBUG` y `trace` solo en `TRACE`. En nivel `INFO` solo emite `info`; en `DEBUG` emiten `info` y `log`; en `TRACE` emiten los tres; `OFF` silencia todo.
 - El filtro de categorias vacio significa "todo pasa"; agregar la primera categoria con `toggle(String)` ANGOSTA el output a solo las filtradas.
 - Las categorias se normalizan (trim + lowercase) tanto al persistir/togglear como al consultar, asi que el matching es case-insensitive.
 - Estado thread-safe: `enabled` y `level` son `volatile`, las categorias viven en un set concurrente (`ConcurrentHashMap.newKeySet()`); `log` puede llamarse desde cualquier hilo, y `persist()` delega el costo de I/O al save coalesced de `SnYml`.
@@ -769,7 +775,7 @@ Metodos publicos:
 
 #### TODOs y limitaciones
 
-Ninguno. No hay marcadores TODO/FIXME/placeholder en `SnLang.java`, `SnDebug.java` ni `snlib-messages.yml`. Limitaciones documentadas en el propio codigo: el I/O sincronico de SnLang es deliberado (confinado a onEnable/reload), y en SnDebug el nivel `TRACE` no agrega hoy verbosidad extra sobre `DEBUG` porque toda llamada a `log` emite a severidad `DEBUG`.
+Ninguno. No hay marcadores TODO/FIXME/placeholder en `SnLang.java`, `SnDebug.java` ni `snlib-messages.yml`. Limitacion documentada en el propio codigo: el I/O sincronico de SnLang es deliberado (confinado a onEnable/reload).
 
 ---
 
@@ -1526,12 +1532,12 @@ Store de cooldowns per-contexto, keyed por categoria y jugador. El estado es `Ma
 
 - Politica de relog: las entradas no expiradas NUNCA se dropean cuando un jugador hace quit, asi un relog no resetea cooldowns. La unica excepcion explicita son las categorias registradas via `registerSessionCategory`, limpiadas en quit/kick por el quit cleanup listener.
 - `tryUseMillis` (privado): con `cooldownMillis <= 0` devuelve true directo. El arme es atomico via `entries.compute(player, ...)`: si existe una expiry vigente (`expiry[0] > now`) gana la existente y devuelve false; si no, gana el array nuevo `armed` y devuelve true (comparacion por identidad `winner == armed`).
-- `ensureSweepScheduled` (privado): double-checked (volatile + synchronized) y no agenda si el contexto esta en shutdown. Agenda `ctx.scheduler().timerAsync(SWEEP_PERIOD_TICKS, SWEEP_PERIOD_TICKS, this::sweepExpired)` en el primer uso; si falla, WARN "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: ..." y `sweepScheduled` queda en true igual (no reintenta).
+- `ensureSweepScheduled` (privado): double-checked (volatile + synchronized) y no agenda si el contexto esta en shutdown. Agenda `ctx.scheduler().timerAsync(SWEEP_PERIOD_TICKS, SWEEP_PERIOD_TICKS, this::sweepExpired)` en el primer uso; `sweepScheduled` pasa a true SOLO tras agendar con exito. Si falla, `sweepScheduled` queda en false (el proximo `tryUse*` reintenta agendar) y el WARN "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: ..." se emite una unica vez (flag `sweepWarned`, accedido solo bajo `synchronized(this)`; `clearAll` lo resetea junto con `sweepScheduled`).
 - `sweepExpired` (privado, corre ASYNC cada 5 minutos): `removeIf(expiry -> expiry[0] <= now)` sobre cada categoria. Seguro porque los maps son `ConcurrentHashMap`.
 
 #### Notas y gotchas
 
-- Doble estrategia de purga: lazy en lectura (`remainingMillis`) mas sweep async periodico; si el sweep no pudo agendarse, queda solo la purga lazy.
+- Doble estrategia de purga: lazy en lectura (`remainingMillis`) mas sweep async periodico; si el sweep no pudo agendarse, queda la purga lazy y el proximo `tryUse*` reintenta agendar (WARN unico).
 - El `long[]` de un elemento es una decision deliberada de performance: evita el boxing `Long` en el hot path de `tryUse`/`remainingMillis` y a la vez da una identidad de objeto para el CAS logico de `compute` y el `remove` condicionado.
 
 ### ReloadManager
@@ -1592,7 +1598,7 @@ No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitac
 - Un reload NUNCA recarga clases: actualizar SnLib.jar requiere restart del server (`ReloadManager`).
 - El I/O sincronico del reload se acepta solo por ser comando administrativo; no debe correr durante gameplay (`ReloadManager`).
 - Un jugador kickeado dispara kick y quit: los callbacks de `QuitCleanupListener.register` deben ser idempotentes.
-- Si el sweep async de `Cooldowns` no puede agendarse, no se reintenta: queda solo la purga lazy en lectura.
+- Si el sweep async de `Cooldowns` no puede agendarse, queda la purga lazy en lectura y el proximo `tryUse*` reintenta agendar; el WARN se emite una sola vez.
 - Cuando el scheduler no esta disponible (carrera de shutdown del server), la red diferida de 1 tick del `TenantSweeper` se aborta en silencio y los restos quedan a cargo de la cascada de SnLib.
 - La API de open-view del jugador esta prohibida en la codebase por incompatibilidad binaria 1.20.4/1.21; la deteccion de inventarios abiertos se hace recorriendo los `OwnedHolder` trackeados.
 
@@ -3046,9 +3052,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (12 suites, 134 tests, verdes)
+### Suites de tests (12 suites, 137 tests, verdes)
 
-Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 134 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 137 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3232,7 +3238,7 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 
 ### YamlUpdaterTest
 `src/test/java/com/sn/lib/YamlUpdaterTest.java`
-9 tests golden sobre `com.sn.lib.yml.YamlUpdater` (`merge(List<String>, List<String>)`, `prune(List<String>, List<String>)`, `isParseable(String)`): el updater always-merge de configs. Contrato probado: las keys faltantes aterrizan CON sus comentarios en la posicion anclada, los valores del usuario y sus keys extra quedan intactos, y no existe ninguna key de version marker. Todas las aserciones comparan `List<String>` (texto linea a linea, no arboles parseados). Fixtures: `merge-resource.yml`, `merge-old.yml`, `merge-expected.yml`, `corrupt.yml`.
+12 tests golden sobre `com.sn.lib.yml.YamlUpdater` (`merge(List<String>, List<String>)`, `prune(List<String>, List<String>)`, `isParseable(String)`): el updater always-merge de configs. Contrato probado: las keys faltantes aterrizan CON sus comentarios en la posicion anclada, los valores del usuario y sus keys extra quedan intactos, no existe ninguna key de version marker, y el quoting de keys se normaliza al comparar. Todas las aserciones comparan `List<String>` (texto linea a linea, no arboles parseados). Fixtures: `merge-resource.yml`, `merge-old.yml`, `merge-expected.yml`, `corrupt.yml`.
 
 - `void mergeMatchesGoldenExpected()` - el merge del resource nuevo sobre el disk viejo reproduce byte a byte el golden `merge-expected.yml`.
 - `void mergePreservesUserValuesAndExtraKeys()` - valores del usuario (`rows: 3`, titulo custom, prefix) y su key extra `custom-flag` sobreviven.
@@ -3243,6 +3249,9 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 - `void mergeIsIdempotentOnUpToDateFile()` - merge sobre un archivo ya actualizado es idempotente (igual al expected).
 - `void mergedResultHasNoVersionMarkerAndStaysParseable()` - el resultado no contiene `config-version` en ninguna linea y es YAML parseable.
 - `void corruptYamlIsDetectedAsUnparseable()` - `isParseable` detecta el fixture corrupto como invalido y el fixture sano como valido.
+- `void quotedAndUnquotedKeysCompareEqualOnMerge()` - recurso `foo: 1` contra disco `'foo': 2`: el merge no inserta nada y el valor de disco queda intacto.
+- `void quotedResourceKeyInsertsWithItsTextualForm()` - una key quoted del recurso (`"bar": 3`) ausente en disco se inserta conservando las comillas del recurso.
+- `void pruneKeepsKeyWhenOnlyQuotingDiffers()` - prune con recurso `foo:` y disco `"foo":` no borra el bloque (solo difiere el quoting).
 
 ### Smoke gate de runtime
 
@@ -3265,4 +3274,4 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 134 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 137 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest).

@@ -6,9 +6,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -20,7 +22,8 @@ import com.sn.lib.Sn;
  * {@link SnYml} of the plugin, keyed by path relative to the data folder, and mounts
  * the managed main config at construction.
  *
- * <p>File modes, decided by the FIRST mount of each path:</p>
+ * <p>File modes, decided by the FIRST mount of each path; re-mounting a path with a
+ * different mode returns the existing instance and logs one WARN per path:</p>
  * <ul>
  *   <li>{@link #managed}: seeded from the jar when absent and always-merged through
  *       {@link YamlUpdater} on every mount and reload, gated by {@code update-configs}.</li>
@@ -50,6 +53,7 @@ public final class YmlManager {
     private final Sn ctx;
     private final String configPath;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
+    private final Set<String> modeConflictWarned = new HashSet<>();
     private final SnYml config;
 
     /**
@@ -140,6 +144,12 @@ public final class YmlManager {
         synchronized (entries) {
             Entry existing = entries.get(path);
             if (existing != null) {
+                if ((existing.mode() != mode || existing.prune() != prune)
+                        && modeConflictWarned.add(path)) {
+                    ctx.plugin().getLogger().warning("yml '" + path + "' ya montado en modo "
+                            + describe(existing.mode(), existing.prune())
+                            + "; se ignora el modo " + describe(mode, prune));
+                }
                 return existing.yml();
             }
             File disk = fileFor(path);
@@ -152,6 +162,14 @@ public final class YmlManager {
             entries.put(path, new Entry(yml, path, mode, prune, false));
             return yml;
         }
+    }
+
+    /** Human-readable mode name for the mount conflict WARN. */
+    private static String describe(Mode mode, boolean prune) {
+        if (mode == Mode.MANAGED) {
+            return prune ? "MANAGED_PRUNING" : "MANAGED";
+        }
+        return mode == Mode.SEED_ONLY ? "SEED_ONLY" : "PLAIN";
     }
 
     /**

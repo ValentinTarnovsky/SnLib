@@ -19,11 +19,13 @@ import com.sn.lib.yml.SnYml;
  * toggleable without restart, with string categories, lazy message suppliers and
  * persistence of every toggle.
  *
- * <p>Output goes to the server logger with the prefix {@code [<PluginName>][DEBUG]}.
- * Every {@link #log} call emits at {@code DEBUG} severity, so output flows only while
- * the master toggle is on and the level is {@code DEBUG} or {@code TRACE}. The category
- * filter is empty by default, which lets every category through; toggling a category in
- * narrows the output to the filtered ones.</p>
+ * <p>Output goes to the server logger, prefixed per channel: {@link #info} emits with
+ * {@code [<PluginName>][INFO]}, {@link #log} with {@code [<PluginName>][DEBUG]} and
+ * {@link #trace} with {@code [<PluginName>][TRACE]}. A channel flows only while the
+ * master toggle is on and the level reaches its severity ({@code INFO} for info,
+ * {@code DEBUG} for log, {@code TRACE} for trace). The category filter is empty by
+ * default, which lets every category through; toggling a category in narrows the
+ * output to the filtered ones.</p>
  *
  * <p>Persistence: state is read from {@code debug.enabled}, {@code debug.level} and
  * {@code debug.categories} of the backing yml, and every toggle writes back through
@@ -34,8 +36,10 @@ import com.sn.lib.yml.SnYml;
 public final class SnDebug {
 
     /**
-     * Verbosity threshold. {@link #log} calls emit at {@code DEBUG} severity: {@code OFF}
-     * and {@code INFO} silence them, {@code DEBUG} and {@code TRACE} let them through.
+     * Verbosity threshold, an escalating ladder: {@code OFF < INFO < DEBUG < TRACE}.
+     * Each channel emits from its own step up: {@link #info} from {@code INFO},
+     * {@link #log} from {@code DEBUG} and {@link #trace} only at {@code TRACE}.
+     * {@code OFF} silences every channel.
      */
     public enum Level { OFF, INFO, DEBUG, TRACE }
 
@@ -45,7 +49,9 @@ public final class SnDebug {
 
     private final JavaPlugin plugin;
     private final @Nullable SnYml storage;
-    private final String prefix;
+    private final String prefixInfo;
+    private final String prefixDebug;
+    private final String prefixTrace;
     private final Set<String> categories = ConcurrentHashMap.newKeySet();
 
     private volatile boolean enabled;
@@ -61,7 +67,9 @@ public final class SnDebug {
     public SnDebug(JavaPlugin plugin, @Nullable SnYml storage) {
         this.plugin = plugin;
         this.storage = storage;
-        this.prefix = "[" + plugin.getName() + "][DEBUG] ";
+        this.prefixInfo = "[" + plugin.getName() + "][INFO] ";
+        this.prefixDebug = "[" + plugin.getName() + "][DEBUG] ";
+        this.prefixTrace = "[" + plugin.getName() + "][TRACE] ";
         if (storage != null) {
             this.enabled = storage.getBoolean(KEY_ENABLED, false);
             this.level = parseLevel(storage.getString(KEY_LEVEL, Level.DEBUG.name()));
@@ -71,30 +79,67 @@ public final class SnDebug {
         }
     }
 
+    /** Logs the message on the INFO channel when the level is at least {@code INFO}. */
+    public void info(String message) {
+        if (infoEnabled()) {
+            print(prefixInfo, message);
+        }
+    }
+
+    /** Builds and logs the message lazily on the INFO channel. */
+    public void info(Supplier<String> message) {
+        if (infoEnabled()) {
+            print(prefixInfo, message.get());
+        }
+    }
+
     /** Logs the message when debug output is enabled. */
     public void log(String message) {
         if (enabled()) {
-            print(message);
+            print(prefixDebug, message);
         }
     }
 
     /** Builds and logs the message lazily, only when debug output is enabled. */
     public void log(Supplier<String> message) {
         if (enabled()) {
-            print(message.get());
+            print(prefixDebug, message.get());
         }
     }
 
     /** Builds and logs the message lazily under a category, honoring the category filter. */
     public void log(String category, Supplier<String> message) {
         if (enabled(category)) {
-            print("[" + normalize(category) + "] " + message.get());
+            print(prefixDebug, "[" + normalize(category) + "] " + message.get());
+        }
+    }
+
+    /** Builds and logs the message lazily on the TRACE channel, only at {@code TRACE}. */
+    public void trace(Supplier<String> message) {
+        if (tracing()) {
+            print(prefixTrace, message.get());
+        }
+    }
+
+    /**
+     * Builds and logs the message lazily on the TRACE channel under a category, honoring
+     * the same category filter as {@link #log(String, Supplier)}: an empty filter lets
+     * every category through.
+     */
+    public void trace(String category, Supplier<String> message) {
+        if (tracing() && (categories.isEmpty() || categories.contains(normalize(category)))) {
+            print(prefixTrace, "[" + normalize(category) + "] " + message.get());
         }
     }
 
     /** True while output is emitted: master toggle on and level at least {@code DEBUG}. */
     public boolean enabled() {
         return enabled && level.ordinal() >= Level.DEBUG.ordinal();
+    }
+
+    /** True while the TRACE channel emits: master toggle on and level at {@code TRACE}. */
+    public boolean tracing() {
+        return enabled && level.ordinal() >= Level.TRACE.ordinal();
     }
 
     /** True when the category passes: {@link #enabled()} and filter empty or containing it. */
@@ -135,7 +180,11 @@ public final class SnDebug {
         return level;
     }
 
-    private void print(String message) {
+    private boolean infoEnabled() {
+        return enabled && level.ordinal() >= Level.INFO.ordinal();
+    }
+
+    private void print(String prefix, String message) {
         Bukkit.getLogger().info(prefix + message);
     }
 

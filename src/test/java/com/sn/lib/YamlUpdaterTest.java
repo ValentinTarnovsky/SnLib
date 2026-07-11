@@ -105,6 +105,28 @@ class YamlUpdaterTest {
         assertTrue(YamlUpdater.isParseable(String.join("\n", fixture("merge-old.yml"))));
     }
 
+    @Test
+    void quotedAndUnquotedKeysCompareEqualOnMerge() {
+        List<String> resource = List.of("foo: 1");
+        List<String> disk = List.of("'foo': 2");
+        assertEquals(disk, YamlUpdater.merge(resource, disk));
+    }
+
+    @Test
+    void quotedResourceKeyInsertsWithItsTextualForm() {
+        List<String> resource = List.of("foo: 1", "\"bar\": 3");
+        List<String> disk = List.of("foo: 1");
+        List<String> merged = YamlUpdater.merge(resource, disk);
+        assertEquals(List.of("foo: 1", "\"bar\": 3"), merged);
+    }
+
+    @Test
+    void pruneKeepsKeyWhenOnlyQuotingDiffers() {
+        List<String> resource = List.of("foo:", "  bar: 1");
+        List<String> disk = List.of("\"foo\":", "  bar: 1");
+        assertEquals(disk, YamlUpdater.prune(resource, disk));
+    }
+
     private static List<String> fixture(String name) throws IOException {
         try (InputStream in = YamlUpdaterTest.class.getResourceAsStream("/yml/" + name)) {
             if (in == null) {
