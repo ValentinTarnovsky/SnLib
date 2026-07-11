@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -13,16 +15,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Registry;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -35,6 +41,7 @@ import net.kyori.adventure.title.Title;
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
 import com.sn.lib.gui.Gui;
+import com.sn.lib.item.ItemRegistry;
 import com.sn.lib.text.SnText;
 import com.sn.lib.util.SoundUtil;
 
@@ -60,9 +67,12 @@ import com.sn.lib.util.SoundUtil;
  * {@code [sound] SOUND_ID [vol] [pitch]}, {@code [close]}, {@code [open] gui-id},
  * {@code [connect] servidor}, {@code [next-page]}, {@code [previous-page]},
  * {@code [set-page] n}, {@code [refresh-page]}, {@code [refresh-menu]},
- * {@code [particle] TYPE [count] [offX offY offZ] [extra]},
- * {@code [potion] EFFECT [segundos] [amplifier]} and {@code [remove-item] [n]} (main
- * hand). Page actions delegate to the context {@link PageTarget}; with a null target or
+ * {@code [particle] TYPE [count] [offX offY offZ] [extra] [key=value...]} (options:
+ * {@code color}, {@code size}, {@code to}, {@code block}, {@code item}, matched to the
+ * particle data type), {@code [potion] EFFECT [segundos] [amplifier]} and
+ * {@code [remove-item] [n] [selector]} (default main hand; selectors {@code offhand},
+ * {@code MATERIAL} - which never consumes SnLib-tagged stacks - and
+ * {@code id:<item-id>}). Page actions delegate to the context {@link PageTarget}; with a null target or
  * {@link PageTarget#paginationEnabled()} false they no-op with a debug note (pagination
  * is opt-in per menu). Custom tags via {@link #register}; a registration may override a
  * built-in.</p>
@@ -349,6 +359,12 @@ public final class ActionEngine {
         op.accept(target);
     }
 
+    /**
+     * Handles {@code [particle] TYPE [count] [offX offY offZ] [extra] [key=value...]}.
+     * Tokens containing {@code '='} are options ({@code color}, {@code size}, {@code to},
+     * {@code block}, {@code item}); the rest resolve positionally with the same
+     * thresholds as always (count with 1+, offsets only with 4+, extra with 5+).
+     */
     private void spawnParticle(Player player, String arg) {
         String[] parts = arg.trim().split("\\s+");
         if (parts[0].isEmpty()) {
@@ -359,22 +375,129 @@ public final class ActionEngine {
         if (particle == null) {
             return;
         }
-        int count = parts.length > 1 ? parseInt(parts[1], 1, "particle") : 1;
-        double offX = parts.length > 4 ? parseDouble(parts[2], 0.0, "particle") : 0.0;
-        double offY = parts.length > 4 ? parseDouble(parts[3], 0.0, "particle") : 0.0;
-        double offZ = parts.length > 4 ? parseDouble(parts[4], 0.0, "particle") : 0.0;
-        double extra = parts.length > 5 ? parseDouble(parts[5], 0.0, "particle") : 0.0;
-        Object data = null;
+        List<String> positional = new ArrayList<>();
+        Map<String, String> options = new LinkedHashMap<>();
+        for (int i = 1; i < parts.length; i++) {
+            int eq = parts[i].indexOf('=');
+            if (eq >= 0) {
+                String key = parts[i].substring(0, eq).toLowerCase(Locale.ROOT);
+                options.put(key, parts[i].substring(eq + 1));
+                if (!isParticleOption(key)) {
+                    warnOnce("particle-opt-unknown:" + key,
+                            "Opcion desconocida '" + key + "' en [particle]; se ignora");
+                }
+            } else {
+                positional.add(parts[i]);
+            }
+        }
+        int count = positional.size() >= 1 ? parseInt(positional.get(0), 1, "particle") : 1;
+        double offX = positional.size() >= 4 ? parseDouble(positional.get(1), 0.0, "particle") : 0.0;
+        double offY = positional.size() >= 4 ? parseDouble(positional.get(2), 0.0, "particle") : 0.0;
+        double offZ = positional.size() >= 4 ? parseDouble(positional.get(3), 0.0, "particle") : 0.0;
+        double extra = positional.size() >= 5 ? parseDouble(positional.get(4), 0.0, "particle") : 0.0;
+        Object data;
         Class<?> dataType = particle.getDataType();
-        if (dataType == Particle.DustOptions.class) {
-            data = new Particle.DustOptions(Color.RED, 1.0f);
-        } else if (dataType != Void.class) {
+        if (dataType == Void.class) {
+            data = null;
+            for (String key : options.keySet()) {
+                if (isParticleOption(key)) {
+                    warnOnce("particle-opt:" + parts[0] + ":" + key, "Opcion '" + key
+                            + "' incompatible con la particula '" + parts[0] + "'; se ignora");
+                }
+            }
+        } else if (dataType == Particle.DustOptions.class) {
+            data = new Particle.DustOptions(optionColor(options, "color", Color.RED),
+                    optionSize(options));
+        } else if (dataType == Particle.DustTransition.class) {
+            Color from = optionColor(options, "color", Color.RED);
+            Color to = optionColor(options, "to", from);
+            data = new Particle.DustTransition(from, to, optionSize(options));
+        } else if (dataType == BlockData.class) {
+            Material mat = optionMaterial(options, "block", parts[0], Material::isBlock);
+            if (mat == null) {
+                return;
+            }
+            try {
+                data = mat.createBlockData();
+            } catch (IllegalArgumentException e) {
+                warnOnce("particle-block-data:" + parts[0], "Particula '" + parts[0]
+                        + "' no acepta block data de '" + mat + "'; se ignora");
+                return;
+            }
+        } else if (dataType == ItemStack.class) {
+            Material mat = optionMaterial(options, "item", parts[0], Material::isItem);
+            if (mat == null) {
+                return;
+            }
+            data = new ItemStack(mat);
+        } else {
             warnOnce("particle-data:" + parts[0], "Particula '" + parts[0]
                     + "' requiere datos no soportados; se ignora");
             return;
         }
         player.getWorld().spawnParticle(particle, player.getLocation().add(0.0, 1.0, 0.0),
                 count, offX, offY, offZ, extra, data);
+    }
+
+    private static boolean isParticleOption(String key) {
+        return key.equals("color") || key.equals("size") || key.equals("to")
+                || key.equals("block") || key.equals("item");
+    }
+
+    /** Option {@code key} parsed as a color, or {@code def} when absent or invalid. */
+    private Color optionColor(Map<String, String> options, String key, Color def) {
+        String raw = options.get(key);
+        if (raw == null) {
+            return def;
+        }
+        Color parsed = parseColor(raw, "particle");
+        return parsed == null ? def : parsed;
+    }
+
+    /** Option {@code size} parsed as a float, defaulting to 1.0f when absent or invalid. */
+    private float optionSize(Map<String, String> options) {
+        String raw = options.get("size");
+        return raw == null ? 1.0f : (float) parseDouble(raw, 1.0, "particle");
+    }
+
+    /**
+     * Required material option; a missing key, an unknown material or one rejected by
+     * {@code usable} WARNs once and returns null so the caller skips the line.
+     */
+    private @Nullable Material optionMaterial(Map<String, String> options, String key,
+            String type, Predicate<Material> usable) {
+        String raw = options.get(key);
+        if (raw == null) {
+            warnOnce("particle-" + key + "-missing:" + type,
+                    "Particula '" + type + "' requiere " + key + "=MATERIAL; se ignora");
+            return null;
+        }
+        Material mat = Material.matchMaterial(raw);
+        if (mat == null || !usable.test(mat)) {
+            warnOnce("particle-" + key + ":" + raw, "Material invalido '" + raw + "' en "
+                    + key + "= de [particle]; se ignora");
+            return null;
+        }
+        return mat;
+    }
+
+    /** Parses {@code #RRGGBB} or {@code R,G,B} (0-255); invalid WARNs once and yields null. */
+    private @Nullable Color parseColor(String raw, String tag) {
+        try {
+            if (raw.startsWith("#") && raw.length() == 7) {
+                return Color.fromRGB(Integer.parseInt(raw.substring(1), 16));
+            }
+            String[] rgb = raw.split(",", -1);
+            if (rgb.length == 3) {
+                return Color.fromRGB(Integer.parseInt(rgb[0].trim()),
+                        Integer.parseInt(rgb[1].trim()), Integer.parseInt(rgb[2].trim()));
+            }
+        } catch (IllegalArgumentException invalid) {
+            // cae al warnOnce de abajo
+        }
+        warnOnce("color:" + tag + ":" + raw, "Color invalido '" + raw + "' en accion ["
+                + tag + "]; usando el default");
+        return null;
     }
 
     /**
@@ -437,17 +560,122 @@ public final class ActionEngine {
         return PotionEffectType.getByName(raw);
     }
 
+    /**
+     * Handles {@code [remove-item] [n] [selector]}. No selector keeps the historical
+     * main-hand behavior; {@code offhand} mirrors it, {@code id:<item-id>} deducts
+     * registered stacks of this context and any other token is a Material name that
+     * never consumes SnLib-tagged stacks. Partial removal is allowed in every mode.
+     */
     private void removeItem(Player player, String arg) {
-        int amount = arg.isBlank() ? 1 : parseInt(arg, 1, "remove-item");
-        ItemStack hand = player.getInventory().getItemInMainHand();
+        String trimmed = arg.trim();
+        int amount = 1;
+        String selector = null;
+        if (!trimmed.isEmpty()) {
+            String[] tokens = trimmed.split("\\s+");
+            if (tokens.length == 1) {
+                try {
+                    amount = Integer.parseInt(tokens[0]);
+                } catch (NumberFormatException notANumber) {
+                    selector = tokens[0];
+                }
+            } else {
+                amount = parseInt(tokens[0], 1, "remove-item");
+                selector = tokens[1];
+            }
+        }
+        if (selector == null) {
+            removeFromHand(player, amount, false);
+            return;
+        }
+        if (selector.equalsIgnoreCase("offhand")) {
+            removeFromHand(player, amount, true);
+            return;
+        }
+        if (selector.regionMatches(true, 0, "id:", 0, 3)) {
+            String id = selector.substring(3).trim();
+            if (id.isEmpty() || ctx.items().def(id) == null) {
+                warnOnce("remove-item-id:" + id, "Accion [remove-item] ignorada: item '"
+                        + id + "' no esta registrado");
+                return;
+            }
+            sweepInventory(player, amount, stack -> ctx.items().is(stack, id));
+            return;
+        }
+        Material mat = Material.matchMaterial(selector);
+        if (mat == null || !mat.isItem()) {
+            warnOnce("remove-item-mat:" + selector, "Accion [remove-item] ignorada: "
+                    + "material invalido '" + selector + "'");
+            return;
+        }
+        sweepInventory(player, amount, stack -> stack.getType() == mat && !hasSnlibTag(stack));
+    }
+
+    private static void removeFromHand(Player player, int amount, boolean offhand) {
+        ItemStack hand = offhand ? player.getInventory().getItemInOffHand()
+                : player.getInventory().getItemInMainHand();
         if (hand.getType().isAir()) {
             return;
         }
         if (hand.getAmount() > amount) {
             hand.setAmount(hand.getAmount() - amount);
+        } else if (offhand) {
+            player.getInventory().setItemInOffHand(null);
         } else {
             player.getInventory().setItemInMainHand(null);
         }
+    }
+
+    /**
+     * Deducts up to {@code amount} units from matching stacks in storage slots 0-35 and
+     * then the offhand. Removing fewer units than requested is not an error.
+     */
+    private static void sweepInventory(Player player, int amount, Predicate<ItemStack> matches) {
+        PlayerInventory inv = player.getInventory();
+        int remaining = amount;
+        for (int slot = 0; slot < 36 && remaining > 0; slot++) {
+            ItemStack stack = inv.getItem(slot);
+            if (stack == null || stack.getType().isAir() || !matches.test(stack)) {
+                continue;
+            }
+            int take = Math.min(remaining, stack.getAmount());
+            if (take == stack.getAmount()) {
+                inv.setItem(slot, null);
+            } else {
+                stack.setAmount(stack.getAmount() - take);
+                inv.setItem(slot, stack);
+            }
+            remaining -= take;
+        }
+        if (remaining <= 0) {
+            return;
+        }
+        ItemStack off = inv.getItemInOffHand();
+        if (off.getType().isAir() || !matches.test(off)) {
+            return;
+        }
+        int take = Math.min(remaining, off.getAmount());
+        if (take == off.getAmount()) {
+            inv.setItemInOffHand(null);
+        } else {
+            off.setAmount(off.getAmount() - take);
+            inv.setItemInOffHand(off);
+        }
+    }
+
+    /**
+     * Whether some SnLib context (any owner namespace) tagged the stack with an item id;
+     * the Material selector of {@code [remove-item]} never consumes those stacks.
+     */
+    private static boolean hasSnlibTag(ItemStack stack) {
+        if (!stack.hasItemMeta()) {
+            return false;
+        }
+        for (NamespacedKey key : stack.getItemMeta().getPersistentDataContainer().getKeys()) {
+            if (ItemRegistry.TAG_KEY.equals(key.getKey())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int parseInt(String token, int def, String tag) {

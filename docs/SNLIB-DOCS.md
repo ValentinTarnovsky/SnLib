@@ -1227,14 +1227,21 @@ Render "message-like" = `SnText.color(SnText.normalizePapiOutput(arg))`: normali
 | `[set-page]` | `[set-page] n` | `PageTarget.setPage(n)`; `n` invalido WARN-once y usa 1. |
 | `[refresh-page]` | `[refresh-page]` | `PageTarget.refreshPage()` (re-render de la pagina actual). |
 | `[refresh-menu]` | `[refresh-menu]` | `PageTarget.refreshMenu()` (re-render del menu completo). |
-| `[particle]` | `[particle] TYPE [count] [offX offY offZ] [extra]` | Spawnea en el mundo del jugador, en su location +1.0 en Y. `count` default 1. Los tres offsets solo se leen si estan LOS TRES presentes (chequeo `parts.length > 4`); `extra` requiere los offsets tambien. Ver resolucion de tipo abajo. |
+| `[particle]` | `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]` | Spawnea en el mundo del jugador, en su location +1.0 en Y. Todo token con `=` es una opcion (`color`, `size`, `to`, `block`, `item`; key lowercase, split en el primer `=`); el resto son posicionales con los umbrales de siempre: `count` default 1 con >= 1 posicional, los tres offsets solo si hay >= 4 posicionales, `extra` solo con >= 5. Ver resolucion de tipo y de data abajo. |
 | `[potion]` | `[potion] EFFECT [segundos] [amplifier]` | `player.addPotionEffect(new PotionEffect(type, segundos * 20, amplifier))`. Defaults: 10 segundos, amplifier 0. Efecto invalido: WARN-once "Efecto de pocion invalido". Resolucion: `NamespacedKey.fromString(lowercase)` contra `Registry.EFFECT` primero, fallback al deprecado `PotionEffectType.getByName` para configs viejas. |
-| `[remove-item]` | `[remove-item] [n]` | Saca `n` (default 1) del item en MANO PRINCIPAL. Mano vacia (air): no-op silencioso. Si la cantidad en mano es mayor a `n` decrementa; si no, vacia el slot (`setItemInMainHand(null)`). |
+| `[remove-item]` | `[remove-item] [n] [selector]` | Sin selector: saca `n` (default 1) del item en MANO PRINCIPAL, byte-identico a v1.0.0 (mano vacia = no-op silencioso; si la cantidad en mano es mayor a `n` decrementa; si no, vacia el slot con `setItemInMainHand(null)`). Un solo token que parsea como entero es `n`; si no parsea, es el selector con `n` = 1. Selectores: `offhand` (case-insensitive, misma logica espejada sobre la offhand), `id:<item-id>` (descuenta stacks que `ctx.items().is(stack, id)` barriendo los slots de storage 0-35 y despues la offhand; id vacio o no registrado = WARN-once y linea ignorada) y cualquier otro token como nombre de Material (`Material.matchMaterial`; null o `!isItem()` = WARN-once y linea ignorada; matchea por `getType()` ignorando meta PERO excluye todo stack tagueado por SnLib de CUALQUIER contexto: para items custom existe `id:`). Remocion parcial permitida en todos los modos: si hay menos de `n` unidades se saca lo que haya, sin error ni WARN. |
 
 Detalles de `[particle]`:
 
 - Resolucion del tipo (`resolveParticle`): uppercase, strip del prefijo `MINECRAFT:`, `.` y `-` se vuelven `_`, y `Particle.valueOf`. Como Particle es un set abierto, hay alias leniente `REDSTONE` <-> `DUST` (WARN-once "usando alias '...'") para que specs escritas antes o despues del rename de 1.20.5 funcionen en ambos lados. Tipo invalido: WARN-once "Particula invalida"; se ignora.
-- Datos de particula: si el `dataType` es `Particle.DustOptions` se usa un fijo `new Particle.DustOptions(Color.RED, 1.0f)`; cualquier otro `dataType` distinto de `Void` hace WARN-once "requiere datos no soportados; se ignora".
+- Datos de particula, resueltos por `particle.getDataType()` contra las opciones `key=value`:
+  - `Void`: data null, como siempre. Si el usuario paso `color=`/`size=`/`to=`/`block=`/`item=`, WARN-once por opcion incompatible (key `"particle-opt:TYPE:key"`) y la opcion se ignora; la linea corre igual.
+  - `Particle.DustOptions` (DUST): `color=#RRGGBB` o `color=R,G,B` (default `Color.RED`) y `size=F` float (default `1.0f`). Sin opciones el resultado es identico a v1.0.0 (`Color.RED`, `1.0f`).
+  - `Particle.DustTransition` (DUST_COLOR_TRANSITION): `from` = opcion `color` (default `Color.RED`), `to` = opcion `to` (mismos dos formatos de color; default = `from`), `size` default `1.0f`.
+  - `BlockData` (BLOCK, BLOCK_MARKER, FALLING_DUST, DUST_PILLAR): requiere `block=MATERIAL` (`Material.matchMaterial`; material null o `!isBlock()` = WARN-once y la LINEA se ignora; data = `mat.createBlockData()` con catch defensivo de `IllegalArgumentException`). Sin `block=`: WARN-once "requiere block=MATERIAL; se ignora" y la linea se salta.
+  - `ItemStack` (ITEM): requiere `item=MATERIAL` (`matchMaterial` + `isItem()`; data = `new ItemStack(mat)`); misma politica de errores que `block=`.
+  - Cualquier otro `dataType`: WARN-once "requiere datos no soportados; se ignora", igual que antes.
+- Colores (`parseColor`): `#RRGGBB` (6 hex) o `R,G,B` (tres enteros 0-255); valor invalido = WARN-once "Color invalido" y se usa el default. `size=` invalido = WARN-once y `1.0f`. Key de opcion desconocida (ni color/size/to/block/item) = WARN-once "Opcion desconocida"; la linea corre igual.
 
 Paginacion: los cinco tags de pagina pasan por `withPagination(...)`: con `context.pageTarget()` null o `paginationEnabled()` false son NO-OP con nota de debug "paginacion no habilitada (opt-in por menu)". La paginacion es opt-in por menu.
 
@@ -1247,7 +1254,7 @@ Paginacion: los cinco tags de pagina pasan por `withPagination(...)`: con `conte
 - `[right-click]` usa `ClickType.isRightClick()`, que tambien es true para SHIFT_RIGHT; si se necesita distinguir, existen los guards shift exactos. Idem `[left-click]` con `isLeftClick()`.
 - `warnOnce` deduplica por clave dentro de CADA instancia del motor (o sea, por plugin consumidor): el mismo error en dos plugins loguea dos veces, una por logger de cada plugin.
 - `[player-as-op]` abre una ventana temporal de OP; el `finally` garantiza el `setOp(false)` incluso si el comando lanza, pero solo cuando el jugador NO era op de antemano.
-- En `[particle]`, dar `TYPE count offX` (sin los tres offsets) ignora el offset silenciosamente por el chequeo `parts.length > 4`.
+- En `[particle]`, dar `TYPE count offX` (sin los tres offsets) ignora el offset silenciosamente: los offsets solo se leen con >= 4 tokens POSICIONALES (las opciones `key=value` no cuentan para ese umbral).
 - El orden de resolucion del argumento es locals PRIMERO, PAPI DESPUES: un placeholder local puede expandirse a un token `%...%` que PAPI luego resuelve.
 
 ### ActionContext
@@ -1368,8 +1375,8 @@ Capa de aislamiento lazy de PlaceholderAPI de UN contexto consumidor. Diseño cl
 
 No hay marcadores TODO/FIXME explicitos en ninguno de los archivos del alcance. Limitaciones documentadas en el codigo:
 
-- `[particle]` solo soporta particulas sin datos o con `Particle.DustOptions`, y en ese caso con valores fijos (Color.RED, tamano 1.0f); cualquier otro `dataType` se ignora con WARN ("requiere datos no soportados").
-- `[remove-item]` opera unicamente sobre la mano principal; no hay soporte de slot arbitrario ni de matching por material.
+- `[particle]` soporta los dataTypes `Void`, `Particle.DustOptions` (opciones `color=`/`size=`, defaults Color.RED y 1.0f), `Particle.DustTransition` (`color=`/`to=`/`size=`), `BlockData` (`block=MATERIAL` obligatorio) e `ItemStack` (`item=MATERIAL` obligatorio); cualquier otro `dataType` (ej. Vibration, Trail) sigue ignorandose con WARN ("requiere datos no soportados").
+- `[remove-item]` cubre mano principal (default), `offhand`, material (`MATERIAL`, excluyendo stacks tagueados por SnLib) e `id:<item-id>`; el barrido por selector alcanza los slots de storage 0-35 mas la offhand (no toca armadura ni cursor) y no hay soporte de slot arbitrario.
 - La gramatica de requirements no tiene quoting ni parentesis: el split de `||` y `&&` es literal, por lo que un operando no puede contener esas secuencias ni agruparse.
 - La resolucion PAPI es main-thread only por diseño: fuera del primary thread los tokens quedan intactos (con nota de debug), no hay cola ni fallback async.
 - Los resolvers de expansiones tienen contrato cache-only (memoria precomputada); el holder no ofrece variante async para resolvers con I/O.
