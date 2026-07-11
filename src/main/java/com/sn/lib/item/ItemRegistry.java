@@ -271,8 +271,8 @@ public final class ItemRegistry {
     /**
      * Subtracts {@code amount} custom durability from the stack (floored at 0), updating
      * its tag and re-rendering the lore line. Break-actions and hand removal only run
-     * through the interact flow, which has the using player; a programmatic break is the
-     * caller's to handle.
+     * through the interact flow, which has the using player; for a programmatic break
+     * with the owning player, use {@link #damage(Player, ItemStack, int)}.
      *
      * @return the remaining durability (0 means broken), or -1 when the stack was not
      *         created by this context or its definition has no custom durability
@@ -280,6 +280,33 @@ public final class ItemRegistry {
     public int damage(ItemStack item, int amount) {
         ItemDef def = defOf(item);
         return def == null ? -1 : DurabilityTracker.damage(plugin, def, item, amount);
+    }
+
+    /**
+     * Like {@link #damage(ItemStack, int)} but when this call breaks the stack (it was
+     * alive and reached 0) it also runs the definition's break-actions and removes the
+     * stack from {@code user}'s inventory by IDENTITY (hands first, then storage slots);
+     * a caller that passed a copy gets a debug note and nothing is removed. An already
+     * broken stack never re-triggers the break flow. A null {@code user} behaves exactly
+     * like the two-arg overload.
+     *
+     * @return the remaining durability (0 means broken), or -1 when the stack was not
+     *         created by this context or its definition has no custom durability
+     */
+    public int damage(Player user, ItemStack item, int amount) {
+        ItemDef def = defOf(item);
+        if (def == null) {
+            return -1;
+        }
+        if (user == null) {
+            return DurabilityTracker.damage(plugin, def, item, amount);
+        }
+        int before = DurabilityTracker.durability(plugin, def, item);
+        int remaining = DurabilityTracker.damage(plugin, def, item, amount);
+        if (before > 0 && remaining == 0) {
+            DurabilityTracker.breakFor(ctx, def, user, item, null, null);
+        }
+        return remaining;
     }
 
     /** Definition behind a stack created by this context, or null. */

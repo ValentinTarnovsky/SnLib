@@ -20,6 +20,7 @@ import org.jetbrains.annotations.Nullable;
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import com.sn.lib.event.EquipMethod;
 import com.sn.lib.event.SnArmourEquipEvent;
+import com.sn.lib.util.ArmourUtil;
 
 /**
  * Shared listener owned by SnLib that synthesizes {@link SnArmourEquipEvent}.
@@ -108,28 +109,11 @@ public final class ArmourEquipListener implements Listener {
     }
 
     /**
-     * Matches the armour slot by Material name suffix (Material treated as open: name
-     * checks, never switch/EnumSet over its constants).
+     * Matches the armour slot by Material name suffix; the source of truth is
+     * {@link ArmourUtil#slotOf}.
      */
     static @Nullable EquipmentSlot matchType(@Nullable ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return null;
-        }
-        String name = item.getType().name();
-        if (name.endsWith("_HELMET") || name.endsWith("_HEAD") || name.endsWith("_SKULL")
-                || name.equals("CARVED_PUMPKIN")) {
-            return EquipmentSlot.HEAD;
-        }
-        if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) {
-            return EquipmentSlot.CHEST;
-        }
-        if (name.endsWith("_LEGGINGS")) {
-            return EquipmentSlot.LEGS;
-        }
-        if (name.endsWith("_BOOTS")) {
-            return EquipmentSlot.FEET;
-        }
-        return null;
+        return ArmourUtil.slotOf(item);
     }
 
     /** Name-based mapping keeps the source slot enum open: an unknown type never hard-fails. */

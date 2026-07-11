@@ -33,9 +33,12 @@ import com.sn.lib.text.SnText;
  * handler quick-exits in layers, null/air first, then {@code hasItemMeta()}, then the PDC
  * tag, then logic.</p>
  *
- * <p>Flow per interaction: (1) the item cooldown ({@code "item:" + id} category) returns
- * silently while cooling down; (2) interact-requirements evaluate with a locals plus PAPI
- * resolver, running the deny-actions when unmet; (3) the matching variants dispatch, each
+ * <p>Flow per interaction: (0) a right-click whose vanilla auto-equip destination is not
+ * the declared {@code equipment-slot} is denied and CUTS the whole flow: no cooldown, no
+ * requirement, no dispatch, no durability; (1) the item cooldown ({@code "item:" + id}
+ * category) returns silently while cooling down; (2) interact-requirements evaluate with
+ * a locals plus PAPI resolver, running the deny-actions when unmet; (3) the matching
+ * variants dispatch, each
  * running its YML action list through the ActionEngine AND its Java callback. Variants:
  * right-click, left-click, shift-right-click and shift-left-click (a shift variant with
  * behaviour takes priority over its generic click), plus the positional
@@ -69,7 +72,9 @@ public final class ItemInteractListener implements Listener {
         }
         ItemDef def = match.def();
         Player player = event.getPlayer();
-        denyIncompatibleAutoEquip(event, def, item);
+        if (denyIncompatibleAutoEquip(event, def, item)) {
+            return;
+        }
         if (def.cooldownTicks() > 0 && !ctx.cooldowns().tryUseTicks(
                 player.getUniqueId(), "item:" + match.id(), def.cooldownTicks())) {
             return;
@@ -87,22 +92,27 @@ public final class ItemInteractListener implements Listener {
     /**
      * Equipment-slot enforcement, right-click auto-equip vector: when the vanilla
      * auto-equip destination of the material is not the declared slot, the item use is
-     * denied (best-effort; the interact actions still dispatch, independent of cooldown).
+     * denied and the whole interaction flow is cut (no cooldown, no requirement, no
+     * dispatch, no durability).
+     *
+     * @return true only when the equip was denied
      */
-    private static void denyIncompatibleAutoEquip(PlayerInteractEvent event, ItemDef def,
+    private static boolean denyIncompatibleAutoEquip(PlayerInteractEvent event, ItemDef def,
             ItemStack item) {
         if (event.getAction() != Action.RIGHT_CLICK_AIR
                 && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
-            return;
+            return false;
         }
         EquipmentSlot declared = def.equipmentSlot();
         if (declared == null) {
-            return;
+            return false;
         }
         EquipmentSlot vanilla = ItemPropertyListener.vanillaEquipSlot(item);
         if (vanilla != null && vanilla != declared) {
             event.setUseItemInHand(Event.Result.DENY);
+            return true;
         }
+        return false;
     }
 
     /** Runs the generic (shift-prioritized) variant, then the positional block/air one. */
@@ -175,7 +185,6 @@ public final class ItemInteractListener implements Listener {
             player.getInventory().setItem(hand, item);
             return;
         }
-        ctx.actions().run(player, def.breakActions());
-        player.getInventory().setItem(hand, null);
+        DurabilityTracker.breakFor(ctx, def, player, item, hand, null);
     }
 }

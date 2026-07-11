@@ -4,16 +4,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 
 import com.sn.lib.Ph;
+import com.sn.lib.Sn;
+import com.sn.lib.action.ActionContext;
 import com.sn.lib.item.ItemDef;
 import com.sn.lib.text.SnText;
 
@@ -25,8 +31,9 @@ import com.sn.lib.text.SnText;
  * is created. Every damage application re-renders the definition's {@code lore-format}
  * line with {@code %durability%}/{@code %max_durability%} resolved; the lore line position
  * is remembered in a second PDC int so re-renders replace in place. Reaching 0 is reported
- * to the caller: the interact listener runs the break-actions and removes the stack from
- * the hand that used it.</p>
+ * to the caller: the break flow (break-actions plus stack removal) is centralized in
+ * {@link #breakFor}, shared by the interact listener and the programmatic
+ * {@code ItemRegistry.damage(Player, ItemStack, int)} overload.</p>
  */
 public final class DurabilityTracker {
 
@@ -103,6 +110,50 @@ public final class DurabilityTracker {
         stack.setItemMeta(meta);
         renderLore(owner, def, stack, remaining);
         return remaining;
+    }
+
+    /**
+     * Break flow of a stack whose durability reached 0: runs the definition's
+     * break-actions (through {@code context} when present, so guards see the real click)
+     * and removes the stack from the player's inventory. With a non-null {@code hand}
+     * (interact flow) the used hand is emptied directly; with a null hand (programmatic
+     * flow) the stack is located by IDENTITY (never equals/isSimilar): main hand, then
+     * offhand, then the 36 storage slots. A caller that passed a copy finds nothing: a
+     * debug note is logged and nothing is removed.
+     *
+     * @return true when the stack was removed from the inventory
+     */
+    public static boolean breakFor(Sn ctx, ItemDef def, Player player, ItemStack stack,
+            @Nullable EquipmentSlot hand, @Nullable ActionContext context) {
+        if (context != null) {
+            ctx.actions().run(player, def.breakActions(), context);
+        } else {
+            ctx.actions().run(player, def.breakActions());
+        }
+        PlayerInventory inventory = player.getInventory();
+        if (hand != null) {
+            inventory.setItem(hand, null);
+            return true;
+        }
+        if (inventory.getItemInMainHand() == stack) {
+            inventory.setItemInMainHand(null);
+            return true;
+        }
+        if (inventory.getItemInOffHand() == stack) {
+            inventory.setItemInOffHand(null);
+            return true;
+        }
+        ItemStack[] storage = inventory.getStorageContents();
+        for (int i = 0; i < storage.length; i++) {
+            if (storage[i] == stack) {
+                inventory.setItem(i, null);
+                return true;
+            }
+        }
+        ctx.debug().log(() -> "breakFor: el stack roto no se encontro por identidad en el"
+                + " inventario de " + player.getName()
+                + " (el caller paso una copia); no se removio nada");
+        return false;
     }
 
     /**
