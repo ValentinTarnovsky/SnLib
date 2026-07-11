@@ -4,14 +4,17 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Abbreviated number formatting with suffixes K/M/B/T/Qa/Qi (pure, no Bukkit).
+ * Number formatting, abbreviated and grouped (pure, no Bukkit).
  *
  * <p>{@link #format(double)} scales by powers of 1000 and keeps up to two
- * decimals with trailing zeros stripped ({@code 1500 -> "1.5K"}).
- * {@link #parseFormatted(String)} is the tolerant inverse: suffixes are
- * case-insensitive and both comma and dot are accepted as decimal or grouping
- * separators (a single comma followed by exactly three digits counts as
- * grouping, so {@code "1,500" -> 1500} while {@code "1,5" -> 1.5}).</p>
+ * decimals with trailing zeros stripped ({@code 1500 -> "1.5K"}), using the
+ * suffixes K/M/B/T/Qa/Qi. {@link #formatComma(double)} keeps the full number
+ * and groups the integer part with commas ({@code 1234567 -> "1,234,567"}),
+ * same two-decimal HALF_UP contract. {@link #parseFormatted(String)} is the
+ * tolerant inverse of {@code format}: suffixes are case-insensitive and both
+ * comma and dot are accepted as decimal or grouping separators (a single comma
+ * followed by exactly three digits counts as grouping, so
+ * {@code "1,500" -> 1500} while {@code "1,5" -> 1.5}).</p>
  */
 public final class NumberFormatter {
 
@@ -39,6 +42,45 @@ public final class NumberFormatter {
         }
         String number = scaled.stripTrailingZeros().toPlainString();
         return (value < 0 ? "-" : "") + number + SUFFIXES[index];
+    }
+
+    /**
+     * Formats {@code value} with comma thousands grouping and up to two decimals.
+     *
+     * <p>Rounds HALF_UP to two decimals and strips trailing zeros (same contract as
+     * {@link #format}), then groups the integer part in threes from the right with
+     * {@code ,} keeping {@code .} as decimal separator: {@code 1234567 -> "1,234,567"},
+     * {@code 1234.567 -> "1,234.57"}, {@code -1234567.5 -> "-1,234,567.5"}. NaN and
+     * infinities return {@link String#valueOf(double)}. Locale-independent by manual
+     * composition: never uses the java.text formatters (not thread-safe) nor the JVM
+     * locale.</p>
+     */
+    public static String formatComma(double value) {
+        if (!Double.isFinite(value)) {
+            return String.valueOf(value);
+        }
+        String plain = BigDecimal.valueOf(value)
+                .setScale(2, RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString();
+        int dot = plain.indexOf('.');
+        String integer = dot < 0 ? plain : plain.substring(0, dot);
+        String decimals = dot < 0 ? "" : plain.substring(dot);
+        boolean negative = !integer.isEmpty() && integer.charAt(0) == '-';
+        if (negative) {
+            integer = integer.substring(1);
+        }
+        StringBuilder out = new StringBuilder(plain.length() + integer.length() / 3);
+        if (negative) {
+            out.append('-');
+        }
+        for (int i = 0; i < integer.length(); i++) {
+            if (i > 0 && (integer.length() - i) % 3 == 0) {
+                out.append(',');
+            }
+            out.append(integer.charAt(i));
+        }
+        return out.append(decimals).toString();
     }
 
     /**

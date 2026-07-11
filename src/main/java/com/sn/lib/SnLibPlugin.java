@@ -10,6 +10,7 @@ import com.sn.lib.hologram.internal.HologramChunkListener;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
 import com.sn.lib.util.HeadUtil;
+import com.sn.lib.util.PlayerLookup;
 
 /**
  * Bootstrap plugin of the SnLib runtime. Loaded at STARTUP before every consumer; the
@@ -82,6 +83,7 @@ public final class SnLibPlugin extends JavaPlugin {
             this.metrics = null;
         }
         HeadUtil.clearCache();
+        PlayerLookup.clearCache();
         this.selfCtx = null;
         instance = null;
     }

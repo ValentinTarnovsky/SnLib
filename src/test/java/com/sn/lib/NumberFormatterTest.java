@@ -67,6 +67,48 @@ class NumberFormatterTest {
     }
 
     @Test
+    void formatCommaGroupsThousands() {
+        assertEquals("1,234,567", NumberFormatter.formatComma(1_234_567D));
+        assertEquals("1,000", NumberFormatter.formatComma(1_000D));
+        assertEquals("1,234,567,890", NumberFormatter.formatComma(1_234_567_890D));
+    }
+
+    @Test
+    void formatCommaRoundsHalfUpToTwoDecimals() {
+        assertEquals("1,234.57", NumberFormatter.formatComma(1_234.567D));
+        assertEquals("0.01", NumberFormatter.formatComma(0.005D));
+        assertEquals("12.35", NumberFormatter.formatComma(12.345D));
+    }
+
+    @Test
+    void formatCommaStripsTrailingZeros() {
+        assertEquals("1,000", NumberFormatter.formatComma(1_000.00D));
+        assertEquals("1,000.1", NumberFormatter.formatComma(1_000.10D));
+        assertEquals("0", NumberFormatter.formatComma(0D));
+    }
+
+    @Test
+    void formatCommaNegativeValues() {
+        assertEquals("-1,234,567.5", NumberFormatter.formatComma(-1_234_567.5D));
+        assertEquals("-1,000", NumberFormatter.formatComma(-1_000D));
+        assertEquals("-999", NumberFormatter.formatComma(-999D));
+    }
+
+    @Test
+    void formatCommaBelowThousandUngrouped() {
+        assertEquals("999", NumberFormatter.formatComma(999D));
+        assertEquals("999.99", NumberFormatter.formatComma(999.99D));
+        assertEquals("1.5", NumberFormatter.formatComma(1.5D));
+    }
+
+    @Test
+    void formatCommaNaNAndInfinityAsString() {
+        assertEquals("NaN", NumberFormatter.formatComma(Double.NaN));
+        assertEquals("Infinity", NumberFormatter.formatComma(Double.POSITIVE_INFINITY));
+        assertEquals("-Infinity", NumberFormatter.formatComma(Double.NEGATIVE_INFINITY));
+    }
+
+    @Test
     void roundTripsWithinSuffixPrecision() {
         double[] samples = {
                 0D, 1D, 999D, 1_500D, 12_345D, 999_999D, 1_234_567D,

@@ -1,9 +1,9 @@
 # SnLib v1.0.0 - Documentacion tecnica del estado actual
 
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (109 archivos java), recursos, build y tests (18 suites).
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (113 archivos java), recursos, build y tests (19 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 177 tests JUnit verdes en 18 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 187 tests JUnit verdes en 19 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -62,7 +62,7 @@ Constantes: `private static final int BSTATS_SERVICE_ID = 26887` (id de servicio
 - `public int apiLevel()` - API level del SnLib.jar instalado: devuelve `SnApi.LEVEL` tal como quedo inlined en ESTE jar al compilarlo, comparado contra el `requiredApiLevel()` del consumidor.
 - `public @Nullable Sn selfContext()` - contexto de la libreria misma, o `null` mientras esta deshabilitada.
 - `public void onEnable()` - bootstrap: ver "Logica interna".
-- `public void onDisable()` - `TenantSweeper.cascadeAll()` (apaga todo contexto vivo en orden inverso de registro), `metrics.shutdown()` si habia bStats activo (y lo nullea), `HeadUtil.clearCache()`, nullea `selfCtx` e `instance`.
+- `public void onDisable()` - `TenantSweeper.cascadeAll()` (apaga todo contexto vivo en orden inverso de registro), `metrics.shutdown()` si habia bStats activo (y lo nullea), `HeadUtil.clearCache()`, `PlayerLookup.clearCache()`, nullea `selfCtx` e `instance`.
 
 #### Logica interna
 
@@ -661,7 +661,7 @@ Modulo de idioma de un contexto consumidor (clase `public final`). Se instancia 
 
 Metodos publicos:
 
-- `public SnLang(Sn ctx, @Nullable SnYml config)` - Constructor: guarda el contexto y el config principal montado (que aporta las keys `lang` y `update-configs`, o null si el modulo config no fue declarado) y ejecuta `load()` inmediatamente (seed + merges + caches).
+- `public SnLang(Sn ctx, @Nullable SnYml config)` - Constructor: guarda el contexto y el config principal montado (que aporta las keys `lang` y `update-configs`, o null si el modulo config no fue declarado), registra en `QuitCleanupListener` el callback que cancela el actionbar persistente del jugador que se va (idempotente ante kick+quit, patron BossBarUtil) y ejecuta `load()` inmediatamente (seed + merges + caches).
 - `public String language()` - Codigo de idioma activo; devuelve `en` cuando el idioma configurado cayo al fallback.
 - `public void send(Player target, String key, Ph... phs)` - Envia el mensaje a un jugador; los valores de una sola linea reciben el prefix prepended. Delega en la sobrecarga de `CommandSender`.
 - `public void send(CommandSender target, String key, Ph... phs)` - Envia el mensaje a cualquier sender; PAPI se resuelve por viewer cuando el sender es un `Player`. Null-safe: target o key null es no-op.
@@ -670,10 +670,11 @@ Metodos publicos:
 - `public String getLegacy(String key, Ph... phs)` - Primera linea como string legacy con section codes (via `SnText.colorLegacy`), para APIs que todavia exigen texto legacy; misma resolucion y fallback que `get`. Key inexistente devuelve el string `<missing:key>` (y dispara el WARN unico).
 - `public List<Component> getList(String key, Ph... phs)` - Todas las lineas del mensaje renderizadas en orden; keys inexistentes producen una lista con la linea marker. Sin placeholders devuelve copia del cache pre-renderizado.
 - `public void actionbar(Player target, String key, Ph... phs)` - Muestra la primera linea en la action bar del jugador; linea vacia o key vacia es no-op, key inexistente manda el marker a la action bar.
+- `public void actionbar(Player target, String key, Duration hold, Ph... phs)` - Overload persistente (v1.1). Ciclo de vida: la linea se renderiza UNA sola vez al momento de la llamada (PAPI/locales congelados; para contenido dinamico el consumidor re-llama, que reemplaza), se envia de inmediato y se re-envia cada 40 ticks (`ACTIONBAR_REFRESH_TICKS`; la actionbar vanilla dura ~2-3s) hasta agotar `hold` (deadline por `System.nanoTime()`); al vencer envia `Component.empty()` para limpiarla. `hold` null, cero o negativo delega en la sobrecarga de 3 args; key inexistente manda el marker UNA vez sin timer. Un actionbar nuevo con hold para el mismo jugador reemplaza y cancela el anterior (un `TaskHandle` por jugador en el mapa `persistentBars`); el timer se cancela al quit via el callback de `QuitCleanupListener` y el `scheduler.cancelAll()` de `Sn.shutdown()` barre los handles restantes. Un actionbar simple enviado durante un hold sera pisado en el proximo refresh de 40 ticks.
 - `public void title(Player target, String key, Ph... phs)` - Muestra el mensaje como title. La primera linea se parsea como `title;subtitle;fadeIn;stay;fadeOut` (tiempos en ticks, defaults 10;70;20, convertidos a millis multiplicando por 50); las partes omitidas o no numericas caen a su default.
 - `public void reload()` - Re-ejecuta el seed, los merges y la relectura de ambos archivos de idioma desde disco, reconstruyendo todos los caches. Se invoca solo desde onEnable y el comando reload.
 
-Constantes: no expone constantes publicas ni enums. Internamente usa las constantes privadas `LANG_DIR = "lang"`, `FALLBACK_CODE = "en"`, `CONSUMER_RESOURCE = "lang/messages_en.yml"` y `SNLIB_RESOURCE = "snlib-messages.yml"`.
+Constantes: no expone constantes publicas ni enums. Internamente usa las constantes privadas `LANG_DIR = "lang"`, `FALLBACK_CODE = "en"`, `CONSUMER_RESOURCE = "lang/messages_en.yml"`, `SNLIB_RESOURCE = "snlib-messages.yml"` y `ACTIONBAR_REFRESH_TICKS = 40` (periodo de re-envio del actionbar persistente). Estado por instancia del actionbar persistente: `Map<UUID, TaskHandle> persistentBars` (ConcurrentHashMap, un timer por jugador).
 
 #### Logica interna
 
@@ -956,7 +957,7 @@ No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitac
 
 ## 07. Utils
 
-El paquete `com.sn.lib.util` agrupa 12 clases utilitarias estaticas (todas `final` con constructor privado, salvo `WeightedRandomPool` que es una clase inmutable instanciable via builder). Casi la mitad son puras (sin dependencia de Bukkit): `SlotParser`, `TimeUtil`, `NumberFormatter`, `WeightedRandomPool` y `MathUtil`; el resto toca API de Bukkit/Paper (`LocationSerializer`, `Experience`, `SoundUtil`, `HeadUtil`, `ArmourUtil`, `TagIo`, `InvUtil`). Dos clases (`SoundUtil` y `HeadUtil`) mantienen estado estatico server-wide, justificado explicitamente por el contrato de SnLib: cachean hechos del servidor (resolucion de ids de sonido, perfiles de textura content-addressed) que son identicos para todo consumidor. La filosofia general del modulo es "nunca crashear al consumidor": entradas invalidas producen no-ops, nulls o WARNs delegables/deduplicados en lugar de excepciones (con las excepciones documentadas caso por caso: `NumberFormatter.parseFormatted`, `MathUtil.convertToRoman`, `WeightedRandomPool.pick` sobre pool vacio).
+El paquete `com.sn.lib.util` agrupa 13 clases utilitarias estaticas (todas `final` con constructor privado, salvo `WeightedRandomPool` que es una clase inmutable instanciable via builder). Casi la mitad son puras (sin dependencia de Bukkit): `SlotParser`, `TimeUtil`, `NumberFormatter`, `WeightedRandomPool` y `MathUtil`; `PlayerLookup` (v1.1) tampoco toca Bukkit pero hace HTTP async contra Mojang; el resto toca API de Bukkit/Paper (`LocationSerializer`, `Experience`, `SoundUtil`, `HeadUtil`, `ArmourUtil`, `TagIo`, `InvUtil`). Tres clases (`SoundUtil`, `HeadUtil` y `PlayerLookup`) mantienen estado estatico server-wide, justificado explicitamente por el contrato de SnLib: cachean hechos del servidor (resolucion de ids de sonido, perfiles de textura content-addressed, mapeo nombre->UUID de Mojang) que son identicos para todo consumidor. La filosofia general del modulo es "nunca crashear al consumidor": entradas invalidas producen no-ops, nulls o WARNs delegables/deduplicados en lugar de excepciones (con las excepciones documentadas caso por caso: `NumberFormatter.parseFormatted`, `MathUtil.convertToRoman`, `WeightedRandomPool.pick` sobre pool vacio).
 
 ### SlotParser
 
@@ -1017,10 +1018,11 @@ Notas y gotchas:
 
 `src/main/java/com/sn/lib/util/NumberFormatter.java`
 
-Formateo abreviado de numeros con sufijos `K/M/B/T/Qa/Qi` en potencias de 1000 (pura, sin Bukkit). Array privado de sufijos: `{"", "K", "M", "B", "T", "Qa", "Qi"}` (hasta 10^18).
+Formateo de numeros abreviado (sufijos `K/M/B/T/Qa/Qi` en potencias de 1000) y agrupado con comas (pura, sin Bukkit). Array privado de sufijos: `{"", "K", "M", "B", "T", "Qa", "Qi"}` (hasta 10^18).
 
 - `public static String format(double value)` - formatea con el sufijo mas grande que aplique y hasta 2 decimales con ceros finales eliminados (`1500 -> "1.5K"`, redondeo `HALF_UP` via `BigDecimal`). Valores no finitos (`NaN`, infinitos) se devuelven como `String.valueOf(value)`. El signo negativo se preserva.
-- `public static double parseFormatted(String text)` - inversa tolerante: sufijos case-insensitive (`"1.5k"` funciona) y acepta tanto coma como punto como separador decimal o de agrupacion. Lanza `NumberFormatException` con null, vacio, sufijo desconocido o numero no parseable.
+- `public static String formatComma(double value)` - (v1.1) numero completo con agrupacion de miles por coma: redondea `HALF_UP` a 2 decimales y elimina ceros finales (mismo contrato que `format`; `toPlainString` evita la notacion cientifica de `1000.00 -> 1E+3`) y agrupa la parte entera de a 3 digitos desde la derecha con `,`, preservando signo `-` y decimales con `.` (`1234567 -> "1,234,567"`, `1234.567 -> "1,234.57"`, `1000.10 -> "1,000.1"`, `-1234567.5 -> "-1,234,567.5"`, `999 -> "999"`). NaN/infinitos como `String.valueOf(value)`. Locale-independiente por composicion manual con StringBuilder: PROHIBIDO `DecimalFormat` (no thread-safe, el bug de ManticFormatter) y `String.format` con locale de la JVM.
+- `public static double parseFormatted(String text)` - inversa tolerante de `format`: sufijos case-insensitive (`"1.5k"` funciona) y acepta tanto coma como punto como separador decimal o de agrupacion. Lanza `NumberFormatException` con null, vacio, sufijo desconocido o numero no parseable.
 
 Logica interna:
 
@@ -1151,6 +1153,22 @@ Notas y gotchas:
 - En `extractTextureValue`, tras quitar un prefijo se intenta desanidar recursivamente; si el resto no matchea ningun formato conocido, se devuelve el resto tal cual (el prefijo explicito se toma como declaracion de intencion de que eso ES una textura).
 - Un string arbitrario sin prefijo, que no empiece con `eyJ` ni sea URL, devuelve null (no se adivina).
 
+### PlayerLookup
+
+`src/main/java/com/sn/lib/util/PlayerLookup.java`
+
+(v1.1) Lookup async nombre -> UUID contra el endpoint de perfiles de Mojang (`https://api.mojang.com/users/profiles/minecraft/<name>`), sin Bukkit y sin NMS. Complementa el gap deliberado de `Args.offlinePlayerUuid`, que sigue cache-only por disenio y no se toca; SnLib JAMAS lo llama internamente.
+
+- `public static CompletableFuture<Optional<UUID>> fetchUuid(String name)` - resuelve el UUID del nombre. **Contrato de threading**: el future completa en el executor del HttpClient, NUNCA en el main thread; el consumidor vuelve al main con `ctx.scheduler().thenSync(...)` o `sync(...)` (mismo contrato que SnDb). Nombre invalido (null o que no matchea `[A-Za-z0-9_]{1,16}`) completa inmediato con `Optional.empty()` sin HTTP ni cache. Fallos transitorios (status inesperado, body 200 no parseable, error de red) completan EXCEPCIONALMENTE con `IOException` y NO se cachean.
+- `public static void clearCache()` - vacia el LRU y apaga/anula el HttpClient; lo invoca el onDisable de `SnLibPlugin` junto a `HeadUtil.clearCache()`.
+
+Logica interna:
+
+- Cache LRU estatico acotado (patron EXACTO de HeadUtil): `LinkedHashMap(64, 0.75f, true)` en access-order con `removeEldestEntry` sobre cap 512, todo acceso `synchronized` sobre el propio mapa; key `name.toLowerCase(Locale.ROOT)`. Guarda TAMBIEN los misses (204/404 -> `Optional.empty()`) para no re-consultar nombres inexistentes. Static server-wide justificado: el mapeo nombre->UUID es content-addressed e identico para todo consumidor.
+- Dedupe in-flight: `ConcurrentHashMap<String, CompletableFuture<Optional<UUID>>> IN_FLIGHT` con `computeIfAbsent`; un `whenComplete` remueve la entrada al completar (remove condicional de dos args), asi N callers concurrentes del mismo nombre generan UNA sola request.
+- HTTP: HttpClient estatico lazy con double-checked locking, connect timeout 5s, request timeout 10s, `sendAsync(request, BodyHandlers.ofString())`. Status 200 -> `parseUuid(body)` (parse ok cachea `Optional.of(uuid)`; parse fallido completa excepcionalmente con IOException SIN cachear); 204/404 -> cachea y completa `Optional.empty()`; cualquier otro status o excepcion de red -> IOException (`"Mojang lookup fallo: ..."`) sin cachear (transitorio).
+- Helpers package-private PUROS para JUnit: `static boolean validName(String)` (regex `[A-Za-z0-9_]{1,16}`) y `static @Nullable UUID parseUuid(String body)` (escanea el campo `"id"` a mano con un `jsonString` privado duplicado de UpdateChecker siguiendo el precedente de utils autocontenidas, valida 32 hex e inserta guiones formato 8-4-4-4-12 antes de `UUID.fromString`).
+
 ### ArmourUtil
 
 `src/main/java/com/sn/lib/util/ArmourUtil.java`
@@ -1193,7 +1211,7 @@ Notas y gotchas:
 
 ### TODOs y limitaciones
 
-Ninguno. No hay marcadores TODO/FIXME/HACK/placeholder en ningun archivo del paquete `com.sn.lib.util`. Limitaciones de diseño ya documentadas arriba en cada clase: rango maximo de 10000 slots en `SlotParser`, sufijos de `NumberFormatter` topeados en `Qi` (10^18), `convertToRoman` limitado a 1-3999, `deserialize` de `LocationSerializer` dependiente de que el mundo este cargado, y cache de `HeadUtil` acotado a 512 entradas.
+Ninguno. No hay marcadores TODO/FIXME/HACK/placeholder en ningun archivo del paquete `com.sn.lib.util`. Limitaciones de diseño ya documentadas arriba en cada clase: rango maximo de 10000 slots en `SlotParser`, sufijos de `NumberFormatter` topeados en `Qi` (10^18), `convertToRoman` limitado a 1-3999, `deserialize` de `LocationSerializer` dependiente de que el mundo este cargado, y caches de `HeadUtil` y `PlayerLookup` acotados a 512 entradas.
 
 ---
 
@@ -3065,7 +3083,7 @@ No hay marcadores TODO/FIXME/HACK en el codigo de este modulo. Limitaciones docu
 
 ## 16. Build, tests, specs golden y TODOs
 
-Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp y manifest con metadata Sn), los cuatro archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, pom template del consumer y reglas ProGuard del consumer), las 17 suites JUnit 5 de `src/test/java/com/sn/lib/` (172 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (bStats, degradacion 1.20.4, repo/release, pilotos y canary). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos).
+Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp y manifest con metadata Sn), los cuatro archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, pom template del consumer y reglas ProGuard del consumer), las 19 suites JUnit 5 de `src/test/java/com/sn/lib/` (187 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (bStats, degradacion 1.20.4, repo/release, pilotos y canary). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos).
 
 ### pom.xml (build de SnLib)
 `pom.xml`
@@ -3167,9 +3185,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (18 suites, 177 tests, verdes)
+### Suites de tests (19 suites, 187 tests, verdes)
 
-Las 18 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest` y `com.sn.lib.update` de `UpdateCheckerJsonTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout y parse del update check). Total verificado con `mvn test`: 177 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 19 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest`, `com.sn.lib.update` de `UpdateCheckerJsonTest` y `com.sn.lib.util` de `PlayerLookupParseTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout, parse del update check y parse del lookup de Mojang). Total verificado con `mvn test`: 187 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3247,7 +3265,7 @@ Las 18 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, 
 
 ### NumberFormatterTest
 `src/test/java/com/sn/lib/NumberFormatterTest.java`
-8 tests sobre `com.sn.lib.util.NumberFormatter`: `format(double)` (sufijos K/M/B/T/Qa/Qi) y `parseFormatted(String)` (inversa tolerante a separadores).
+14 tests sobre `com.sn.lib.util.NumberFormatter`: `format(double)` (sufijos K/M/B/T/Qa/Qi), `formatComma(double)` (agrupacion de miles, v1.1) y `parseFormatted(String)` (inversa tolerante a separadores).
 
 - `void formatsPlainNumbersBelowThousand()` - bajo 1000 sin sufijo; decimales redondeados a 2 (12.345 -> "12.35").
 - `void formatsEachSuffixMagnitude()` - cada magnitud: 1.5K, 1M, 2.5B, 1T, 1Qa (1e15), 1Qi (1e18).
@@ -3256,7 +3274,22 @@ Las 18 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, 
 - `void parsesSuffixedInputCaseInsensitively()` - parse case-insensitive de sufijos ("1.5k", "2m", "1qa", "2.5Qi", "-2.5B").
 - `void toleratesCommaAndDotSeparators()` - tolera coma decimal ("1,5K"), miles con coma ("1,500"), formato US ("1,234,567.89") y europeo ("1.234.567,89").
 - `void rejectsGarbage()` - null, vacio, letras y sufijo desconocido ("1.5X") lanzan `NumberFormatException`.
+- `void formatCommaGroupsThousands()` - agrupacion de a 3 desde la derecha: 1234567 -> "1,234,567", 1000 -> "1,000", 1234567890 -> "1,234,567,890".
+- `void formatCommaRoundsHalfUpToTwoDecimals()` - redondeo HALF_UP a 2 decimales: 1234.567 -> "1,234.57", 0.005 -> "0.01".
+- `void formatCommaStripsTrailingZeros()` - ceros finales eliminados: 1000.00 -> "1,000" (sin notacion cientifica), 1000.10 -> "1,000.1", 0 -> "0".
+- `void formatCommaNegativeValues()` - signo preservado: -1234567.5 -> "-1,234,567.5", -1000 -> "-1,000", -999 -> "-999".
+- `void formatCommaBelowThousandUngrouped()` - bajo 1000 sin comas: "999", "999.99", "1.5".
+- `void formatCommaNaNAndInfinityAsString()` - NaN e infinitos como `String.valueOf`: "NaN", "Infinity", "-Infinity".
 - `void roundTripsWithinSuffixPrecision()` - round-trip format->parse dentro del 0.5% para muestras de todas las magnitudes incluidas negativas.
+
+### PlayerLookupParseTest
+`src/test/java/com/sn/lib/util/PlayerLookupParseTest.java`
+4 tests JUnit puros (sin Bukkit init, sin HTTP) sobre los helpers package-private `parseUuid` y `validName` de `com.sn.lib.util.PlayerLookup` (v1.1).
+
+- `void parseUuidInsertsDashes()` - `{"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch"}` -> `069a79f4-44e9-4726-a5be-fca90e38aaf5`.
+- `void parseUuidRejectsBadLengthOrNonHex()` - ids de 31 o 33 chars y con no-hex ('g') devuelven null.
+- `void parseUuidMissingFieldReturnsNull()` - campo `id` ausente, valor no-string y body null devuelven null.
+- `void validNameAcceptsValidRejectsInvalid()` - acepta `Notch` y `a_1`; rechaza null, vacio, 17 chars, `bad-name` y nombres con espacios.
 
 ### YamlPreprocessorTest
 `src/test/java/com/sn/lib/YamlPreprocessorTest.java`
@@ -3498,4 +3531,4 @@ API publica:
 - `void jsonStringHandlesEscapedQuotes()` - des-escapa `\"`, `\\` y `\/` dentro del valor.
 - `void jsonStringMissingFieldReturnsNull()` - campo ausente, valor no-string y string sin cierre devuelven null.
 - `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` y `vanilla` intactos.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 172 tests en 17 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 187 tests en 19 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests; el paso 15 sumo UpdateCheckerJsonTest con 5 tests; el paso 16 sumo 6 tests de formatComma a NumberFormatterTest y PlayerLookupParseTest con 4 tests).

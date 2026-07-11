@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import net.kyori.adventure.audience.Audience;
@@ -29,6 +30,8 @@ import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Ph;
 import com.sn.lib.Sn;
+import com.sn.lib.internal.QuitCleanupListener;
+import com.sn.lib.scheduler.TaskHandle;
 import com.sn.lib.text.SnText;
 import com.sn.lib.yml.SnYml;
 import com.sn.lib.yml.YamlPreprocessor;
@@ -63,10 +66,14 @@ public final class SnLang {
     private static final String FALLBACK_CODE = "en";
     private static final String CONSUMER_RESOURCE = LANG_DIR + "/messages_" + FALLBACK_CODE + ".yml";
     private static final String SNLIB_RESOURCE = "snlib-messages.yml";
+    /** Re-send period of a held action bar; the vanilla bar fades after roughly 2-3s. */
+    private static final long ACTIONBAR_REFRESH_TICKS = 40L;
 
     private final Sn ctx;
     private final @Nullable SnYml config;
     private final Set<String> warnedKeys = ConcurrentHashMap.newKeySet();
+    /** One persistent action bar timer per player; replaced on re-call, swept on quit. */
+    private final Map<UUID, TaskHandle> persistentBars = new ConcurrentHashMap<>();
 
     /** Raw template lines per key, fallback already resolved. */
     private final Map<String, List<String>> templates = new ConcurrentHashMap<>();
@@ -90,6 +97,12 @@ public final class SnLang {
     public SnLang(Sn ctx, @Nullable SnYml config) {
         this.ctx = ctx;
         this.config = config;
+        QuitCleanupListener.register(ctx.plugin(), uuid -> {
+            TaskHandle handle = persistentBars.remove(uuid);
+            if (handle != null) {
+                handle.cancel();
+            }
+        });
         load();
     }
 
@@ -202,6 +215,62 @@ public final class SnLang {
             return;
         }
         target.sendActionBar(renderLine(line, target, phs));
+    }
+
+    /**
+     * Shows the first line of the message on the player's action bar and keeps it there
+     * for {@code hold}: the line is rendered ONCE at call time (PAPI and locals frozen;
+     * re-call to refresh dynamic content), sent immediately and re-sent every 40 ticks
+     * until the hold expires, then cleared with an empty component. A null, zero or
+     * negative hold delegates to {@link #actionbar(Player, String, Ph...)}. A new held
+     * bar for the same player replaces and cancels the previous one; a plain action bar
+     * sent during a hold is overwritten on the next 40-tick refresh. The timer is
+     * cancelled when the player quits and swept by the context shutdown.
+     */
+    public void actionbar(Player target, String key, Duration hold, Ph... phs) {
+        if (target == null || key == null) {
+            return;
+        }
+        if (hold == null || hold.isZero() || hold.isNegative()) {
+            actionbar(target, key, phs);
+            return;
+        }
+        List<String> lines = templates.get(key);
+        if (lines == null) {
+            target.sendActionBar(missing(key));
+            return;
+        }
+        if (lines.isEmpty()) {
+            return;
+        }
+        String line = lines.get(0);
+        if (line == null || line.isEmpty()) {
+            return;
+        }
+        Component content = renderLine(line, target, phs);
+        target.sendActionBar(content);
+        UUID uuid = target.getUniqueId();
+        long deadline = System.nanoTime() + hold.toNanos();
+        final TaskHandle[] self = new TaskHandle[1];
+        self[0] = ctx.scheduler().timer(1L, ACTIONBAR_REFRESH_TICKS, () -> {
+            Player online = Bukkit.getPlayer(uuid);
+            if (online == null) {
+                persistentBars.remove(uuid, self[0]);
+                self[0].cancel();
+                return;
+            }
+            if (System.nanoTime() - deadline >= 0) {
+                online.sendActionBar(Component.empty());
+                persistentBars.remove(uuid, self[0]);
+                self[0].cancel();
+                return;
+            }
+            online.sendActionBar(content);
+        });
+        TaskHandle previous = persistentBars.put(uuid, self[0]);
+        if (previous != null) {
+            previous.cancel();
+        }
     }
 
     /**
