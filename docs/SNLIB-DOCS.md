@@ -1233,7 +1233,7 @@ Cada linea se procesa asi (`executeLine`):
    | `[chance=N]` | probabilistico, independiente del click |
 
    Reglas de cada familia:
-   - `[click=TIPO,...]` - nombres del enum `ClickType` case-insensitive y con `-` equivalente a `_` (ej `[click=number-key]`). FAIL-CLOSED, a diferencia de `[chance=]`: un spec invalido (nombre desconocido, token vacio, spec vacio) WARNea una vez ("Guard [click=...] invalido; linea ignorada") y la linea NO corre, asi un typo jamas dispara acciones con clicks no deseados.
+   - `[click=TIPO,...]` - nombres del enum `ClickType` case-insensitive y con `-` equivalente a `_` (ej `[click=number-key]`). FAIL-CLOSED, a diferencia de `[chance=]`: un spec invalido (nombre desconocido, token vacio, spec vacio) WARNea una vez ("Guard [click=<spec>] con tipo invalido; linea omitida: <line>") y la linea NO corre, asi un typo jamas dispara acciones con clicks no deseados.
    - `[click-block]` / `[click-air]` (guards posicionales) - matchean por igualdad contra el `ClickSurface` del contexto. Solo las interacciones de items de mundo llevan superficie; en clicks de GUI y corridas sin click la superficie es null y la linea se OMITE con nota de debug.
    - `[chance=N]` - tira `ThreadLocalRandom.current().nextDouble(100.0) < N` (N admite decimales, escala 0-100). Un N malformado WARN-once ("Guard [chance=...] invalido; la accion corre igual") y deja correr la linea (fail-open).
    - Todo guard de click evaluado con `context.clickType()` null (fuera de un click de GUI o de una interaccion de item) OMITE su linea con nota de debug (no WARN).
