@@ -10,6 +10,7 @@ import org.bukkit.plugin.PluginManager;
 import com.sn.lib.SnLibPlugin;
 import com.sn.lib.db.PlayerDataCache;
 import com.sn.lib.event.internal.ArmourEquipListener;
+import com.sn.lib.event.internal.ChunkMoveListener;
 import com.sn.lib.gui.internal.GuiClickListener;
 import com.sn.lib.gui.internal.GuiProtectionListener;
 import com.sn.lib.hologram.internal.HologramChunkListener;
@@ -38,6 +39,7 @@ public final class ListenerHub {
         inscribe(new TenantSweeper());
         inscribe(new QuitCleanupListener());
         inscribe(new ArmourEquipListener());
+        inscribe(new ChunkMoveListener());
         inscribe(new ItemPropertyListener());
         inscribe(new ItemInteractListener());
         inscribe(new LockedItemListener());

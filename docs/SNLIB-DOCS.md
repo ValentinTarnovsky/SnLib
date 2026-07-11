@@ -1486,7 +1486,7 @@ Punto de inscripcion unico de todos los listeners compartidos de la libreria. Me
 - `public static void inscribe(Listener listener)` - agrega un listener compartido al hub; queda dormido hasta `registerAll`.
 - `public static void registerAll(SnLibPlugin plugin)` - registra cada listener inscripto contra el plugin SnLib. Idempotente: primero hace `HandlerList.unregisterAll(plugin)` para dropear las registraciones previas de SnLib, asi una doble llamada o un re-enable nunca duplican handlers (un disable de SnLib tambien los desregistra a todos).
 
-#### Enumeracion canonica de los 11 listeners (con su paquete de origen)
+#### Enumeracion canonica de los 12 listeners (con su paquete de origen)
 
 Orden exacto del inicializador estatico:
 
@@ -1494,13 +1494,14 @@ Orden exacto del inicializador estatico:
 2. `new TenantSweeper()` - `com.sn.lib.tenant.internal` (sweep por disable de plugin).
 3. `new QuitCleanupListener()` - `com.sn.lib.internal` (quit/kick cleanup).
 4. `new ArmourEquipListener()` - `com.sn.lib.event.internal` (eventos de armadura).
-5. `new ItemPropertyListener()` - `com.sn.lib.item.internal` (propiedades de items).
-6. `new ItemInteractListener()` - `com.sn.lib.item.internal` (interacciones de items).
-7. `new LockedItemListener()` - `com.sn.lib.item.internal` (items bloqueados).
-8. `new GuiClickListener()` - `com.sn.lib.gui.internal` (clicks de GUI).
-9. `new GuiProtectionListener()` - `com.sn.lib.gui.internal` (proteccion de GUI).
-10. `PlayerDataCache.joinListener()` - `com.sn.lib.db` (cache de datos de jugador, join).
-11. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (carga/descarga de chunks para hologramas).
+5. `new ChunkMoveListener()` - `com.sn.lib.event.internal` (sintesis de SnChunkMoveEvent, v1.1).
+6. `new ItemPropertyListener()` - `com.sn.lib.item.internal` (propiedades de items).
+7. `new ItemInteractListener()` - `com.sn.lib.item.internal` (interacciones de items).
+8. `new LockedItemListener()` - `com.sn.lib.item.internal` (items bloqueados).
+9. `new GuiClickListener()` - `com.sn.lib.gui.internal` (clicks de GUI).
+10. `new GuiProtectionListener()` - `com.sn.lib.gui.internal` (proteccion de GUI).
+11. `PlayerDataCache.joinListener()` - `com.sn.lib.db` (cache de datos de jugador, join).
+12. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (carga/descarga de chunks para hologramas).
 
 ### TenantSweeper (internal)
 
@@ -1647,7 +1648,7 @@ No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitac
 
 ## 10. Eventos custom
 
-El paquete `com.sn.lib.event` define la infraestructura de eventos propios de SnLib: dos bases abstractas auto-disparables (`SnEvent` y `SnPlayerEvent`, ambas `Cancellable`, con el metodo `call()` que despacha via `PluginManager` y devuelve si el evento sobrevivio), el evento concreto `SnArmourEquipEvent` (equip/unequip de armadura por cualquier vector) y el enum `EquipMethod` con los 8 vectores de entrada. La sintesis del evento de armadura la hace el listener compartido `internal/ArmourEquipListener`, propiedad de SnLib: se inscribe una unica vez en el `ListenerHub` (`src/main/java/com/sn/lib/tenant/internal/ListenerHub.java`, `inscribe(new ArmourEquipListener())`) y el `registerEvents` ocurre UNICAMENTE en el bootstrap de `SnLibPlugin`, de modo que los ~57 plugins consumidores escuchan `SnArmourEquipEvent` sin registrar fuentes propias. Todo el flujo corre en el main thread (los eventos fuente de Bukkit/Paper son sincronicos); las bases exponen ademas constructores `async` para subclases que lo necesiten.
+El paquete `com.sn.lib.event` define la infraestructura de eventos propios de SnLib: dos bases abstractas auto-disparables (`SnEvent` y `SnPlayerEvent`, ambas `Cancellable`, con el metodo `call()` que despacha via `PluginManager` y devuelve si el evento sobrevivio), los eventos concretos `SnArmourEquipEvent` (equip/unequip de armadura por cualquier vector) y `SnChunkMoveEvent` (cruce de chunk via movimiento, v1.1), y el enum `EquipMethod` con los 8 vectores de entrada. La sintesis de cada evento la hace su listener compartido (`internal/ArmourEquipListener` e `internal/ChunkMoveListener`), propiedad de SnLib: se inscriben una unica vez en el `ListenerHub` (`src/main/java/com/sn/lib/tenant/internal/ListenerHub.java`) y el `registerEvents` ocurre UNICAMENTE en el bootstrap de `SnLibPlugin`, de modo que los ~57 plugins consumidores escuchan los eventos sin registrar fuentes propias. Todo el flujo corre en el main thread (los eventos fuente de Bukkit/Paper son sincronicos); las bases exponen ademas constructores `async` para subclases que lo necesiten.
 
 ### SnEvent
 `src/main/java/com/sn/lib/event/SnEvent.java`
@@ -1765,6 +1766,24 @@ No hay marcadores TODO/FIXME literales en los archivos del modulo. Limitaciones 
 - Los vectores manuales finos (`SHIFT_CLICK`, `DRAG`, `HOTBAR`, `HOTBAR_SWAP`) no son sintetizables hoy: la fuente primaria colapsa todo en `PICK_DROP`/`BROKE`.
 - Migracion pendiente (diferida a proposito) de `PlayerArmorChangeEvent` a `io.papermc.paper.event.entity.EntityEquipmentChangedEvent` cuando el baseline de versiones soportadas suba por encima de 1.21.4.
 - La cancelacion no es vinculante para los vectores ya aplicados (`PICK_DROP`, `BROKE`, `DEATH`); solo `DISPENSER` puede revertirse.
+
+### SnChunkMoveEvent
+`src/main/java/com/sn/lib/event/SnChunkMoveEvent.java`
+
+Evento `final` (v1.1) que se dispara cuando un jugador cruza de un chunk a otro via movimiento. Lo sintetiza el listener compartido de la libreria (`ChunkMoveListener`) desde `PlayerMoveEvent`; ningun plugin consumidor lo construye a mano en el flujo normal. La cancelacion es VINCULANTE: cancelar este evento cancela el `PlayerMoveEvent` fuente (mismo patron que el vector `DISPENSER` de `SnArmourEquipEvent`). ALCANCE: solo el movimiento lo emite; teleports, joins y respawns NO lo disparan (`PlayerTeleportEvent` tiene HandlerList propia y no pasa por el handler de move).
+
+- `public SnChunkMoveEvent(Player player, Location from, Location to)` - construye el evento con el jugador que cruza y las locations de origen y destino. Ambas locations se guardan como `clone()` (snapshots propios del evento): mutarlas JAMAS afecta el `PlayerMoveEvent` fuente.
+- `public Location fromLocation()` - snapshot clonado de la location de origen del movimiento.
+- `public Location toLocation()` - snapshot clonado de la location de destino del movimiento.
+- `public Chunk fromChunk()` - chunk que el jugador abandona; resuelve `getChunk()` de la location de origen al invocarse (en la practica siempre cargado: el jugador viene de ahi).
+- `public Chunk toChunk()` - chunk al que el jugador entra; resuelve `getChunk()` de la location de destino al invocarse (en la practica siempre cargado: el jugador esta parado ahi).
+- `public HandlerList getHandlers()` - devuelve la `HandlerList` estatica compartida de la clase.
+- `public static HandlerList getHandlerList()` - par estatico requerido por Bukkit; misma instancia que `getHandlers()`.
+
+### ChunkMoveListener (internal)
+`src/main/java/com/sn/lib/event/internal/ChunkMoveListener.java`
+
+Listener compartido `final` (v1.1), propiedad de SnLib, que sintetiza `SnChunkMoveEvent`. Un solo handler `@EventHandler(ignoreCancelled = true) public void onMove(PlayerMoveEvent event)` con quick-exit hot-path SIN allocations: compara `getBlockX() >> 4` y `getBlockZ() >> 4` de from/to y los worlds por IDENTIDAD (`==`; los `World` de Bukkit son singletons por server), y si no hubo cruce de chunk retorna sin crear ningun objeto (la mayoria abrumadora de los moves). Solo si cruzo dispara `new SnChunkMoveEvent(player, from, to).call()` y, si algun listener lo cancela, cancela el `PlayerMoveEvent` fuente (cancelacion vinculante). Corre en prioridad default (NORMAL) a proposito: la cancelacion debe poder aplicarse antes de MONITOR. Se inscribe en el `ListenerHub` (`inscribe(new ChunkMoveListener())`) y el `registerEvents` sucede UNICAMENTE en el bootstrap de `SnLibPlugin`.
 
 ---
 
