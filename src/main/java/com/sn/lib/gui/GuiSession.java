@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.IllegalPluginAccessException;
 import org.jetbrains.annotations.Nullable;
 
 import net.kyori.adventure.text.Component;
@@ -49,7 +50,9 @@ import com.sn.lib.util.TagIo;
  * declared in the YML gate themselves through their optional {@code nav-disabled}
  * override (a disabled arrow renders the override and fires nothing). Clicks and closes
  * are dispatched by the shared click listener into {@link #handleClick} and
- * {@link #handleClose}.</p>
+ * {@link #handleClose}; a natural close additionally plays the menu's optional
+ * {@code close-sound} and schedules its {@code close-actions} (never on page swaps nor
+ * on programmatic teardown, see {@link #handleClose}).</p>
  *
  * <p>As a {@link PageTarget}, page operations are gated by the menu's opt-in
  * {@code pagination} flag: with pagination false, {@link #nextPage()},
@@ -75,7 +78,9 @@ public final class GuiSession implements PageTarget {
     private volatile boolean closed;
     private volatile @Nullable PagedBind<?> pagedBind;
     private volatile Set<Integer> pagedSlots = Set.of();
+    private volatile int manualTotalPages;
     private boolean typeWarned;
+    private boolean navUnknownNoted;
 
     GuiSession(Sn ctx, Gui gui, Player viewer, int initialPage) {
         this.ctx = ctx;
@@ -288,10 +293,32 @@ public final class GuiSession implements PageTarget {
 
     /**
      * Close handling invoked by the shared click listener when the viewer's client closed
-     * the inventory: same teardown as {@link #close()} without force-closing the screen.
+     * the inventory: same teardown as {@link #close()} without force-closing the screen,
+     * plus the menu's optional {@code close-sound} (inline) and {@code close-actions}
+     * (scheduled one tick later).
+     *
+     * <p>Guaranteed by construction: close-sound and close-actions run on the NATURAL
+     * close (client ESC) and on the {@code [close]} action (which fires the same
+     * InventoryCloseEvent), exactly once per close. They do NOT run on page transitions
+     * or inventory recreations (the {@code transitioningPage()} guard in the click
+     * listener skips this method) and do NOT run on programmatic teardown ({@link #close()}
+     * from the tenant sweep, {@code GuiManager.reload()/closeAll()} or the quit cleanup
+     * marks the session closed BEFORE force-closing, so the subsequent close event finds
+     * {@code teardown()} false here). Running actions during shutdown is excluded by
+     * design. Edge: on a disconnect the server fires InventoryCloseEvent before
+     * PlayerQuitEvent; the double {@code isOnline()} guard (here and inside the next-tick
+     * task) covers the normal case, but consumers should keep close-actions idempotent.
+     * Page actions inside close-actions are useless: the session is already closed.</p>
      */
     public void handleClose() {
-        teardown();
+        if (!teardown()) {
+            return;
+        }
+        if (!viewer.isOnline()) {
+            return;
+        }
+        playCloseSound();
+        runCloseActions();
     }
 
     @Override
@@ -359,6 +386,32 @@ public final class GuiSession implements PageTarget {
     @Override
     public boolean paginationEnabled() {
         return def.pagination();
+    }
+
+    /**
+     * Declares the total pages of a manually paged GUI (paged through
+     * {@link #refreshPage()} or custom actions without {@link #bindPaged}): enables the
+     * {@link #nextPage()} cap and the {@code nav-disabled} state of the next navigation
+     * item. Values {@code <= 0} reset the total to "unknown" (0). A live paged bind takes
+     * precedence over this value. Requires {@code pagination: true}; with pagination
+     * false this is a no-op with a debug note. Main-thread only.
+     */
+    public void setTotalPages(int total) {
+        if (paginationBlocked("set-total-pages")) {
+            return;
+        }
+        int normalized = Math.max(0, total);
+        if (normalized == manualTotalPages) {
+            return;
+        }
+        manualTotalPages = normalized;
+        if (closed || inventory == null) {
+            return;
+        }
+        if (normalized > 0 && page > normalized) {
+            page = normalized;
+        }
+        renderContents();
     }
 
     /**
@@ -431,17 +484,20 @@ public final class GuiSession implements PageTarget {
         return true;
     }
 
-    /** Total pages of the live paged bind, or 0 when no paged data is bound (unknown). */
+    /**
+     * Total pages of the live paged bind, falling back to the manual total declared via
+     * {@link #setTotalPages(int)}; 0 when both are unknown.
+     */
     private int knownTotalPages() {
         PagedBind<?> bind = pagedBind;
-        return bind == null ? 0 : bind.pagination().totalPages();
+        return bind != null ? bind.pagination().totalPages() : manualTotalPages;
     }
 
     /**
      * Whether the navigation item is currently disabled for this viewer: previous on the
-     * first page, next on the last KNOWN page (only a paged bind knows the total). A
-     * disabled navigation item renders its {@code nav-disabled} override and fires
-     * nothing.
+     * first page, next on the last KNOWN page (a paged bind or a declared
+     * {@link #setTotalPages(int)} total). A disabled navigation item renders its
+     * {@code nav-disabled} override and fires nothing.
      */
     private boolean navDisabledNow(GuiItemDef item) {
         if (!def.pagination() || item.navKind() == GuiItemDef.NavKind.NONE) {
@@ -521,6 +577,12 @@ public final class GuiSession implements PageTarget {
      * manual bind or by the paged bind are left to their own render phases.
      */
     private void renderItem(Inventory target, GuiItemDef item) {
+        if (!navUnknownNoted && def.pagination() && item.navKind() == GuiItemDef.NavKind.NEXT
+                && knownTotalPages() == 0) {
+            navUnknownNoted = true;
+            ctx.debug().log(() -> "GUI '" + def.id() + "': nav next con total de paginas"
+                    + " desconocido; next nunca se deshabilita (usa bindPaged o setTotalPages)");
+        }
         GuiItemDef effective = item;
         if (navDisabledNow(item) && item.navDisabled() != null) {
             effective = item.navDisabled();
@@ -600,6 +662,39 @@ public final class GuiSession implements PageTarget {
     private void playOpenSound() {
         if (!def.openSound().isEmpty()) {
             SoundUtil.play(viewer, def.openSound());
+        }
+    }
+
+    /** Plays the close sound inline; one sound during InventoryCloseEvent is safe. */
+    private void playCloseSound() {
+        if (!def.closeSound().isEmpty()) {
+            SoundUtil.play(viewer, def.closeSound());
+        }
+    }
+
+    /**
+     * Schedules the menu's close-actions for the NEXT tick, never inline: running
+     * {@code [open]}-like actions inside the InventoryCloseEvent itself reopens
+     * inventories mid-close and glitches the client; the one-tick hop avoids it. The
+     * task re-checks {@code isOnline()} and runs with a null click type (click guards
+     * inside close-actions are skipped with a debug note, existing ActionEngine
+     * behaviour). Scheduling against a disabled owner is absorbed with a debug note.
+     */
+    private void runCloseActions() {
+        if (def.closeActions().isEmpty()) {
+            return;
+        }
+        try {
+            ctx.scheduler().sync(() -> {
+                if (!viewer.isOnline()) {
+                    return;
+                }
+                ctx.actions().run(viewer, def.closeActions(),
+                        new ActionContext(viewer, ctx, this, null, new Ph[0]));
+            });
+        } catch (IllegalPluginAccessException e) {
+            ctx.debug().log(() -> "close-actions de '" + def.id()
+                    + "' descartadas: owner deshabilitado");
         }
     }
 

@@ -17,8 +17,9 @@ import com.sn.lib.yml.SnYml;
 /**
  * Immutable definition of one GUI, parsed from a file under {@code guis/} following the
  * golden spec ({@code docs/menu-example.yml}): title, rows, lenient inventory type, open
- * sound, menu update interval, the opt-in {@code pagination} and {@code strict-clicks}
- * flags, the {@code items:} section and the {@code templates:} section.
+ * sound, close sound, close actions, menu update interval, the opt-in {@code pagination}
+ * and {@code strict-clicks} flags, the {@code items:} section and the {@code templates:}
+ * section.
  *
  * <p>{@code pagination} is resolved ONCE at load and defaults to false; page actions and
  * paged binds on sessions of a non-paginated GUI are no-ops. The definition and its
@@ -26,9 +27,12 @@ import com.sn.lib.yml.SnYml;
  *
  * <pre>
  * Golden spec checklist (docs/menu-example.yml) - field by field, where it parses:
- *   title, rows (1-6), open-sound, update-interval,     -> GuiDef.parse
- *     inventory-type (lenient valueOf), pagination,
- *     strict-clicks (opt-in per menu, default false)
+ *   title, rows (1-6), open-sound, close-sound,         -> GuiDef.parse
+ *     close-actions (run on natural close and [close],
+ *     never on page swaps or programmatic teardown),
+ *     update-interval, inventory-type (lenient
+ *     valueOf), pagination, strict-clicks (opt-in per
+ *     menu, default false)
  *   layout (1-6 strings of up to 9 chars each; ' ' is   -> GuiDef.parse (ASCII mask; rows
  *     an empty cell; every key char maps to its cells)     derives from the row count)
  *   paged-key (one layout char at menu level: its       -> GuiDef.parse into pagedSlots(),
@@ -70,6 +74,8 @@ public final class GuiDef {
     private final int rows;
     private final @Nullable InventoryType inventoryType;
     private final String openSound;
+    private final String closeSound;
+    private final List<String> closeActions;
     private final int updateInterval;
     private final boolean pagination;
     private final boolean strictClicks;
@@ -78,14 +84,17 @@ public final class GuiDef {
     private final Map<String, GuiTemplate> templates;
 
     private GuiDef(String id, String title, int rows, @Nullable InventoryType inventoryType,
-                   String openSound, int updateInterval, boolean pagination,
-                   boolean strictClicks, int[] pagedSlots, List<GuiItemDef> items,
+                   String openSound, String closeSound, List<String> closeActions,
+                   int updateInterval, boolean pagination, boolean strictClicks,
+                   int[] pagedSlots, List<GuiItemDef> items,
                    Map<String, GuiTemplate> templates) {
         this.id = id;
         this.title = title;
         this.rows = rows;
         this.inventoryType = inventoryType;
         this.openSound = openSound;
+        this.closeSound = closeSound;
+        this.closeActions = closeActions;
         this.updateInterval = updateInterval;
         this.pagination = pagination;
         this.strictClicks = strictClicks;
@@ -101,8 +110,8 @@ public final class GuiDef {
         ConfigurationSection root = yml.getSection("");
         if (root == null) {
             warn.accept("Archivo vacio o ilegible; se usa un gui por defecto sin items");
-            return new GuiDef(id, "Menu", 3, null, "", 0, false, false, new int[0],
-                    List.of(), Map.of());
+            return new GuiDef(id, "Menu", 3, null, "", "", List.of(), 0, false, false,
+                    new int[0], List.of(), Map.of());
         }
         String title = root.getString("title", "Menu");
         List<String> layoutRows = truncateLayout(root.getStringList("layout"), warn);
@@ -124,6 +133,8 @@ public final class GuiDef {
                     + type + " los slots fuera de rango no se renderizan");
         }
         String openSound = root.getString("open-sound", "");
+        String closeSound = root.getString("close-sound", "");
+        List<String> closeActions = List.copyOf(root.getStringList("close-actions"));
         int updateInterval = Math.max(0, root.getInt("update-interval", 0));
         boolean pagination = root.getBoolean("pagination", false);
         boolean strictClicks = root.getBoolean("strict-clicks", false);
@@ -153,8 +164,9 @@ public final class GuiDef {
                 }
             }
         }
-        return new GuiDef(id, title, rows, type, openSound, updateInterval, pagination,
-                strictClicks, pagedSlots, List.copyOf(items), Map.copyOf(templates));
+        return new GuiDef(id, title, rows, type, openSound, closeSound, closeActions,
+                updateInterval, pagination, strictClicks, pagedSlots, List.copyOf(items),
+                Map.copyOf(templates));
     }
 
     /**
@@ -293,6 +305,16 @@ public final class GuiDef {
     /** Open sound spec ({@code "SOUND_ID [vol] [pitch]"}); empty plays nothing. */
     public String openSound() {
         return openSound;
+    }
+
+    /** Sound played to the viewer on menu close ({@code "SOUND_ID [vol] [pitch]"}); empty plays nothing. */
+    public String closeSound() {
+        return closeSound;
+    }
+
+    /** Action lines run on the menu's natural close; empty runs nothing. */
+    public List<String> closeActions() {
+        return closeActions;
     }
 
     /** Menu re-render interval in ticks; 0 disables the menu timer. */

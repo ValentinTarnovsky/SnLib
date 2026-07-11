@@ -8,6 +8,7 @@
 title: string # default: "Menu"
 rows: 1-6 # default: 3
 open-sound: id # default: ''
+close-sound: id # default: '' (played when the viewer closes the menu)
 update-interval: int (in ticks) # every update-interval ticks, the menu will update all its information, including items, title, and rows. If set to 0, the menu will not update automatically. # defalt: 0
 inventory-type: string # default: "CHEST" (can be any of the following: CHEST, DISPENSER, DROPPER, HOPPER, FURNACE, WORKBENCH, ENCHANTING, BREWING, ANVIL, BEACON, SHULKER_BOX, BARREL, etc)
 
@@ -21,6 +22,9 @@ inventory-type: string # default: "CHEST" (can be any of the following: CHEST, D
 #                      work, and bindPaged fills the paged slots via API.
 # pagination: false -> (default) pagination actions are silent no-ops with a
 #                      debug note, and bindPaged WARNs once.
+# Without a live bindPaged the total pages is unknown and the "next" nav item
+# never disables, unless the plugin declares the total via
+# GuiSession.setTotalPages(n).
 pagination: true/false # default: false
 
 # ═══════════════════════════════════════════════════════════════════
@@ -248,6 +252,18 @@ items:
     display-name: "&7Filler"
     material: GRAY_STAINED_GLASS_PANE
     key: f
+
+# ═══════════════════════════════════════════════════════════════════
+# CLOSE ACTIONS - menu-level (optional)
+# ═══════════════════════════════════════════════════════════════════
+# close-actions: same grammar as click-actions. Runs once per close, on the
+# natural client close (ESC) and on the [close] action. Does NOT run on page
+# changes or inventory recreations, nor when the plugin closes the session
+# programmatically (reload, owner disable, quit cleanup). Click guards inside
+# these lines are skipped with a debug note because there is no click.
+# close-actions:
+#   - "[message] &7See you soon!"
+#   - "[sound] UI_BUTTON_CLICK"
 
 # ═══════════════════════════════════════════════════════════════════
 # TEMPLATES - Reusable items for plugin developers
