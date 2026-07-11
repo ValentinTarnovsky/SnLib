@@ -19,6 +19,7 @@ import com.sn.lib.event.SnSelectionCompleteEvent;
 import com.sn.lib.internal.QuitCleanupListener;
 import com.sn.lib.item.SnItem;
 import com.sn.lib.lang.SnLang;
+import com.sn.lib.region.internal.SelectionRenderer;
 import com.sn.lib.scheduler.TaskHandle;
 import com.sn.lib.tenant.TenantRegistry;
 import com.sn.lib.text.SnText;
@@ -309,11 +310,49 @@ public final class SelectionManager {
     }
 
     /**
-     * Renderer hook: cuts the previous render task of the session. Particle renderer
-     * arming completes in SelectionRenderer (plan step 20); until then only the cut runs.
+     * Cuts the previous render task of the session and, when AT LEAST ONE position is
+     * set (improvement over SnGens, which required both), arms the repeating
+     * {@link SelectionRenderer} through the context scheduler, storing the handle in
+     * the session; with no position the session keeps no task. The renderer also owns
+     * the spec timeout: it exists whenever there is something to show, and a session
+     * without any position never expires because it has nothing to lose.
      */
     void refreshRenderer(SelectionSession session) {
         stopRenderer(session);
+        if (session.pos1 == null && session.pos2 == null) {
+            return;
+        }
+        session.renderTask = ctx.scheduler().timer(1L, session.spec().refreshIntervalTicks(),
+                new SelectionRenderer(this, session));
+    }
+
+    /**
+     * Internal bridge for the session renderer (a {@code region.internal} class that
+     * cannot reach the package-private members): silently discards the session of an
+     * owner that is no longer online (no onCancel, no message), closing the race the
+     * quit cleanup did not see so the task never runs in vain. Not part of the
+     * consumer contract.
+     */
+    public void handleRendererOffline(UUID playerId) {
+        cancelSilently(playerId);
+    }
+
+    /**
+     * Internal bridge for the session renderer: expires a session whose spec timeout
+     * ran out, cancelling WITH onCancel and sending {@code snlib.selection.timeout}
+     * unless the spec is silent. Not part of the consumer contract.
+     */
+    public void handleRendererTimeout(UUID playerId) {
+        SelectionSession session = sessions.get(playerId);
+        if (session == null) {
+            return;
+        }
+        SelectionSpec spec = session.spec();
+        cancel(playerId);
+        Player player = Bukkit.getPlayer(playerId);
+        if (player != null) {
+            message(player, spec, "snlib.selection.timeout");
+        }
     }
 
     /**

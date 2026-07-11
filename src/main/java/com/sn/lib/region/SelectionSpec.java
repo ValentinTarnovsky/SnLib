@@ -1,5 +1,6 @@
 package com.sn.lib.region;
 
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,7 +11,9 @@ import org.bukkit.Particle;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.Sn;
 import com.sn.lib.item.SnItem;
+import com.sn.lib.yml.SnYml;
 
 /**
  * Immutable declaration of a selection class: wand appearance, edge visuals, limits and
@@ -89,6 +92,50 @@ public final class SelectionSpec {
     /** Starts a builder; a null or blank id falls back to {@code "default"}. */
     public static Builder builder(String id) {
         return new Builder(id == null || id.isBlank() ? "default" : id);
+    }
+
+    /**
+     * Builds a spec from the YML section at {@code path}, following the golden spec
+     * {@code docs/selection-example.yml}.
+     *
+     * <p>Absent fields fall back to the builder defaults and invalid values WARN once
+     * and keep the default (the typed SnYml getters already resolve fallback plus WARN
+     * for type mismatches). The {@code item} section maps through
+     * {@code SnItem.fromConfig} ONLY when present, so an absent section keeps the
+     * manager's BLAZE_ROD fallback; an empty or absent {@code permission} means no
+     * gate. Callbacks are code-only and compose over the loaded spec:
+     * {@code SelectionSpec.fromConfig(sn(), sn().yml().config(), "selection-wand",
+     * "arena").toBuilder().onSelect(...).build()}. The YML integration is 100% opt-in
+     * for the consumer; no new SnSpec module is involved.</p>
+     */
+    public static SelectionSpec fromConfig(Sn ctx, SnYml yml, String path, String id) {
+        String p = path == null || path.isBlank() ? "" : path + ".";
+        Builder builder = builder(id);
+        if (yml.getSection(p + "item") != null) {
+            builder.wandItem(SnItem.fromConfig(yml, p + "item", null));
+        }
+        builder.permission(yml.getString(p + "permission", ""));
+        builder.particle(yml.getString(p + "particle.type", "DUST"));
+        builder.dustColor(yml.getString(p + "particle.color", ""));
+        builder.dustSize((float) yml.getDouble(p + "particle.size", 1.2D));
+        builder.step(yml.getDouble(p + "step", 0.5D));
+        builder.refreshIntervalTicks(yml.getLong(p + "interval-ticks", 5L));
+        builder.renderDistance(yml.getDouble(p + "render-distance", 64.0D));
+        String rawVisibility = yml.getString(p + "visibility", Visibility.OWNER_ONLY.name());
+        try {
+            builder.visibility(Visibility.valueOf(rawVisibility.trim().toUpperCase(Locale.ROOT)));
+        } catch (IllegalArgumentException invalid) {
+            if (WARNED.add("visibility:" + rawVisibility)) {
+                ctx.plugin().getLogger().warning("Visibility de seleccion invalida '"
+                        + rawVisibility + "' (opciones: OWNER_ONLY, WORLD); usando OWNER_ONLY");
+            }
+        }
+        builder.particleBudget(yml.getInt(p + "particle-budget", 2000));
+        builder.maxRenderVolume(yml.getLong(p + "max-render-volume", 250_000L));
+        builder.maxVolume(yml.getLong(p + "max-volume", 0L));
+        builder.timeoutTicks(yml.getLong(p + "timeout-ticks", 0L));
+        builder.silent(yml.getBoolean(p + "silent", false));
+        return builder.build();
     }
 
     /** Short identifier of this spec; stored as the wand's PDC tag value. */

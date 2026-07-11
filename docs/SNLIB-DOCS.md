@@ -24,6 +24,7 @@
 - [15. BossBars, Hologramas, Leaderboards y Discord](#15-bossbars-hologramas-leaderboards-y-discord)
 - [16. Build, tests, specs golden y TODOs](#16-build-tests-specs-golden-y-todos)
 - [17. UpdateChecker (v1.1)](#17-updatechecker-v11)
+- [18. Region: seleccion de cuboides (v1.1)](#18-region-seleccion-de-cuboides-v11)
 
 ---
 ## 01. Arquitectura y ciclo de vida
@@ -121,6 +122,7 @@ Accessors SIEMPRE disponibles (nunca tiran, esten o no declarados modulos):
 - `public DiscordWebhook discord()` - los mensajes encolan FIFO y postean async por el HttpClient del JDK, honrando Retry-After en 429; el teardown drena lo que quede encolado.
 - `public UpdateChecker updates()` - update checker notify-only del plugin dueño (v1.1); sin `SnSpec.builder().updates(...)` ni `watch()`/`checkNow()` explicitos queda inerte (cero trafico). Ver seccion 17.
 - `public ItemRegistry items()` - registro de items; funciona con cero archivos: definiciones desde `ItemDef.builder()`, secciones YML o el archivo declarado via `SnSpec.builder().items(...)`.
+- `public SelectionManager selections()` - modulo de seleccion de cuboides (v1.1); 100% programatico: registra `SelectionSpec`s, entrega wands tageadas por PDC y entrega el `Cuboid` completo por callback o por el evento cancelable. Ver seccion 18.
 - `public SnCommands commands()` - modulo de comandos; los roots construidos aca inyectan subcomandos reload y help por defecto, tab-complete gateado por permiso, y se desregistran en shutdown.
 - `public ReloadManager reload()` - orquestador de reload; reconstruye los modulos declarados en orden estricto y re-despacha los reloadables registrados via `ReloadManager.register`; el subcomando `reload` default y `/snlib reload <plugin>` delegan aca.
 - `public boolean isShuttingDown()` - true desde que arranco el teardown de este contexto; el I/O de modulos debe pasar a sincronico.
@@ -140,7 +142,7 @@ Otros metodos:
 
 #### Logica interna: orden de construccion
 
-El constructor cablea en este orden: scheduler, papi, yml (null si `spec.config() == null`), debug (recibe la config o null), actions, lang (solo si `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (con `updates.watch(repo)` inmediato si el spec declaro `updates("owner/repo")`), items. Si el spec declara items con archivo y HAY yml, hace `items.loadAll(yml.managed(itemsFile))`; si declara items SIN config, WARNea: `items("...") declarado sin config(): el archivo no se monta y sn.items() queda solo programatico`. Despues guis (solo si `spec.guis()`, con `guis.load()` inmediato), db (solo si `spec.db()`, con `DbConfig.load(plugin, yml.config().getSection("database"))` o seccion null sin yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) y reload.
+El constructor cablea en este orden: scheduler, papi, yml (null si `spec.config() == null`), debug (recibe la config o null), actions, lang (solo si `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (con `updates.watch(repo)` inmediato si el spec declaro `updates("owner/repo")`), items. Si el spec declara items con archivo y HAY yml, hace `items.loadAll(yml.managed(itemsFile))`; si declara items SIN config, WARNea: `items("...") declarado sin config(): el archivo no se monta y sn.items() queda solo programatico`. Despues selections (siempre disponible; despues de items y antes de guis, no depende de ningun otro modulo), guis (solo si `spec.guis()`, con `guis.load()` inmediato), db (solo si `spec.db()`, con `DbConfig.load(plugin, yml.config().getSection("database"))` o seccion null sin yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) y reload.
 
 #### Logica interna: los 13 pasos de shutdown()
 
@@ -150,7 +152,7 @@ Si `shuttingDown` ya era true, retorna sin hacer nada (idempotencia). Si no, eje
 1. `guis.closeAll()` (si guis declarado) - cierra las GUIs abiertas de este owner; cada sesion por viewer cancela sus timers, destrackea su holder y fuerza el cierre a su viewer.
 2. `commands.unregisterAll()` - desregistra los command roots de este owner y refresca los arboles de comandos de los clientes.
 3. `yml.flushAll()` (si yml declarado) - drena las escrituras yml async coalescidas ANTES de cancelar el scheduler que las correria.
-4. `items.cancelTasks()` y `scheduler.cancelAll()` - recien ahora cancela toda task restante del plugin dueño.
+4. `items.cancelTasks()`, `selections.shutdown()` y `scheduler.cancelAll()` - recien ahora corta los renderers de seleccion (limpiando sesiones y specs, sin onCancel) y cancela toda task restante del plugin dueño.
 5. `EquipmentBackup.restoreAll(plugin)` - locked items: devuelve el equipamiento real desplazado; el store write-through persiste sincronico gracias al flag `shuttingDown`.
 6. `db.flushPlayerCaches()` (si db declarado) - caches de jugador: guarda toda entrada dirty y joinea las escrituras...
 7. `db.shutdown()` (si db declarado) - ...y despues cierra el pool (joinea trabajo pendiente, `shutdownNow` tras timeout).
@@ -731,6 +733,12 @@ Recurso empaquetado dentro de SnLib.jar con las keys de mensaje compartidas `snl
 | `snlib.help.header` | (ninguno) | Linea de encabezado impresa antes de las entradas de help generadas. |
 | `snlib.help.entry` | `{usage}`, `{permission}` | Una linea por subcomando visible para el sender. |
 | `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Impresa despues de las entradas solo cuando el help abarca varias paginas; `{command}` es el nombre del comando raiz. |
+| `snlib.selection.pos1-set` | `{x}`, `{y}`, `{z}`, `{world}` | Enviada cuando una wand de seleccion setea la posicion 1 (v1.1, seccion 18). |
+| `snlib.selection.pos2-set` | `{x}`, `{y}`, `{z}`, `{world}` | Enviada cuando una wand de seleccion setea la posicion 2 (v1.1, seccion 18). |
+| `snlib.selection.different-worlds` | (ninguno) | Enviada cuando las dos posiciones de una seleccion quedan en mundos distintos (v1.1, seccion 18). |
+| `snlib.selection.too-big` | `{volume}`, `{max}` | Enviada cuando el cuboide seleccionado excede el `maxVolume` del spec (v1.1, seccion 18). |
+| `snlib.selection.no-permission` | (ninguno) | Enviada cuando el jugador no tiene el permiso de la wand de seleccion (v1.1, seccion 18). |
+| `snlib.selection.timeout` | (ninguno) | Enviada cuando una sesion de seleccion expira por el timeout del spec (v1.1, seccion 18). |
 
 Los valores default usan color codes legacy `&` (ej. `&cYou do not have permission to use this command.`).
 
@@ -1512,7 +1520,7 @@ Punto de inscripcion unico de todos los listeners compartidos de la libreria. Me
 - `public static void inscribe(Listener listener)` - agrega un listener compartido al hub; queda dormido hasta `registerAll`.
 - `public static void registerAll(SnLibPlugin plugin)` - registra cada listener inscripto contra el plugin SnLib. Idempotente: primero hace `HandlerList.unregisterAll(plugin)` para dropear las registraciones previas de SnLib, asi una doble llamada o un re-enable nunca duplican handlers (un disable de SnLib tambien los desregistra a todos).
 
-#### Enumeracion canonica de los 12 listeners (con su paquete de origen)
+#### Enumeracion canonica de los 14 listeners (con su paquete de origen)
 
 Orden exacto del inicializador estatico:
 
@@ -1520,14 +1528,16 @@ Orden exacto del inicializador estatico:
 2. `new TenantSweeper()` - `com.sn.lib.tenant.internal` (sweep por disable de plugin).
 3. `new QuitCleanupListener()` - `com.sn.lib.internal` (quit/kick cleanup).
 4. `new ArmourEquipListener()` - `com.sn.lib.event.internal` (eventos de armadura).
-5. `new ChunkMoveListener()` - `com.sn.lib.event.internal` (sintesis de SnChunkMoveEvent, v1.1).
+5. `new ChunkMoveListener()` - `com.sn.lib.event.internal` (sintesis de SnChunkMoveEvent, D3, v1.1).
 6. `new ItemPropertyListener()` - `com.sn.lib.item.internal` (propiedades de items).
 7. `new ItemInteractListener()` - `com.sn.lib.item.internal` (interacciones de items).
 8. `new LockedItemListener()` - `com.sn.lib.item.internal` (items bloqueados).
 9. `new GuiClickListener()` - `com.sn.lib.gui.internal` (clicks de GUI).
 10. `new GuiProtectionListener()` - `com.sn.lib.gui.internal` (proteccion de GUI).
 11. `PlayerDataCache.joinListener()` - `com.sn.lib.db` (cache de datos de jugador, join).
-12. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (carga/descarga de chunks para hologramas).
+12. `UpdateChecker.joinListener()` - `com.sn.lib.update` (aviso de updates al join, D4, v1.1).
+13. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (carga/descarga de chunks para hologramas).
+14. `new SelectionWandListener()` - `com.sn.lib.region.internal` (wand de seleccion de cuboides, v1.1).
 
 ### TenantSweeper (internal)
 
@@ -3537,3 +3547,136 @@ API publica:
 - `void jsonStringMissingFieldReturnsNull()` - campo ausente, valor no-string y string sin cierre devuelven null.
 - `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` y `vanilla` intactos.
 - Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 187 tests en 19 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests; el paso 15 sumo UpdateCheckerJsonTest con 5 tests; el paso 16 sumo 6 tests de formatComma a NumberFormatterTest y PlayerLookupParseTest con 4 tests).
+
+## 18. Region: seleccion de cuboides (v1.1)
+
+Modulo nuevo `com.sn.lib.region` (port generalizado del Admin Wand de SnGens): selecciones de cuboides MUY visuales para cualquier consumidor, con wand tageada por PDC, renderizado de aristas por particulas, limites configurables y callbacks. Siempre disponible via `sn.selections()` (sin gate de spec, como `actions()` o `cooldowns()`): es 100% programatico y su costo idle es un mapa vacio mas una registracion de quit-cleanup. El paquete `com.sn.lib.region.internal` (listener + renderer) queda fuera del contrato semver por la regla de paquetes `*.internal` (y del analisis japicmp por el patron `com.sn.lib.**.internal.**` ya configurado).
+
+Flujo canonico de un consumidor:
+
+```java
+SelectionSpec spec = SelectionSpec.builder("arena")
+    .permission("miplugin.wand")
+    .wandItem(SnItem.builder(Material.GOLDEN_AXE).name("&6&lArena Wand").glow())
+    .particle("DUST").dustColor("255, 140, 0").dustSize(1.2f)
+    .step(0.5).refreshIntervalTicks(5).renderDistance(48)
+    .maxVolume(100_000)
+    .onSelect(cuboid -> arenas.saveRegion(cuboid))
+    .build();
+
+sn().selections().giveWand(player, spec);
+// left click = pos1, right click = pos2, aristas renderizadas en vivo;
+// al completarse: SnSelectionCompleteEvent (cancelable) -> onSelect(Cuboid)
+```
+
+### Cuboid
+`src/main/java/com/sn/lib/region/Cuboid.java`
+
+Cuboide de BLOQUES inmutable y thread-safe por construccion: `worldName` string mas 6 `int` SIEMPRE normalizados (min <= max por eje) en el factory; bordes inclusivos en `contains`. El core (contencion, iteracion, size, serializacion) es puro y no toca estaticos de Bukkit; solo los metodos puente (`of(Location, Location)`, `contains(Location)`, `world()`, `blocks()`, `center()`) lo hacen, asi el core se testea en JUnit plano (`CuboidTest`).
+
+- Factories: `of(String worldName, x1, y1, z1, x2, y2, z2)` (normaliza; worldName null/blank lanza `IllegalArgumentException`) y `of(Location a, Location b)` (block coords; null, sin mundo cargado o mundos distintos LANZAN: camino de programador, fail fast).
+- Getters puros: `worldName()`, `minX()/minY()/minZ()/maxX()/maxY()/maxZ()`, `widthX()/heightY()/depthZ()` (conteo inclusivo), `size()` en `long` (nunca overflow int).
+- Contencion: `contains(int, int, int)` (pura, ignora mundo), `contains(String, int, int, int)` (world-aware), `contains(@Nullable Location)` (null/sin mundo/mundo distinto -> false, nunca lanza), `intersects(Cuboid)` (mundos distintos -> false; overlap inclusivo: tocarse en un borde cuenta).
+- Derivados: `expand(dx, dy, dz)` devuelve instancia NUEVA que crece (o encoge con negativos) en AMBAS direcciones por eje; si min cruza a max al encoger, ese eje colapsa a 1 bloque en el punto medio (nunca lanza).
+- Iteracion: `forEach(BlockConsumer)` (pura, visita cada bloque una vez en orden x -> y -> z) y `blocks()` (puente Bukkit LAZY que nunca materializa listas; mundo no cargado -> Iterable vacio, nunca lanza).
+- Puentes: `world()` (null si no esta cargado) y `center()` (centro geometrico +0.5 por eje, null sin mundo).
+- Serializacion: `serialize()` emite `world;minX;minY;minZ;maxX;maxY;maxZ` (orden normalizado) y `deserialize(String)` es la inversa null-safe que NUNCA lanza (null/blank, != 7 partes, numero malformado o world blank -> null; cada parte se trimea; re-normaliza esquinas; NO exige mundo cargado, el binding es lazy via `world()`). Formato HERMANO de `LocationSerializer` (mismo separador `;`, trim por parte, deserialize leniente) pero NO parseable por el (esa clase espera 4 o 6 partes).
+- `equals`/`hashCode` por worldName + 6 coords; `toString()` es la forma serializada.
+
+Politica lanzar-vs-null documentada: `of(Location, Location)` lanza (camino programatico) y `deserialize` devuelve null (camino de datos/config), consistente con la filosofia del paquete util.
+
+### SelectionSpec
+`src/main/java/com/sn/lib/region/SelectionSpec.java`
+
+Declaracion inmutable de una clase de seleccion (wand + visual + limites + callbacks), identificada por un `id` corto que viaja en el PDC de la wand. Patron builder; TODOS los campos tienen default y los clamps se aplican una sola vez en `build()`. Los campos visuales se guardan PUROS (particula por NOMBRE, color dust como 3 ints): la resolucion a tipos Bukkit vive en el renderer.
+
+- `builder(String id)` (id null/blank -> "default") y `toBuilder()` (copia todos los campos a un builder nuevo, para componer callbacks sobre un spec cargado de YML).
+- `public static SelectionSpec fromConfig(Sn ctx, SnYml yml, String path, String id)` - lee la seccion YML de la spec golden `docs/selection-example.yml`: campos ausentes caen a los defaults del builder; valores invalidos WARNean una vez y caen al default (los getters tipados de SnYml ya resuelven fallback + WARN de tipo). La seccion `item` mapea por `SnItem.fromConfig` SOLO si existe (ausente -> fallback BLAZE_ROD del manager); `permission` vacio o ausente -> null (sin gate); `visibility` es enum leniente (invalido -> OWNER_ONLY + WARN once). Composicion canonica: `SelectionSpec.fromConfig(sn(), sn().yml().config(), "selection-wand", "arena").toBuilder().onSelect(...).build()`. Sin modulo nuevo en SnSpec: la integracion YML es 100% opt-in del consumidor.
+- Getters con default y clamp: `permission()` (null = sin gate), `wandItem()` (null = fallback), `particleName()` (default "DUST"), `dustRed()/dustGreen()/dustBlue()` (default 255, 140, 0; clamp 0..255), `dustSize()` (default 1.2, clamp 0.1..4.0), `step()` (default 0.5, min 0.1), `refreshIntervalTicks()` (default 5, min 1), `renderDistance()` (default 64), `visibility()` (enum anidado `Visibility { OWNER_ONLY, WORLD }`, default OWNER_ONLY), `particleBudget()` (default 2000, por refresh POR viewer), `maxRenderVolume()` (default 250000), `maxVolume()` (default 0 = sin cap), `timeoutTicks()` (default 0 = no expira), `completeEnds()` (default false), `silent()` (default false).
+- Callbacks opcionales: `onSelect()` (`Consumer<Cuboid>`), `onUpdate()` (`Consumer<SelectionSession>`) y `onCancel()` (`Consumer<UUID>`: UUID y no Player porque en quit/kick el Player puede ya no ser valido, y los callbacks de quit deben ser idempotentes por contrato de QuitCleanupListener).
+- Builder fluido: un metodo por campo, incluyendo `wandItem(SnItem)` / `wandItem(ItemStack)` (template clonado; cada uno reemplaza al otro), `particle(String)` / `particle(Particle)` (azucar que guarda `name()`), `dustColor(int, int, int)` / `dustColor(String)` (parse puro leniente de `"R, G, B"` o `"#RRGGBB"`; malformado conserva el actual + WARN once por input).
+
+### SelectionManager
+`src/main/java/com/sn/lib/region/SelectionManager.java`
+
+Modulo de seleccion de un contexto Sn (`sn.selections()`): registra specs por id, entrega wands fisicas tageadas y es dueño de una `SelectionSession` por jugador seleccionando. Mutaciones de sesion main-thread only.
+
+Constante publica: `WAND_TAG = "snlib_selection_wand"` (key PDC, namespaceada por owner via TagIo; el VALUE es el spec id, NO un UUID random: wands identicas stackean sin consecuencias y el id resuelve el spec tras relog).
+
+Estatico server-wide justificado (patron ItemPropertyListener.track): `TenantRegistry<SelectionManager> MANAGERS` con callback `shutdownQuietly`; sus dos unicos propositos son (a) que el listener compartido resuelva el manager dueño de una wand por el namespace de su key PDC, (b) doble red de sweep si el owner nunca hizo shutdown.
+
+API publica:
+
+- `begin(Player, SelectionSpec)` - registra el spec y abre una sesion nueva, cancelando antes la previa de ESTE contexto (renderer cortado + onCancel del spec previo; sin evento ni mensaje). No entrega wand (componer con `giveWand`).
+- `current(Player)` / `current(UUID)` - sesion activa o null.
+- `cancel(Player)` / `cancel(UUID)` - corta el renderer, remueve la sesion y corre el `onCancel` del spec con el UUID (try/catch Throwable + WARN). Idempotente.
+- `registerSpec(SelectionSpec)` - registra o reemplaza por id SIN abrir sesion; existe para el patron "registrar en onInnerEnable, dar wands despues por comando": una wand vieja en un inventario vuelve a funcionar apenas su spec esta registrado (el listener auto-abre la sesion al primer click).
+- `createWand(SelectionSpec)` - registra el spec y construye la wand fisica (SnItem renderizado, template clonado o fallback BLAZE_ROD "&6&lRegion Wand") con el tag PDC.
+- `giveWand(Player, SelectionSpec)` - createWand + `InvUtil.giveItems` (overflow a los pies).
+- `isWand(ItemStack)` / `wandSpecId(ItemStack)` - chequeo/lectura del tag de ESTE contexto (null/air/sin meta -> false/null).
+- `shutdown()` - teardown idempotente invocado por el paso 4 de `Sn.shutdown()` y por el sweep como doble red: corta cada render task (cancel con catch, el scheduler puede estar muriendo) y limpia sesiones y specs. Deliberadamente NO corre ningun `onCancel` (correr callbacks de consumidor durante teardown es peligroso, misma politica que las close-actions de GUI).
+- Puentes internos publicos fuera del contrato de consumidor: `forNamespace(String)` y `handleWandClick(...)` (para el listener compartido), `handleRendererOffline(UUID)` y `handleRendererTimeout(UUID)` (para el renderer, que vive en `region.internal` y no alcanza los miembros package-private).
+
+Pipeline de completitud (corazon del contrato; corre en cada set de pos por wand o setter): (1) guarda la pos clonada y refresca el renderer; (2) mensaje `pos1-set`/`pos2-set` (y `different-worlds` si ambas pos quedaron en mundos distintos: aviso explicito en vez del silencio confuso de SnGens); (3) `onUpdate` del spec; (4) si `hasBothPositions()`: construye el `Cuboid`; si `maxVolume > 0` y `size() > maxVolume` manda `too-big` (placeholders `{volume}` `{max}`), la pos QUEDA seteada y NO hay evento ni onSelect; (5) si pasa el cap dispara `SnSelectionCompleteEvent` (cancelable vinculante); (6) si sobrevive corre `onSelect(cuboid)` (try/catch + WARN); (7) la sesion NO se cierra sola salvo `completeEnds()` (cancelSilently: sin onCancel, la seleccion termino bien).
+
+Mensajes: resuelve via `ctx.lang()` si el modulo esta declarado (patron `langOrNull()`); sin lang manda los defaults en ingles embebidos (espejo de `snlib-messages.yml`) por `SnText.color`. Con `silent()` no manda nada.
+
+Politica de reload: el reload NO toca selecciones (estado transitorio de jugador, no derivado de archivos; un reload a mitad de seleccion no le roba la seleccion al admin); los renderers siguen corriendo; si el consumidor re-construye specs desde YML en su Reloadable, `registerSpec` reemplaza por id y las sesiones vivas siguen apuntando al spec viejo (inmutable, sin estado inconsistente) hasta el proximo begin/click. ReloadManager no se modifica.
+
+Cleanup completo: quit/kick via `QuitCleanupListener.register` (onQuit = cancel, idempotente porque kick dispara kick y quit); `clearPositions` corta el renderer con la sesion viva; cada `refreshRenderer` re-arma; `shutdown()` desde el paso 4 del teardown de Sn; doble red por el callback `shutdownQuietly` de MANAGERS (paso 13 del shutdown y TenantSweeper de un owner que nunca cerro); el disable de SnLib misma cae en la cascada existente `TenantSweeper.cascadeAll` sin codigo nuevo.
+
+### SelectionSession
+`src/main/java/com/sn/lib/region/SelectionSession.java`
+
+Estado mutable por jugador, propiedad del manager; main-thread only. JAMAS se persiste a disco (estado transitorio); para persistir el resultado usar `Cuboid.serialize()`.
+
+- `playerId()`, `spec()`, `createdAtMillis()` (instante de creacion; el timeout del spec cuenta desde ahi).
+- `pos1()` / `pos2()` - copias defensivas (clone), null si no seteada.
+- `setPos1(Location)` / `setPos2(Location)` - setters programaticos con las MISMAS consecuencias que un click de wand (refresh del renderer, mensajes, onUpdate y pipeline de completitud); null borra esa pos. Delegan en el manager.
+- `hasBothPositions()` - ambas != null, con mundo cargado y MISMO mundo por nombre.
+- `cuboid()` - `Cuboid.of(pos1, pos2)` si `hasBothPositions()`, si no null.
+- `clearPositions()` - borra ambas pos y corta el renderer; la sesion sigue viva.
+
+### SnSelectionCompleteEvent
+`src/main/java/com/sn/lib/event/SnSelectionCompleteEvent.java`
+
+`public final class SnSelectionCompleteEvent extends SnPlayerEvent` (par getHandlers/getHandlerList, patron SnArmourEquipEvent). Sincronico, main thread, despachado via `event.call()`.
+
+- Constructor `(Player player, Plugin owner, String specId, Cuboid cuboid)`; accessors `owner()` (plugin consumidor dueño), `specId()` y `cuboid()` (inmutable, compartible sin copiar).
+- Cancelacion VINCULANTE: cancelado, `onSelect` NO corre y la sesion queda viva (el jugador puede re-clickear). Permite a plugins de proteccion/staff vetar selecciones ajenas (caso multi-tenant real).
+- Es el UNICO evento del modulo por diseño: NO hay SnSelectionUpdateEvent porque cada click dispararia un evento server-wide; el callback `onUpdate` del spec cubre ese caso con costo global cero (agregable additive despues si aparece la necesidad).
+
+### SelectionWandListener (internal)
+`src/main/java/com/sn/lib/region/internal/SelectionWandListener.java`
+
+Listener compartido final, propiedad de SnLib, inscripto como listener 14 del ListenerHub (`registerEvents` ocurre UNICAMENTE en el bootstrap de SnLibPlugin). Handler unico `@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)` sobre `PlayerInteractEvent`.
+
+Orden exacto de chequeos (quick-exit en capas, contrato hot-path): (1) action LEFT_CLICK_BLOCK o RIGHT_CLICK_BLOCK (aire y PHYSICAL se ignoran; sin raytrace, ampliable additive); (2) `getHand() == EquipmentSlot.HAND` (descarta el eco de offhand del doble fire); (3) item null/air/sin meta; (4) scan de keys PDC buscando `snlib_selection_wand` y resolucion del manager dueño por namespace (`SelectionManager.forNamespace`, mismo patron que ItemPropertyListener.match); (5) clickedBlock null; (6) `event.setCancelled(true)` ANTES del permiso (decision SnGens preservada: una wand en mano nunca rompe/usa bloques, ni siquiera sin permiso; LOWEST + ignoreCancelled=false hace que la wand gane a protecciones de terreno por ser herramienta administrativa); (7) delega en `manager.handleWandClick` (spec no registrado -> nota de debug sin spam al jugador; gate de permiso con mensaje `no-permission`; auto-begin de sesion, lo que hace que la wand funcione tras relog; LEFT = pos1, RIGHT = pos2 y pipeline de completitud).
+
+### SelectionRenderer (internal)
+`src/main/java/com/sn/lib/region/internal/SelectionRenderer.java`
+
+`public final class SelectionRenderer implements Runnable`: UNA instancia por sesion con renderer activo, armada por `SelectionManager.refreshRenderer` via `ctx.scheduler().timer(1L, spec.refreshIntervalTicks(), renderer)` cuando hay AL MENOS UNA pos seteada (mejora sobre SnGens, que exigia ambas). Cachea una vez por instancia el `Particle` resuelto y las `DustOptions` (`Color.fromRGB` + `dustSize`).
+
+Resolucion LENIENTE de la particula (politica de enums abiertos): `valueOf` del nombre en mayusculas con alias bidireccional REDSTONE <-> DUST; nombre irresoluble -> fallback FLAME + WARN once por nombre; cualquier particula distinta de DUST cuyo dataType requerido no sea Void se degrada a FLAME con WARN once (la gramatica rica de dataTypes pertenece a la accion `[particle]`, no aca). Solo DUST recibe data en la emision.
+
+Logica de `run()` en orden: (1) owner offline -> `handleRendererOffline` (cancel silencioso; cierra el leak leve de SnGens: la task no corre en vano y cubre la carrera que el quit-cleanup no vio); (2) timeout: `timeoutTicks > 0` y `now - createdAtMillis >= timeoutTicks * 50` -> `handleRendererTimeout` (cancel CON onCancel + mensaje `timeout` salvo silent); decision: el timeout vive en el renderer y no en un task aparte, porque el renderer existe siempre que haya algo que mostrar y una sesion sin ninguna pos no expira; (3) geometria: UNA pos -> marker box de 1 bloque `[b, b+1)` (feedback del primer click); ambas pos mismo mundo -> bounding box `[min, max + 1.0)` en doubles; pos en mundos DISTINTOS -> marker de la pos que este en el mundo del OWNER (ninguna -> no dibuja este tick, la task sigue); (4) presupuesto: `points = ceil(4 * (dx + dy + dz) / step)`; si excede `particleBudget` se recalcula el step efectivo (el box ENTERO se ve, mas ralo; nunca se corta a mitad de arista); si `size() > maxRenderVolume` NO dibuja aristas: solo las 8 esquinas como mini-cruz de 3 segmentos cortos (1 bloque por eje con el step del spec; < 200 puntos, mas visible que el punto unico de SnGens); (5) viewers: OWNER_ONLY -> solo el owner; WORLD -> `world.getPlayers()`; en ambos casos culling por viewer via `LocationUtil.distanceToBoxSquared` contra el punto MAS CERCANO del box (clamp por eje, no el centro: correcto en boxes enormes); el budget aplica POR viewer (el costo escala viewers x puntos, documentado); (6) emision `viewer.spawnParticle(particle, x, y, z, 1, 0, 0, 0, 0[, dustOptions])`.
+
+Justificacion Folia (documentada en el Javadoc): corre en main thread / global region via SnScheduler; `spawnParticle` per-player solo manda packets al viewer y el renderer JAMAS toca logica de mundo (ni bloques, ni entidades, ni chunk loads); cero NMS. Misma justificacion documentada que SnGens.
+
+### LocationUtil (en el paquete util)
+`src/main/java/com/sn/lib/util/LocationUtil.java`
+
+Helpers estaticos de matematica de ubicaciones (D11), clase final del paquete `com.sn.lib.util` que NUNCA lanza: input invalido devuelve false o `Double.POSITIVE_INFINITY`.
+
+- `inCuboid(point, cornerA, cornerB)` - contencion world-aware desde dos esquinas sueltas (el patron que cada plugin re-escribia con bugs de borde); null/mundos ausentes o distintos -> false; DELEGA en `Cuboid.of(...).contains(point)`: una sola fuente de verdad de bordes inclusivos y normalizacion min/max (el Cuboid de vida corta lo resuelve escape analysis; convenience, no hot-path).
+- `distance2dSquared(a, b)` / `distance2d(a, b)` - distancia horizontal ignorando Y; null/mundos distintos -> infinito.
+- `distanceToBoxSquared(box, point)` - distancia al punto MAS CERCANO del bounding box `[min, max + 1)` (clamp por eje); mundo distinto/nulo -> infinito. ES el helper de culling del SelectionRenderer, y publico porque es exactamente el "esta cerca de la region" que un plugin de zonas necesita. Combina con SnChunkMoveEvent (seccion 10): cuboid-check al cruzar chunk en vez de por cada move.
+
+#### Notas y gotchas del modulo
+
+- Additive puro: cero firmas existentes tocadas; el accessor `selections()` y el listener 14 son crecimientos permitidos del entrypoint.
+- 1.20.4: la resolucion de particula es por NOMBRE leniente con alias REDSTONE <-> DUST y fallback FLAME, asi ninguna combinacion version/nombre crashea; verificacion puntual de `Particle.DUST` en el smoke gate 1.20.4 del release.
+- Hot-path: PlayerInteractEvent es frecuente; el quick-exit del listener (action -> hand -> null/air -> meta -> scan PDC) deja el costo en nanosegundos para todo item normal (mismo presupuesto que ItemInteractListener).
+- Presupuesto de particulas: budget por viewer + step efectivo + corners-only sobre `max-render-volume` garantizan que ninguna seleccion, por absurda que sea, tire el cliente ni sature el main thread.
+- Fuera del alcance v1.1 (evitable como additive futuro): seleccion por click al aire/raytrace, expansion tipo WorldEdit por comandos, multiples selecciones nombradas por jugador.

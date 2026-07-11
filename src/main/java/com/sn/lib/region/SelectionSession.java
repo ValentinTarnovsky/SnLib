@@ -47,6 +47,11 @@ public final class SelectionSession {
         return spec;
     }
 
+    /** Creation instant of this session in epoch millis; the spec timeout counts from it. */
+    public long createdAtMillis() {
+        return createdAtMillis;
+    }
+
     /** Defensive copy of position 1, or null when unset. */
     public @Nullable Location pos1() {
         return pos1 == null ? null : pos1.clone();

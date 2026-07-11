@@ -1,0 +1,72 @@
+# ═══════════════════════════════════════════════════════════════════
+# SELECTION LIB - Cuboid Selection Wand Configuration Schema (golden spec)
+# ═══════════════════════════════════════════════════════════════════
+# Optional YML integration of the selection module (com.sn.lib.region).
+# A consumer plugin loads this section and composes its callbacks in code:
+#
+#   SelectionSpec spec = SelectionSpec
+#       .fromConfig(sn(), sn().yml().config(), "selection-wand", "arena")
+#       .toBuilder()
+#       .onSelect(cuboid -> arenas.saveRegion(cuboid))
+#       .build();
+#   sn().selections().giveWand(player, spec);
+#
+# Every field is optional: absent fields fall back to the documented defaults
+# and invalid values WARN once and keep the default. The module also works with
+# zero YML through SelectionSpec.builder("id"); this file is pure convenience.
+
+selection-wand:
+  # Wand item appearance. Supports the FULL SnItem appearance schema of
+  # item-example.yml: display-name (with [small]/[rgb]/[center] prefix tags),
+  # material (incl. the texture-/basehead-/base64- head convention), skull-owner,
+  # custom-model-data, amount, glow, lore, enchantments, flags, color,
+  # trim-pattern/trim-material, potion-effects, attributes, damage, unbreakable,
+  # max-stack-size and equipment-slot.
+  # Absent section -> internal fallback: BLAZE_ROD named "&6&lRegion Wand".
+  item:
+    material: GOLDEN_AXE
+    display-name: "&6&lRegion Wand"
+    lore:
+      - "&7Left click: &fpos1"
+      - "&7Right click: &fpos2"
+    glow: true
+  # Permission required to USE the wand (empty = anyone holding it). Granting
+  # the permission is up to the plugin. # default: ""
+  permission: "myplugin.wand"
+  particle:
+    # Edge particle, open set: any Particle enum name, or the REDSTONE alias for
+    # DUST. An invalid name falls back to FLAME with one WARN; particles that
+    # require data (other than DUST) also degrade to FLAME. # default: DUST
+    type: DUST
+    # Only for DUST: "R, G, B" or "#RRGGBB". # default: "255, 140, 0"
+    color: "255, 140, 0"
+    # Only for DUST: dust size, clamped 0.1 - 4.0. # default: 1.2
+    size: 1.2
+  # Distance between edge points in blocks. Min 0.1. # default: 0.5
+  step: 0.5
+  # Render refresh period in ticks. Min 1. # default: 5
+  interval-ticks: 5
+  # Max distance (blocks) from a viewer to the box for particles to be shown;
+  # culling measures against the CLOSEST point of the box, not its center.
+  # default: 64
+  render-distance: 48
+  # OWNER_ONLY (default) = only the selecting player sees the edges.
+  # WORLD = every player of the box's world within render-distance.
+  visibility: OWNER_ONLY
+  # Max particle points per refresh per viewer; bigger boxes render sparser (the
+  # whole box always stays visible), never heavier. # default: 2000
+  particle-budget: 2000
+  # Above this block volume edges are not drawn: only the 8 corners are marked,
+  # each with a small 3-segment cross. # default: 250000
+  max-render-volume: 250000
+  # Max selectable volume in blocks; 0 = unlimited. An exceeding selection warns
+  # the player and does not complete (positions stay set for correction).
+  # default: 0
+  max-volume: 0
+  # Session timeout in ticks; 0 = never expires. An expired session cancels with
+  # the spec's onCancel callback and the snlib.selection.timeout message.
+  # default: 0
+  timeout-ticks: 0
+  # Send no selection messages at all (pos-set / different-worlds / too-big /
+  # no-permission / timeout). # default: false
+  silent: false
