@@ -28,22 +28,40 @@ public final class SnFuture<T> {
 
     private final Sn ctx;
     private final @Nullable SnDb db;
+    private final boolean mainThreadCompleted;
     final CompletableFuture<T> delegate;
 
     SnFuture(Sn ctx, @Nullable SnDb db, CompletableFuture<T> delegate) {
+        this(ctx, db, delegate, false);
+    }
+
+    private SnFuture(Sn ctx, @Nullable SnDb db, CompletableFuture<T> delegate,
+            boolean mainThreadCompleted) {
         this.ctx = ctx;
         this.db = db;
         this.delegate = delegate;
+        this.mainThreadCompleted = mainThreadCompleted;
     }
 
     /**
      * Wraps an arbitrary {@code CompletableFuture} in the SnFuture consumption surface
      * ({@link #thenSync}, {@link #exceptionally}, {@link #join}) of the given context.
      * Used by library modules outside the db package (such as {@code SnPapi.applyOnMain})
-     * and available to consumers.
+     * and available to consumers. The join-on-bootstrap/shutdown allowance applies to DB
+     * futures only.
      */
     public static <T> SnFuture<T> wrap(Sn ctx, CompletableFuture<T> future) {
         return new SnFuture<>(ctx, null, future);
+    }
+
+    /**
+     * Like {@link #wrap} for a future that can ONLY complete on the main thread (bridge
+     * responses, timeouts and teardowns all resolve there): {@link #join()} from the
+     * main thread would deadlock the server forever, so it throws instead. Consume with
+     * {@link #thenSync}/{@link #exceptionally}.
+     */
+    public static <T> SnFuture<T> wrapMainCompleted(Sn ctx, CompletableFuture<T> future) {
+        return new SnFuture<>(ctx, null, future, true);
     }
 
     /**
@@ -72,6 +90,11 @@ public final class SnFuture<T> {
      * {@value #JOIN_WARN_FRAMES} calling frames.
      */
     public T join() {
+        if (mainThreadCompleted && !delegate.isDone() && Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("Este future completa EN el main thread (frames/"
+                    + "sweep del bridge): join() en el main thread nunca retornaria; usar"
+                    + " thenSync/exceptionally");
+        }
         warnIfMainThreadJoin();
         return delegate.join();
     }

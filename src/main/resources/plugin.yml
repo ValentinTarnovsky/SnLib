@@ -10,7 +10,7 @@ softdepend: [PlaceholderAPI, Vault]
 commands:
   snlib:
     description: SnLib administration command.
-    usage: /snlib <version|plugins|integrations|iteminfo|reload>
+    usage: /snlib <version|plugins|integrations|iteminfo|bridge|reload>
 
 permissions:
   snlib.admin:
@@ -21,6 +21,7 @@ permissions:
       snlib.admin.plugins: true
       snlib.admin.integrations: true
       snlib.admin.iteminfo: true
+      snlib.admin.bridge: true
       snlib.admin.reload: true
   snlib.admin.version:
     description: Allows /snlib version.
@@ -33,6 +34,9 @@ permissions:
     default: op
   snlib.admin.iteminfo:
     description: Allows /snlib iteminfo.
+    default: op
+  snlib.admin.bridge:
+    description: Allows /snlib bridge status.
     default: op
   snlib.admin.reload:
     description: Allows /snlib reload.

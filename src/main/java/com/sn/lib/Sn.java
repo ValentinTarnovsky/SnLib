@@ -64,6 +64,7 @@ public final class Sn {
     private final UpdateChecker updates;
     private final ItemRegistry items;
     private final SelectionManager selections;
+    private final com.sn.lib.bridge.SnBridge bridge;
     private final GuiManager guis;
     private final SnDb db;
     private final SnCommands commands;
@@ -104,6 +105,7 @@ public final class Sn {
             }
         }
         this.selections = new SelectionManager(this);
+        this.bridge = new com.sn.lib.bridge.SnBridge(this);
         this.guis = spec.guis() ? new GuiManager(this) : null;
         if (guis != null) {
             guis.load();
@@ -144,6 +146,16 @@ public final class Sn {
     /** Folia-aware scheduler bound to the owning plugin; available in every context. */
     public SnScheduler scheduler() {
         return scheduler;
+    }
+
+    /**
+     * SnBridge module of the owning plugin (typed channels toward the Velocity proxy);
+     * available in every context. EXPERIMENTAL: outside the japicmp gate and
+     * {@code SnApi.LEVEL} until the API freezes (docs/SNBRIDGE-SPEC.md seccion 3).
+     */
+    @SnExperimental
+    public com.sn.lib.bridge.SnBridge bridge() {
+        return bridge;
     }
 
     /**
@@ -398,6 +410,10 @@ public final class Sn {
         holograms.deleteAll();
         discord.drain();
         updates.shutdown();
+        //     Release this owner's bridge namespaces deterministically (queued sends
+        //     resolve EXPIRED_TTL, Messenger channels unregister); step 13's sweep is
+        //     the safety net for owners that never reached this line.
+        com.sn.lib.bridge.internal.BridgeRuntime.releaseOwner(plugin);
         // 13. Remove this owner's key from EVERY tenant registry and detach the context.
         TenantRegistry.sweepOwner(plugin);
         SnLib.detach(plugin, this);

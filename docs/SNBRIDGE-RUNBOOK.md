@@ -102,9 +102,11 @@ en el proxy es el archivo `forwarding.secret` (apuntado por `forwarding-secret-f
 1. Actualizar el archivo `forwarding.secret` del proxy y el `paper-global.yml` de TODOS los
    backends en la misma ventana de mantenimiento (esto ya es asi hoy: sin secret coherente los
    jugadores no entran).
-2. El bridge se re-handshakea solo: HELLO es por conexion de carrier, asi que el primer join
-   tras cada restart rearma el canal. Contadores de HMAC invalido durante la ventana son
-   esperables; despues deben quedar en cero.
+2. El bridge se re-handshakea solo: HELLO es por conexion de carrier y se dispara cuando la
+   conexion registra el canal (minecraft:register del proxy, que llega despues del join), con
+   reintentos automaticos si el registro tarda. El primer join tras cada restart rearma el
+   canal. Contadores de HMAC invalido durante la ventana son esperables; despues deben quedar
+   en cero.
 3. Si se prefiere desacoplar el bridge de esa rotacion: configurar el secreto dedicado
    (`bridge.hmac-secret` en `plugins/SnLib/config.yml` + config equivalente en el proxy) en
    TODOS los servers. Un secreto mas que mantener coherente: decision del operador.
