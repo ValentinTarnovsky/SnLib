@@ -39,13 +39,21 @@ import com.sn.lib.text.SnText;
  * requirement, no dispatch, no durability; (1) the item cooldown ({@code "item:" + id}
  * category) returns silently while cooling down; (2) interact-requirements evaluate with
  * a locals plus PAPI resolver, running the deny-actions when unmet; (3) the matching
- * variants dispatch, each
- * running its YML action list through the ActionEngine AND its Java callback. Variants:
- * right-click, left-click, shift-right-click and shift-left-click (a shift variant with
- * behaviour takes priority over its generic click), plus the positional
- * right-click-block, right-click-air, left-click-block and left-click-air lists, which
- * run in addition to the generic one. A successful use then subtracts custom durability;
- * at 0 the break-actions run and the stack leaves the hand that used it.</p>
+ * variants dispatch, each running its YML action list through the ActionEngine AND its
+ * Java callback. The 12 variants pair up under one uniform shift priority rule: the
+ * generic pair (right/left vs shift-right/shift-left) runs first, then the positional
+ * pair for the clicked surface (block/air vs shift-block/shift-air), which runs in
+ * addition to the generic one. Within each pair, on a shift click a shift variant with
+ * behaviour (non-empty list OR callback) runs INSTEAD of its base variant; with
+ * {@code shift-overrides-generic: false} BOTH run, shift first and base after. Without
+ * shift only the base of each pair runs.</p>
+ *
+ * <p>Deny-actions and break-actions run with the real {@link ActionContext} of the
+ * interaction (ClickType plus BLOCK/AIR surface), so click and surface guards inside
+ * those lists evaluate exactly like they do on GUI clicks. A successful use then
+ * subtracts custom durability; at 0 the break flow always goes through
+ * {@code DurabilityTracker.breakFor(..., context)}, which runs the break-actions and
+ * empties the hand that used the item.</p>
  */
 public final class ItemInteractListener implements Listener {
 
@@ -80,14 +88,22 @@ public final class ItemInteractListener implements Listener {
                 player.getUniqueId(), "item:" + match.id(), def.cooldownTicks())) {
             return;
         }
+        boolean right = action == Action.RIGHT_CLICK_BLOCK || action == Action.RIGHT_CLICK_AIR;
+        boolean block = action == Action.RIGHT_CLICK_BLOCK || action == Action.LEFT_CLICK_BLOCK;
+        boolean shift = player.isSneaking();
+        ClickType click = right
+                ? (shift ? ClickType.SHIFT_RIGHT : ClickType.RIGHT)
+                : (shift ? ClickType.SHIFT_LEFT : ClickType.LEFT);
+        ActionContext context = new ActionContext(player, ctx, null, click,
+                block ? ClickSurface.BLOCK : ClickSurface.AIR, null);
         Function<String, String> resolver =
                 token -> ctx.papi().apply(player, SnText.applyLocals(token));
         if (!def.interactRequirement().test(player, resolver)) {
-            ctx.actions().run(player, def.denyActions());
+            ctx.actions().run(player, def.denyActions(), context);
             return;
         }
-        dispatch(ctx, def, player, item, action);
-        applyDurability(ctx, def, match, player, item, hand);
+        dispatch(ctx, def, player, item, right, block, shift, context);
+        applyDurability(ctx, def, match, player, item, hand, context);
     }
 
     /**
@@ -116,46 +132,63 @@ public final class ItemInteractListener implements Listener {
         return false;
     }
 
-    /** Runs the generic (shift-prioritized) variant, then the positional block/air one. */
-    private static void dispatch(Sn ctx, ItemDef def, Player player, ItemStack item,
-            Action action) {
-        boolean right = action == Action.RIGHT_CLICK_BLOCK || action == Action.RIGHT_CLICK_AIR;
-        boolean block = action == Action.RIGHT_CLICK_BLOCK || action == Action.LEFT_CLICK_BLOCK;
-        boolean shift = player.isSneaking();
-        ClickType click = right
-                ? (shift ? ClickType.SHIFT_RIGHT : ClickType.RIGHT)
-                : (shift ? ClickType.SHIFT_LEFT : ClickType.LEFT);
-        ActionContext context = new ActionContext(player, ctx, null, click,
-                block ? ClickSurface.BLOCK : ClickSurface.AIR, null);
+    /**
+     * Runs the generic (shift-prioritized) pair, then the positional block/air pair for
+     * the clicked surface. Resulting rules: (a) the positional phase replicates the
+     * generic rule: on shift, a shift positional variant with behaviour (non-empty list
+     * OR callback) runs INSTEAD of the plain positional one; without behaviour it falls
+     * back to the plain one; (b) the positional pair still runs IN ADDITION to the
+     * generic pair; (c) with {@code shift-overrides-generic: false} each pair runs in
+     * full (shift first, base after) in BOTH phases; (d) without shift only the base of
+     * each pair runs.
+     */
+    static void dispatch(Sn ctx, ItemDef def, Player player, ItemStack item, boolean right,
+            boolean block, boolean shift, ActionContext context) {
         if (right) {
-            if (shift && hasBehaviour(def.shiftRightClickActions(), def.onShiftRightClick())) {
-                runVariant(ctx, player, item, def.shiftRightClickActions(),
-                        def.onShiftRightClick(), context);
-            } else {
-                runVariant(ctx, player, item, def.rightClickActions(), def.onRightClick(),
-                        context);
-            }
+            runPair(ctx, def, player, item, shift,
+                    def.shiftRightClickActions(), def.onShiftRightClick(),
+                    def.rightClickActions(), def.onRightClick(), context);
             if (block) {
-                runVariant(ctx, player, item, def.rightClickBlockActions(),
-                        def.onRightClickBlock(), context);
+                runPair(ctx, def, player, item, shift,
+                        def.shiftRightClickBlockActions(), def.onShiftRightClickBlock(),
+                        def.rightClickBlockActions(), def.onRightClickBlock(), context);
             } else {
-                runVariant(ctx, player, item, def.rightClickAirActions(),
-                        def.onRightClickAir(), context);
+                runPair(ctx, def, player, item, shift,
+                        def.shiftRightClickAirActions(), def.onShiftRightClickAir(),
+                        def.rightClickAirActions(), def.onRightClickAir(), context);
             }
             return;
         }
-        if (shift && hasBehaviour(def.shiftLeftClickActions(), def.onShiftLeftClick())) {
-            runVariant(ctx, player, item, def.shiftLeftClickActions(), def.onShiftLeftClick(),
-                    context);
-        } else {
-            runVariant(ctx, player, item, def.leftClickActions(), def.onLeftClick(), context);
-        }
+        runPair(ctx, def, player, item, shift,
+                def.shiftLeftClickActions(), def.onShiftLeftClick(),
+                def.leftClickActions(), def.onLeftClick(), context);
         if (block) {
-            runVariant(ctx, player, item, def.leftClickBlockActions(), def.onLeftClickBlock(),
-                    context);
+            runPair(ctx, def, player, item, shift,
+                    def.shiftLeftClickBlockActions(), def.onShiftLeftClickBlock(),
+                    def.leftClickBlockActions(), def.onLeftClickBlock(), context);
         } else {
-            runVariant(ctx, player, item, def.leftClickAirActions(), def.onLeftClickAir(),
-                    context);
+            runPair(ctx, def, player, item, shift,
+                    def.shiftLeftClickAirActions(), def.onShiftLeftClickAir(),
+                    def.leftClickAirActions(), def.onLeftClickAir(), context);
+        }
+    }
+
+    /**
+     * One shift/base pair: on shift, a shift variant with behaviour runs and, under
+     * {@link ItemDef#shiftOverridesGeneric()} (default true), replaces the base variant;
+     * otherwise the base variant runs too (shift first, base after).
+     */
+    private static void runPair(Sn ctx, ItemDef def, Player player, ItemStack item, boolean shift,
+            List<String> shiftActions, @Nullable BiConsumer<Player, ItemStack> shiftCallback,
+            List<String> baseActions, @Nullable BiConsumer<Player, ItemStack> baseCallback,
+            ActionContext context) {
+        boolean shiftRan = false;
+        if (shift && hasBehaviour(shiftActions, shiftCallback)) {
+            runVariant(ctx, player, item, shiftActions, shiftCallback, context);
+            shiftRan = true;
+        }
+        if (!shiftRan || !def.shiftOverridesGeneric()) {
+            runVariant(ctx, player, item, baseActions, baseCallback, context);
         }
     }
 
@@ -175,9 +208,13 @@ public final class ItemInteractListener implements Listener {
         }
     }
 
-    /** Subtracts damage-per-use; at 0 runs the break-actions and empties the used hand. */
+    /**
+     * Subtracts damage-per-use; at 0 delegates the break flow (break-actions plus stack
+     * removal) to {@code DurabilityTracker.breakFor} with the real interaction context,
+     * so click and surface guards inside break-actions evaluate.
+     */
     private static void applyDurability(Sn ctx, ItemDef def, Match match, Player player,
-            ItemStack item, EquipmentSlot hand) {
+            ItemStack item, EquipmentSlot hand, ActionContext context) {
         if (def.durabilityMax() <= 0) {
             return;
         }
@@ -187,6 +224,6 @@ public final class ItemInteractListener implements Listener {
             player.getInventory().setItem(hand, item);
             return;
         }
-        DurabilityTracker.breakFor(ctx, def, player, item, hand, null);
+        DurabilityTracker.breakFor(ctx, def, player, item, hand, context);
     }
 }

@@ -23,7 +23,7 @@ import com.sn.lib.yml.SnYml;
  * Immutable definition of a physical item covering the full golden spec
  * ({@code docs/item-example.yml}): appearance, behaviour properties (droppable, moveable,
  * placeable, tradeable, despawnable, keep-on-death, cooldown), locked-mode fields
- * (locked, no-drop, no-manual-equip, obtain-via), custom durability, the eight interact
+ * (locked, no-drop, no-manual-equip, obtain-via), custom durability, the twelve interact
  * action lists with their Java callbacks, interact requirements with deny actions,
  * pickup/drop actions, held effects, equipment slot and recipe.
  *
@@ -53,9 +53,11 @@ import com.sn.lib.yml.SnYml;
  *     obtain-via ("" | COMMAND_ONLY)                    -> ObtainMode.parse
  *   DURABILITY: custom-durability.max,                  -> ItemDef.parse; tracked by
  *     damage-per-use, break-actions, lore-format           DurabilityTracker
- *   INTERACT: the 8 variants (right/left x plain/       -> ItemDef.parse; fired by
- *     shift/block/air *-click-actions), each with an       ItemInteractListener through
- *     optional Java callback from the builder              ActionEngine
+ *   INTERACT: the 12 variants (right/left x plain/      -> ItemDef.parse; fired by
+ *     shift/block/air/shift-block/shift-air                ItemInteractListener through
+ *     *-click-actions), each with an optional Java         ActionEngine
+ *     callback from the builder, plus
+ *     shift-overrides-generic (default true)
  *   REQUIREMENTS: interact-requirements + deny-actions  -> RequirementEngine.parse
  *   PICKUP/DROP: pickup-actions, drop-actions           -> ItemDef.parse; fired by
  *                                                           ItemPropertyListener
@@ -100,6 +102,11 @@ public final class ItemDef {
     private final List<String> rightClickAirActions;
     private final List<String> leftClickBlockActions;
     private final List<String> leftClickAirActions;
+    private final List<String> shiftRightClickBlockActions;
+    private final List<String> shiftRightClickAirActions;
+    private final List<String> shiftLeftClickBlockActions;
+    private final List<String> shiftLeftClickAirActions;
+    private final boolean shiftOverridesGeneric;
 
     private final List<String> interactRequirements;
     private final Requirement interactRequirement;
@@ -124,6 +131,10 @@ public final class ItemDef {
     private final @Nullable BiConsumer<Player, ItemStack> onRightClickAir;
     private final @Nullable BiConsumer<Player, ItemStack> onLeftClickBlock;
     private final @Nullable BiConsumer<Player, ItemStack> onLeftClickAir;
+    private final @Nullable BiConsumer<Player, ItemStack> onShiftRightClickBlock;
+    private final @Nullable BiConsumer<Player, ItemStack> onShiftRightClickAir;
+    private final @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickBlock;
+    private final @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickAir;
 
     private final @Nullable BiConsumer<Player, ItemStack> onApply;
     private final @Nullable BiConsumer<Player, ItemStack> onRemove;
@@ -156,6 +167,11 @@ public final class ItemDef {
         this.rightClickAirActions = copy(b.rightClickAirActions);
         this.leftClickBlockActions = copy(b.leftClickBlockActions);
         this.leftClickAirActions = copy(b.leftClickAirActions);
+        this.shiftRightClickBlockActions = copy(b.shiftRightClickBlockActions);
+        this.shiftRightClickAirActions = copy(b.shiftRightClickAirActions);
+        this.shiftLeftClickBlockActions = copy(b.shiftLeftClickBlockActions);
+        this.shiftLeftClickAirActions = copy(b.shiftLeftClickAirActions);
+        this.shiftOverridesGeneric = b.shiftOverridesGeneric;
         this.interactRequirements = copy(b.interactRequirements);
         this.interactRequirement = RequirementEngine.parse(this.interactRequirements);
         this.denyActions = copy(b.denyActions);
@@ -175,6 +191,10 @@ public final class ItemDef {
         this.onRightClickAir = b.onRightClickAir;
         this.onLeftClickBlock = b.onLeftClickBlock;
         this.onLeftClickAir = b.onLeftClickAir;
+        this.onShiftRightClickBlock = b.onShiftRightClickBlock;
+        this.onShiftRightClickAir = b.onShiftRightClickAir;
+        this.onShiftLeftClickBlock = b.onShiftLeftClickBlock;
+        this.onShiftLeftClickAir = b.onShiftLeftClickAir;
         this.onApply = b.onApply;
         this.onRemove = b.onRemove;
     }
@@ -224,6 +244,11 @@ public final class ItemDef {
         b.rightClickAirActions = sec.getStringList("right-click-air-actions");
         b.leftClickBlockActions = sec.getStringList("left-click-block-actions");
         b.leftClickAirActions = sec.getStringList("left-click-air-actions");
+        b.shiftRightClickBlockActions = sec.getStringList("shift-right-click-block-actions");
+        b.shiftRightClickAirActions = sec.getStringList("shift-right-click-air-actions");
+        b.shiftLeftClickBlockActions = sec.getStringList("shift-left-click-block-actions");
+        b.shiftLeftClickAirActions = sec.getStringList("shift-left-click-air-actions");
+        b.shiftOverridesGeneric = sec.getBoolean("shift-overrides-generic", true);
         b.interactRequirements = sec.getStringList("interact-requirements");
         b.denyActions = sec.getStringList("deny-actions");
         b.pickupActions = sec.getStringList("pickup-actions");
@@ -376,6 +401,38 @@ public final class ItemDef {
         return leftClickAirActions;
     }
 
+    /** Action lines for a shift right click on a block. */
+    public List<String> shiftRightClickBlockActions() {
+        return shiftRightClickBlockActions;
+    }
+
+    /** Action lines for a shift right click in the air. */
+    public List<String> shiftRightClickAirActions() {
+        return shiftRightClickAirActions;
+    }
+
+    /** Action lines for a shift left click on a block. */
+    public List<String> shiftLeftClickBlockActions() {
+        return shiftLeftClickBlockActions;
+    }
+
+    /** Action lines for a shift left click in the air. */
+    public List<String> shiftLeftClickAirActions() {
+        return shiftLeftClickAirActions;
+    }
+
+    /**
+     * Priority rule between a declared shift variant and its base variant. True (the
+     * default) keeps the historical replacement behaviour: on a shift click a shift
+     * variant with behaviour runs INSTEAD of the generic/plain positional one. False
+     * runs BOTH, the shift variant first and then the base one, lists and callbacks in
+     * that order. Applies equally to the shift positional variants over the plain
+     * positional ones.
+     */
+    public boolean shiftOverridesGeneric() {
+        return shiftOverridesGeneric;
+    }
+
     /** Raw interact requirement lines as declared. */
     public List<String> interactRequirements() {
         return interactRequirements;
@@ -471,6 +528,26 @@ public final class ItemDef {
         return onLeftClickAir;
     }
 
+    /** Java callback for a shift right click on a block, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickBlock() {
+        return onShiftRightClickBlock;
+    }
+
+    /** Java callback for a shift right click in the air, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickAir() {
+        return onShiftRightClickAir;
+    }
+
+    /** Java callback for a shift left click on a block, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickBlock() {
+        return onShiftLeftClickBlock;
+    }
+
+    /** Java callback for a shift left click in the air, or null. */
+    public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickAir() {
+        return onShiftLeftClickAir;
+    }
+
     /** Java hook run after {@link ItemRegistry#apply} injects the item, or null. */
     public @Nullable BiConsumer<Player, ItemStack> onApply() {
         return onApply;
@@ -528,6 +605,11 @@ public final class ItemDef {
         private List<String> rightClickAirActions;
         private List<String> leftClickBlockActions;
         private List<String> leftClickAirActions;
+        private List<String> shiftRightClickBlockActions;
+        private List<String> shiftRightClickAirActions;
+        private List<String> shiftLeftClickBlockActions;
+        private List<String> shiftLeftClickAirActions;
+        private boolean shiftOverridesGeneric = true;
         private List<String> interactRequirements;
         private List<String> denyActions;
         private List<String> pickupActions;
@@ -545,6 +627,10 @@ public final class ItemDef {
         private BiConsumer<Player, ItemStack> onRightClickAir;
         private BiConsumer<Player, ItemStack> onLeftClickBlock;
         private BiConsumer<Player, ItemStack> onLeftClickAir;
+        private BiConsumer<Player, ItemStack> onShiftRightClickBlock;
+        private BiConsumer<Player, ItemStack> onShiftRightClickAir;
+        private BiConsumer<Player, ItemStack> onShiftLeftClickBlock;
+        private BiConsumer<Player, ItemStack> onShiftLeftClickAir;
         private BiConsumer<Player, ItemStack> onApply;
         private BiConsumer<Player, ItemStack> onRemove;
 
@@ -727,6 +813,42 @@ public final class ItemDef {
             return this;
         }
 
+        /** Action lines for a shift right click on a block. */
+        public Builder shiftRightClickBlockActions(List<String> actions) {
+            this.shiftRightClickBlockActions = actions;
+            return this;
+        }
+
+        /** Action lines for a shift right click in the air. */
+        public Builder shiftRightClickAirActions(List<String> actions) {
+            this.shiftRightClickAirActions = actions;
+            return this;
+        }
+
+        /** Action lines for a shift left click on a block. */
+        public Builder shiftLeftClickBlockActions(List<String> actions) {
+            this.shiftLeftClickBlockActions = actions;
+            return this;
+        }
+
+        /** Action lines for a shift left click in the air. */
+        public Builder shiftLeftClickAirActions(List<String> actions) {
+            this.shiftLeftClickAirActions = actions;
+            return this;
+        }
+
+        /**
+         * Priority rule between shift and base variants. True (default): on a
+         * shift-click a declared shift variant runs INSTEAD of the generic/plain
+         * positional one; false: BOTH run, the shift one first and then the base one,
+         * lists and callbacks in that order. Applies equally to the shift positional
+         * variants over the plain positional ones.
+         */
+        public Builder shiftOverridesGeneric(boolean shiftOverridesGeneric) {
+            this.shiftOverridesGeneric = shiftOverridesGeneric;
+            return this;
+        }
+
         /** Requirement expressions checked before any interact action runs. */
         public Builder interactRequirements(List<String> requirements) {
             this.interactRequirements = requirements;
@@ -826,6 +948,30 @@ public final class ItemDef {
         /** Java callback for a left click in the air. */
         public Builder onLeftClickAir(BiConsumer<Player, ItemStack> callback) {
             this.onLeftClickAir = callback;
+            return this;
+        }
+
+        /** Java callback for a shift right click on a block. */
+        public Builder onShiftRightClickBlock(BiConsumer<Player, ItemStack> callback) {
+            this.onShiftRightClickBlock = callback;
+            return this;
+        }
+
+        /** Java callback for a shift right click in the air. */
+        public Builder onShiftRightClickAir(BiConsumer<Player, ItemStack> callback) {
+            this.onShiftRightClickAir = callback;
+            return this;
+        }
+
+        /** Java callback for a shift left click on a block. */
+        public Builder onShiftLeftClickBlock(BiConsumer<Player, ItemStack> callback) {
+            this.onShiftLeftClickBlock = callback;
+            return this;
+        }
+
+        /** Java callback for a shift left click in the air. */
+        public Builder onShiftLeftClickAir(BiConsumer<Player, ItemStack> callback) {
+            this.onShiftLeftClickAir = callback;
             return this;
         }
 
