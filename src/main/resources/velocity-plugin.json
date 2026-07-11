@@ -1,0 +1,9 @@
+{
+  "id": "snlib",
+  "name": "SnLib",
+  "version": "${project.version}",
+  "description": "Common library core for Sn plugins; on Velocity it hosts the SnBridge proxy side.",
+  "main": "com.sn.lib.velocity.SnLibVelocity",
+  "authors": ["ValentinTarnovsky"],
+  "dependencies": []
+}

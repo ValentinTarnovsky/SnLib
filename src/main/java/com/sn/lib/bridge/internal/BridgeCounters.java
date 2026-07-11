@@ -7,18 +7,21 @@ package com.sn.lib.bridge.internal;
  */
 public final class BridgeCounters {
 
-    long helloSent;
-    long handshakes;
-    long sent;
-    long received;
-    long hmacDrops;
-    long malformed;
-    long expired;
-    long queueOverflow;
-    long nacksReceived;
-    long nacksSent;
-    long legacyFrames;
-    long orphanFrames;
+    // Public fields on purpose: internal class (outside semver), mutated by the two
+    // cores (bridge.internal on Paper, velocity.internal on the proxy) under their own
+    // confinement (main thread / synchronized core)
+    public long helloSent;
+    public long handshakes;
+    public long sent;
+    public long received;
+    public long hmacDrops;
+    public long malformed;
+    public long expired;
+    public long queueOverflow;
+    public long nacksReceived;
+    public long nacksSent;
+    public long legacyFrames;
+    public long orphanFrames;
 
     public long sent() {
         return sent;
