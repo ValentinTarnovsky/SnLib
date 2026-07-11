@@ -78,6 +78,9 @@ item-id: # can be anything as long it is unique
     max: int # max durability # default: 0 (disabled)
     damage-per-use: int # how much durability is lost per use # default: 1
     break-actions: # actions when item breaks (durability reaches 0)
+      # Since v1.1.0 these run with the real ClickType and surface (BLOCK/AIR)
+      # of the interaction that broke the item, so click/surface guards inside
+      # this list evaluate (they used to be silently skipped).
       - "[sound] ENTITY_ITEM_BREAK"
       - "[message] &cYour item has broken!"
     lore-format: "&7Durability: &f%durability%/%max_durability%" # shown in lore, updated automatically # default: ""
@@ -100,6 +103,10 @@ item-id: # can be anything as long it is unique
     - "[potion] SPEED 200 1" # effect duration(ticks) amplifier
     - "[remove-item]" # removes 1 of this item from the player
     - "[remove-item] 5" # removes 5 of this item from the player
+    - "[click-block] [message] &7Sobre un bloque" # only when the click hit a block
+    - "[click-air] [message] &7Al aire" # only when the click hit the air
+    - "[right-click-only] spawn" # pure RIGHT: excludes SHIFT_RIGHT
+    - "[click=RIGHT] spawn" # generic guard against the ClickType enum, case-insensitive, - equals _
     - "[custom]" # custom actions that plugins can create
 
   left-click-actions: # default: []
@@ -123,6 +130,30 @@ item-id: # can be anything as long it is unique
   left-click-air-actions: # when left-clicking in the air specifically # default: []
     - "[message] &7You left-clicked in the air!"
 
+  # SHIFT POSITIONAL VARIANTS - shift + block/air (all optional)
+  # With shift held, a shift positional variant WITH behaviour (non-empty list
+  # or Java callback) runs INSTEAD of the plain positional one; without
+  # behaviour it falls back to the plain one (same priority rule as the
+  # generic shift pair).
+  shift-right-click-block-actions: # shift + right-click on a block # default: []
+    - "[message] &7Shift right click on a block!"
+
+  shift-right-click-air-actions: # shift + right-click in the air # default: []
+    - "[message] &7Shift right click in the air!"
+
+  shift-left-click-block-actions: # shift + left-click on a block # default: []
+    - "[message] &7Shift left click on a block!"
+
+  shift-left-click-air-actions: # shift + left-click in the air # default: []
+    - "[message] &7Shift left click in the air!"
+
+  # shift-overrides-generic: priority rule between shift and base variants.
+  # true (default): on a shift-click a declared shift variant runs INSTEAD of
+  # its base variant. false: BOTH variants run (the shift one first, the base
+  # one after); it also applies to the shift positional variants over the
+  # plain positional ones.
+  shift-overrides-generic: true/false # default: true
+
   # ═══════════════════════════════════════
   # INTERACT REQUIREMENTS - Conditions to use the item
   # ═══════════════════════════════════════
@@ -130,6 +161,9 @@ item-id: # can be anything as long it is unique
     - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
     - "%placeholder% = 1" #ex: %vault_balance% = 1
   deny-actions: # actions when requirements are NOT met # default: []
+    # Since v1.1.0 these run with the real ClickType and surface (BLOCK/AIR)
+    # of the interaction, so click/surface guards inside this list evaluate
+    # (they used to be silently skipped).
     - "[message] &cYou can't use this item!"
     - "[sound] ENTITY_VILLAGER_NO"
 

@@ -23,6 +23,25 @@ inventory-type: string # default: "CHEST" (can be any of the following: CHEST, D
 #                      debug note, and bindPaged WARNs once.
 pagination: true/false # default: false
 
+# ═══════════════════════════════════════════════════════════════════
+# STRICT CLICKS - OPT-IN per menu
+# ═══════════════════════════════════════════════════════════════════
+# strict-clicks: true  -> the generic click-actions list only fires with the
+#                         four basic mouse clicks: LEFT, RIGHT, SHIFT_LEFT and
+#                         SHIFT_RIGHT. Every other ClickType (Q, hotbar keys
+#                         1-9, F, middle, double-click, etc) is cancelled
+#                         without running anything (no click nor deny actions).
+#                         Per-click specific lists still match their exact type
+#                         even in strict mode: middle-click-actions enables
+#                         MIDDLE, and a declared left-click-actions enables
+#                         DOUBLE_CLICK and CREATIVE (the left side groups
+#                         them). NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND
+#                         and UNKNOWN have no possible specific list and stay
+#                         always discarded in strict mode.
+# strict-clicks: false -> (default) historic v1.0.0 behaviour: any ClickType
+#                         fires the resolved actions list.
+strict-clicks: true/false # default: false
+
 items:
   item-id: #can be anything as long it is unique
     display-name: string # default: ""
@@ -60,6 +79,20 @@ items:
       - "[left-click] spawn"      # run command as player when left-click
       - "[shift-left-click] spawn"     # run command as player when shift-left-click
       - "[shift-right-click] spawn"     # run command as player when shift-right-click
+      - "[right-click-only] spawn" # pure RIGHT: excludes shift-right and double-click
+      - "[left-click-only] spawn" # pure LEFT: excludes shift-left, double-click and creative
+      - "[click=MIDDLE,DROP] say hi" # generic guard against the ClickType enum, case-insensitive, - equals _
+      - "[middle-click] say hi"   # exact MIDDLE click
+      - "[double-click] say hi"   # exact DOUBLE_CLICK
+      - "[drop-click] say hi"     # exact DROP (the Q key)
+      - "[number-key] say hi"     # exact NUMBER_KEY (hotbar keys 1-9)
+      - "[swap-offhand] say hi"   # exact SWAP_OFFHAND (the F key)
+      # Compat note: [right-click]/[left-click] keep their inclusive v1.0.0
+      # semantics ([right-click] also passes with SHIFT_RIGHT; [left-click]
+      # also passes with SHIFT_LEFT, DOUBLE_CLICK and CREATIVE).
+      # [click-block]/[click-air] exist too, but in a GUI the line is always
+      # skipped (the click surface is null there; they are for world items,
+      # see item-example.yml).
       - "[console] give %player% diamond 1" # run command as console
       - "[message] &aWelcome!"    # send message to player
       - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP" # play sound
@@ -75,6 +108,40 @@ items:
       - "[set-page]" # set page (pagination: true only)
       - "[refresh-menu]" # refresh menu
       - "[custom]" #custom actions that plugins can create not need to be "custom" can be any string and the plugin will register its own action
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PER-CLICK MATRIX - specific lists per click type (all optional)
+    # ═══════════════════════════════════════════════════════════════════
+    # Besides the generic click-actions / click-requirements / deny-actions,
+    # five click keys each accept three optional lists (15 keys total).
+    # Resolution is specific-over-generic and FIELD BY FIELD (actions,
+    # requirement and deny list each resolve independently):
+    #   1) the exact shift list of the click, when declared
+    #      (SHIFT_RIGHT / SHIFT_LEFT)
+    #   2) the side list, when declared (right covers RIGHT and SHIFT_RIGHT;
+    #      left covers LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE; middle
+    #      covers MIDDLE)
+    #   3) fallback to the generic click-actions / click-requirements /
+    #      deny-actions
+    # A list counts as declared only when it is non-empty. An item may declare
+    # right-click-actions without right-click-requirements and its requirement
+    # still resolves from the generic click-requirements. No existing menu
+    # changes: every new key is optional.
+    right-click-actions: list # default: []
+    right-click-requirements: list # default: []
+    right-click-deny-actions: list # default: []
+    left-click-actions: list # default: []
+    left-click-requirements: list # default: []
+    left-click-deny-actions: list # default: []
+    shift-right-click-actions: list # default: []
+    shift-right-click-requirements: list # default: []
+    shift-right-click-deny-actions: list # default: []
+    shift-left-click-actions: list # default: []
+    shift-left-click-requirements: list # default: []
+    shift-left-click-deny-actions: list # default: []
+    middle-click-actions: list # default: []
+    middle-click-requirements: list # default: []
+    middle-click-deny-actions: list # default: []
 
   # ═══════════════════════════════════════════════════════════════════
   # PAGINATION NAVIGATION ITEMS (only meaningful with pagination: true)
@@ -177,3 +244,6 @@ templates:
     view-requirements: list # default: []
     deny-actions: list # default: []
     click-actions: list # default: []
+    # Templates also support the same per-click matrix keys as regular items
+    # (right/left/shift-right/shift-left/middle x actions/requirements/
+    # deny-actions) with the same specific-over-generic resolution.

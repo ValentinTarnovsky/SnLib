@@ -1,9 +1,9 @@
 # SnLib v1.0.0 - Documentacion tecnica del estado actual
 
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (106 archivos java), recursos, build y tests (13 suites).
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (108 archivos java), recursos, build y tests (16 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 146 tests JUnit verdes en 13 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 163 tests JUnit verdes en 16 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -1195,7 +1195,7 @@ Ninguno. No hay marcadores TODO/FIXME/HACK/placeholder en ningun archivo del paq
 
 ## 08. Acciones, Requirements y PAPI
 
-Este modulo cubre tres piezas que casi todos los plugins consumidores usan desde YML: el motor de acciones (`com.sn.lib.action.ActionEngine`, alcanzado via `sn.actions()`, una instancia por contexto Sn) que ejecuta listas de lineas `[tag] argumento` con guards de click y de chance; el motor de requirements (`RequirementEngine`, estatico) que parsea expresiones de comparacion con `&&`/`||` una sola vez al load y las evalua contra placeholders en runtime con politica fail-open; y el servicio PAPI (`com.sn.lib.papi.SnPapi` + `ExpansionBuilder` + el holder interno `PapiHolder`) que resuelve tokens de PlaceholderAPI y registra expansiones declarativas sin que un servidor sin PlaceholderAPI cargue jamas una clase de PAPI. Todo el modulo es ownership por plugin: cada contexto Sn tiene su propio `ActionEngine` y su propio `SnPapi`/`PapiHolder`, y el teardown del contexto libera el canal Bungee y desregistra las expansiones.
+Este modulo cubre tres piezas que casi todos los plugins consumidores usan desde YML: el motor de acciones (`com.sn.lib.action.ActionEngine`, alcanzado via `sn.actions()`, una instancia por contexto Sn) que ejecuta listas de lineas `[tag] argumento` con guards de click, de superficie (BLOCK/AIR) y de chance; el motor de requirements (`RequirementEngine`, estatico) que parsea expresiones de comparacion con `&&`/`||` una sola vez al load y las evalua contra placeholders en runtime con politica fail-open; y el servicio PAPI (`com.sn.lib.papi.SnPapi` + `ExpansionBuilder` + el holder interno `PapiHolder`) que resuelve tokens de PlaceholderAPI y registra expansiones declarativas sin que un servidor sin PlaceholderAPI cargue jamas una clase de PAPI. Todo el modulo es ownership por plugin: cada contexto Sn tiene su propio `ActionEngine` y su propio `SnPapi`/`PapiHolder`, y el teardown del contexto libera el canal Bungee y desregistra las expansiones.
 
 ### ActionEngine
 `src/main/java/com/sn/lib/action/ActionEngine.java`
@@ -1213,13 +1213,31 @@ Ejecuta listas de acciones YML de la forma `[tag] argumento`. Es `final`, una in
 Cada linea se procesa asi (`executeLine`):
 
 1. Se parsea el head `[tag]` inicial (`head(...)`: la linea debe empezar con `[`, tener `]` en posicion >= 1 y tag no vacio; el tag se lowercasea con `Locale.ROOT`).
-2. Mientras el head sea un guard, se evalua y se re-parsea el resto (los guards se pueden ENCADENAR, ej `[right-click] [chance=50] [message] hola`). Guards reconocidos:
-   - `[right-click]` - pasa cuando `clickType.isRightClick()` (incluye SHIFT_RIGHT, ver gotchas).
-   - `[left-click]` - pasa cuando `clickType.isLeftClick()`.
-   - `[shift-right-click]` - pasa solo con `ClickType.SHIFT_RIGHT` exacto.
-   - `[shift-left-click]` - pasa solo con `ClickType.SHIFT_LEFT` exacto.
+2. Mientras el head sea un guard, se evalua y se re-parsea el resto (los guards se pueden ENCADENAR, ej `[right-click] [chance=50] [message] hola`). Matriz completa guard x ClickType:
+
+   | Guard | ClickType que pasan |
+   |---|---|
+   | `[right-click]` | RIGHT, SHIFT_RIGHT (`isRightClick()`; semantica inclusiva v1.0.0 intacta) |
+   | `[left-click]` | LEFT, SHIFT_LEFT, DOUBLE_CLICK, CREATIVE (`isLeftClick()`; inclusiva) |
+   | `[shift-right-click]` | SHIFT_RIGHT exacto |
+   | `[shift-left-click]` | SHIFT_LEFT exacto |
+   | `[right-click-only]` | RIGHT exacto (excluye SHIFT_RIGHT y DOUBLE_CLICK) |
+   | `[left-click-only]` | LEFT exacto (excluye SHIFT_LEFT, DOUBLE_CLICK y CREATIVE) |
+   | `[middle-click]` | MIDDLE exacto |
+   | `[double-click]` | DOUBLE_CLICK exacto |
+   | `[drop-click]` | DROP exacto (la tecla Q; CONTROL_DROP no pasa) |
+   | `[number-key]` | NUMBER_KEY exacto (teclas 1-9 de la hotbar) |
+   | `[swap-offhand]` | SWAP_OFFHAND exacto (la tecla F) |
+   | `[click=TIPO,...]` | exactamente los nombres del enum listados, separados por coma |
+   | `[click-block]` / `[click-air]` | igualdad contra `ActionContext.clickSurface()` (BLOCK/AIR), no contra ClickType |
+   | `[chance=N]` | probabilistico, independiente del click |
+
+   Reglas de cada familia:
+   - `[click=TIPO,...]` - nombres del enum `ClickType` case-insensitive y con `-` equivalente a `_` (ej `[click=number-key]`). FAIL-CLOSED, a diferencia de `[chance=]`: un spec invalido (nombre desconocido, token vacio, spec vacio) WARNea una vez ("Guard [click=...] invalido; linea ignorada") y la linea NO corre, asi un typo jamas dispara acciones con clicks no deseados.
+   - `[click-block]` / `[click-air]` (guards posicionales) - matchean por igualdad contra el `ClickSurface` del contexto. Solo las interacciones de items de mundo llevan superficie; en clicks de GUI y corridas sin click la superficie es null y la linea se OMITE con nota de debug.
    - `[chance=N]` - tira `ThreadLocalRandom.current().nextDouble(100.0) < N` (N admite decimales, escala 0-100). Un N malformado WARN-once ("Guard [chance=...] invalido; la accion corre igual") y deja correr la linea (fail-open).
-   - Si un guard de click se evalua con `context.clickType()` null (fuera de un click de GUI), la linea se OMITE con nota de debug (no WARN).
+   - Todo guard de click evaluado con `context.clickType()` null (fuera de un click de GUI o de una interaccion de item) OMITE su linea con nota de debug (no WARN).
+   - Helpers package-private testeables: `matchesExactClickGuard(String, ClickType)` (matching de los guards nombrados) y `parseClickTypes(String)` (parseo del spec de `[click=]`; devuelve null ante cualquier token invalido). Cubiertos por `ClickGuardTest`.
 3. Si la linea no arranca con un tag valido, corre entera como `[message]`.
 4. El argumento pasa por placeholders locales (`SnText.applyLocals(arg, context.phs())`) y despues por PAPI viewer-aware (`ctx.papi().apply(player, ...)`) ANTES de llegar al handler.
 5. Tag desconocido: WARN-once por tag ("Accion desconocida '[tag]'; linea ignorada: ...").
@@ -1272,7 +1290,7 @@ Paginacion: los cinco tags de pagina pasan por `withPagination(...)`: con `conte
 
 #### Notas y gotchas
 
-- `[right-click]` usa `ClickType.isRightClick()`, que tambien es true para SHIFT_RIGHT; si se necesita distinguir, existen los guards shift exactos. Idem `[left-click]` con `isLeftClick()`.
+- `[right-click]` usa `ClickType.isRightClick()`, que tambien es true para SHIFT_RIGHT; `[left-click]` usa `isLeftClick()`, que ademas pasa con DOUBLE_CLICK y CREATIVE. Para distinguir existen los guards shift exactos y los puros `[right-click-only]`/`[left-click-only]` (naming exacto, decision de usuario).
 - `warnOnce` deduplica por clave dentro de CADA instancia del motor (o sea, por plugin consumidor): el mismo error en dos plugins loguea dos veces, una por logger de cada plugin.
 - `[player-as-op]` abre una ventana temporal de OP; el `finally` garantiza el `setOp(false)` incluso si el comando lanza, pero solo cuando el jugador NO era op de antemano.
 - En `[particle]`, dar `TYPE count offX` (sin los tres offsets) ignora el offset silenciosamente: los offsets solo se leen con >= 4 tokens POSICIONALES (las opciones `key=value` no cuentan para ese umbral).
@@ -1283,10 +1301,18 @@ Paginacion: los cinco tags de pagina pasan por `withPagination(...)`: con `conte
 
 Record inmutable con el contexto de ejecucion de una corrida de acciones.
 
-- `public record ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, Ph[] phs)` - componentes: jugador destino, contexto SnLib dueño, target de paginacion (una sesion de GUI, o null fuera de un menu paginado), click que disparo la corrida (null fuera de un click de GUI; los guards de click omiten su linea cuando es null), y pares de placeholders locales aplicados a cada argumento.
+- `public record ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, @Nullable ClickSurface clickSurface, Ph[] phs)` - componentes: jugador destino, contexto SnLib dueño, target de paginacion (una sesion de GUI, o null fuera de un menu paginado), click que disparo la corrida (null fuera de un click de GUI; los guards de click omiten su linea cuando es null), superficie del click para interacciones de mundo (BLOCK/AIR, o null en clicks de GUI y corridas sin click; los guards `[click-block]`/`[click-air]` omiten su linea cuando es null), y pares de placeholders locales aplicados a cada argumento.
+- `public ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, Ph[] phs)` - sobrecarga de compatibilidad sin superficie (clicks de GUI y corridas sin click): delega en el constructor canonico con `clickSurface` null. Todo caller de v1.0.0 compila y se comporta identico.
 - Constructor compacto: `phs = phs == null ? new Ph[0] : phs` - normaliza `phs` null a array vacio.
 
-Los accessors generados del record (`player()`, `ctx()`, `pageTarget()`, `clickType()`, `phs()`) son la API publica.
+Los accessors generados del record (`player()`, `ctx()`, `pageTarget()`, `clickType()`, `clickSurface()`, `phs()`) son la API publica.
+
+### ClickSurface
+`src/main/java/com/sn/lib/action/ClickSurface.java`
+
+Enum de la superficie de un click de mundo (items fisicos): la interaccion pego en un bloque o en el aire. Los clicks de GUI no tienen superficie y dejan `ActionContext.clickSurface()` en null, asi los guards posicionales `[click-block]`/`[click-air]` omiten su linea ahi.
+
+Valores: `BLOCK`, `AIR`.
 
 ### ActionHandler
 `src/main/java/com/sn/lib/action/ActionHandler.java`
@@ -1792,10 +1818,10 @@ Builder fluido de stacks fisicos que cubre toda la seccion de apariencia de la s
 ### ItemDef
 `src/main/java/com/sn/lib/item/ItemDef.java`
 
-Definicion inmutable de un item fisico que cubre la spec dorada completa: apariencia, propiedades de comportamiento (droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown), campos de modo locked (locked, no-drop, no-manual-equip, obtain-via), durabilidad custom, las 8 listas de acciones de interaccion con sus callbacks Java, requirements de interaccion con deny-actions, acciones de pickup/drop, held effects, equipment slot y receta. `builder()` es un constructor universal de primera clase: todo campo es seteable programaticamente sin archivo YML. Las definiciones respaldadas por YML re-leen su seccion de apariencia en cada `ItemRegistry.create`, asi los placeholders resuelven por viewer. `max-stack-size` pertenece a la capa de apariencia (`SnItem.maxStackSize`); no se duplica aca. Los interact-requirements se parsean UNA vez en construccion a un arbol `Requirement` inmutable via `RequirementEngine.parse`.
+Definicion inmutable de un item fisico que cubre la spec dorada completa: apariencia, propiedades de comportamiento (droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown), campos de modo locked (locked, no-drop, no-manual-equip, obtain-via), durabilidad custom, las 12 listas de acciones de interaccion con sus callbacks Java (right/left x plano/shift/block/air/shift-block/shift-air: las 8 de v1.0.0 mas las 4 variantes shift-posicionales de 1.1.0) con el flag de prioridad `shift-overrides-generic`, requirements de interaccion con deny-actions, acciones de pickup/drop, held effects, equipment slot y receta. `builder()` es un constructor universal de primera clase: todo campo es seteable programaticamente sin archivo YML. Las definiciones respaldadas por YML re-leen su seccion de apariencia en cada `ItemRegistry.create`, asi los placeholders resuelven por viewer. `max-stack-size` pertenece a la capa de apariencia (`SnItem.maxStackSize`); no se duplica aca. Los interact-requirements se parsean UNA vez en construccion a un arbol `Requirement` inmutable via `RequirementEngine.parse`.
 
 - `public static Builder builder()` - Arranca el builder programatico universal; no requiere YML.
-- `static @Nullable ItemDef fromYml(SnYml yml, String path, Consumer<String> warn)` - (package-private) Parsea la definicion completa de la seccion en `path`; los warnings van a `warn`. Devuelve null si la seccion no existe (con WARN "item ignorado"). Defaults: droppable/moveable/placeable/tradeable/despawnable true, keep-on-death false, cooldown 0, locked/no-drop/no-manual-equip false, obtain-via "".
+- `static @Nullable ItemDef fromYml(SnYml yml, String path, Consumer<String> warn)` - (package-private) Parsea la definicion completa de la seccion en `path`; los warnings van a `warn`. Devuelve null si la seccion no existe (con WARN "item ignorado"). Defaults: droppable/moveable/placeable/tradeable/despawnable true, keep-on-death false, cooldown 0, locked/no-drop/no-manual-equip false, obtain-via "", shift-overrides-generic true.
 - `ItemStack buildStack(@Nullable Player viewer, Ph... phs)` - (package-private) Construye el stack fisico sin el tag de id: definicion YML re-lee su seccion de apariencia con viewer y phs; definicion programatica renderiza su `SnItem` capturado o clona su template; sin nada de eso devuelve `new ItemStack(Material.STONE)`.
 - `public boolean droppable()` - Si el jugador puede dropear el item.
 - `public boolean moveable()` - Si el item puede moverse en inventarios.
@@ -1820,6 +1846,11 @@ Definicion inmutable de un item fisico que cubre la spec dorada completa: aparie
 - `public List<String> rightClickAirActions()` - Acciones de click derecho al aire.
 - `public List<String> leftClickBlockActions()` - Acciones de click izquierdo sobre bloque.
 - `public List<String> leftClickAirActions()` - Acciones de click izquierdo al aire.
+- `public List<String> shiftRightClickBlockActions()` - Acciones de shift + click derecho sobre bloque.
+- `public List<String> shiftRightClickAirActions()` - Acciones de shift + click derecho al aire.
+- `public List<String> shiftLeftClickBlockActions()` - Acciones de shift + click izquierdo sobre bloque.
+- `public List<String> shiftLeftClickAirActions()` - Acciones de shift + click izquierdo al aire.
+- `public boolean shiftOverridesGeneric()` - Regla de prioridad entre una variante shift declarada y su variante base. True (default): en shift-click, la variante shift CON comportamiento corre EN LUGAR de la generica/posicional simple. False: corren AMBAS, la shift primero y la base despues, listas y callbacks en ese orden. Aplica igual a las shift-posicionales sobre las posicionales simples.
 - `public List<String> interactRequirements()` - Lineas crudas de requirements tal como se declararon.
 - `public Requirement interactRequirement()` - Arbol de requirements parseado una vez; nunca null.
 - `public List<String> denyActions()` - Acciones que corren cuando los requirements no se cumplen.
@@ -1839,6 +1870,10 @@ Definicion inmutable de un item fisico que cubre la spec dorada completa: aparie
 - `public @Nullable BiConsumer<Player, ItemStack> onRightClickAir()` - Callback Java de click derecho al aire, o null.
 - `public @Nullable BiConsumer<Player, ItemStack> onLeftClickBlock()` - Callback Java de click izquierdo sobre bloque, o null.
 - `public @Nullable BiConsumer<Player, ItemStack> onLeftClickAir()` - Callback Java de click izquierdo al aire, o null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickBlock()` - Callback Java de shift + click derecho sobre bloque, o null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickAir()` - Callback Java de shift + click derecho al aire, o null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickBlock()` - Callback Java de shift + click izquierdo sobre bloque, o null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickAir()` - Callback Java de shift + click izquierdo al aire, o null.
 - `public @Nullable BiConsumer<Player, ItemStack> onApply()` - Hook Java que corre despues de que `ItemRegistry.apply` inyecta el item, o null.
 - `public @Nullable BiConsumer<Player, ItemStack> onRemove()` - Hook Java que corre despues de que `ItemRegistry.unapply` remueve el item, o null.
 
@@ -1872,6 +1907,11 @@ Builder universal: cada campo de la spec es seteable programaticamente. La apari
 - `public Builder rightClickAirActions(List<String> actions)` - Acciones de click derecho al aire.
 - `public Builder leftClickBlockActions(List<String> actions)` - Acciones de click izquierdo sobre bloque.
 - `public Builder leftClickAirActions(List<String> actions)` - Acciones de click izquierdo al aire.
+- `public Builder shiftRightClickBlockActions(List<String> actions)` - Acciones de shift + click derecho sobre bloque.
+- `public Builder shiftRightClickAirActions(List<String> actions)` - Acciones de shift + click derecho al aire.
+- `public Builder shiftLeftClickBlockActions(List<String> actions)` - Acciones de shift + click izquierdo sobre bloque.
+- `public Builder shiftLeftClickAirActions(List<String> actions)` - Acciones de shift + click izquierdo al aire.
+- `public Builder shiftOverridesGeneric(boolean shiftOverridesGeneric)` - Regla de prioridad shift-sobre-base; default true (en shift-click la variante shift declarada REEMPLAZA a su base), false corre ambas (shift primero, base despues). Aplica tambien a las shift-posicionales sobre las posicionales simples.
 - `public Builder interactRequirements(List<String> requirements)` - Expresiones de requirement chequeadas antes de correr cualquier accion de interaccion.
 - `public Builder denyActions(List<String> actions)` - Acciones cuando los requirements no se cumplen.
 - `public Builder pickupActions(List<String> actions)` - Acciones al recoger el item.
@@ -1889,6 +1929,10 @@ Builder universal: cada campo de la spec es seteable programaticamente. La apari
 - `public Builder onRightClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de click derecho al aire.
 - `public Builder onLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de click izquierdo sobre bloque.
 - `public Builder onLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de click izquierdo al aire.
+- `public Builder onShiftRightClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click derecho sobre bloque.
+- `public Builder onShiftRightClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click derecho al aire.
+- `public Builder onShiftLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click izquierdo sobre bloque.
+- `public Builder onShiftLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click izquierdo al aire.
 - `public Builder onApply(BiConsumer<Player, ItemStack> callback)` - Hook Java con el stack inyectado despues de `ItemRegistry.apply`.
 - `public Builder onRemove(BiConsumer<Player, ItemStack> callback)` - Hook Java con el stack removido despues de `ItemRegistry.unapply`.
 - `public ItemDef build()` - Construye la definicion inmutable.
@@ -2002,12 +2046,12 @@ Listener unico compartido, propiedad de SnLib, que enforcea las propiedades de c
 
 Listener unico compartido, propiedad de SnLib, que despacha las interacciones de items. Inscripto en el ListenerHub; `registerEvents` UNICAMENTE en el bootstrap de SnLibPlugin. Solo consulta `PlayerInteractEvent.getItem()` y `getHand()`, asi cada despacho pertenece al evento cuya mano lleva el item y un dual-fire (mano principal + offhand) nunca corre doble un item. Mismo contrato de hot-path con quick-exit en capas.
 
-- `public void onInteract(PlayerInteractEvent event)` - (priority HIGH) Flujo por interaccion: (0) ignora `Action.PHYSICAL`, item null/air/sin meta, mano null, stack sin match o contexto caido; un auto-equip incompatible denegado (vector click derecho del equipment-slot) CORTA todo el flujo con return (sin cooldown, sin requirement, sin dispatch, sin durabilidad); (1) el cooldown del item (categoria `"item:" + id` via `ctx.cooldowns().tryUseTicks`) retorna silenciosamente mientras enfria; (2) los interact-requirements evaluan con un resolver de locals mas PAPI, corriendo las deny-actions si no se cumplen; (3) despachan las variantes que correspondan, cada una corriendo su lista de acciones YML por el ActionEngine Y su callback Java. Un uso exitoso resta durabilidad custom despues; a 0 corren las break-actions y el stack sale de la mano que lo uso.
+- `public void onInteract(PlayerInteractEvent event)` - (priority HIGH) Flujo por interaccion: (0) ignora `Action.PHYSICAL`, item null/air/sin meta, mano null, stack sin match o contexto caido; un auto-equip incompatible denegado (vector click derecho del equipment-slot) CORTA todo el flujo con return (sin cooldown, sin requirement, sin dispatch, sin durabilidad); (1) el cooldown del item (categoria `"item:" + id` via `ctx.cooldowns().tryUseTicks`) retorna silenciosamente mientras enfria; (2) los interact-requirements evaluan con un resolver de locals mas PAPI; si no se cumplen, las deny-actions corren con el `ActionContext` REAL de la interaccion (ClickType + superficie BLOCK/AIR), asi los guards de click y de superficie dentro de esa lista evaluan igual que en un click de GUI (fix de comportamiento del changelog 1.1.0: antes corrian sin contexto de click y esos guards omitian su linea en silencio; lineas guardadas antes muertas ahora corren cuando matchean); (3) despachan las variantes que correspondan, cada una corriendo su lista de acciones YML por el ActionEngine Y su callback Java. Un uso exitoso resta durabilidad custom despues; a 0 el flujo de rotura pasa SIEMPRE por `DurabilityTracker.breakFor(..., context)` con el contexto real (mismo fix), corre las break-actions y vacia la mano que uso el item.
 
 #### Logica interna
-- `dispatch`: corre la variante generica (una variante shift CON comportamiento tiene prioridad sobre su click generico; shift sin acciones ni callback cae al generico) y despues la variante posicional block/air, que corre EN ADICION a la generica. El `ActionContext` lleva el `ClickType` calculado (RIGHT/LEFT/SHIFT_RIGHT/SHIFT_LEFT segun `player.isSneaking()`).
+- `dispatch`: corre el par generico y despues el par posicional block/air de la superficie clickeada, que corre EN ADICION al generico. Las 12 variantes se emparejan bajo UNA regla uniforme de prioridad shift (`runPair`): en shift-click, una variante shift CON comportamiento (lista no vacia O callback) corre EN LUGAR de su variante base; sin comportamiento cae a la base; con `shift-overrides-generic: false` corren AMBAS (shift primero, base despues) en las dos fases; sin shift solo corre la base de cada par. El `ActionContext` lleva el `ClickType` calculado (RIGHT/LEFT/SHIFT_RIGHT/SHIFT_LEFT segun `player.isSneaking()`) y el `ClickSurface` (BLOCK/AIR segun la `Action` del evento).
 - `denyIncompatibleAutoEquip`: en right-click, si el destino de auto-equip vanilla del material no es el slot declarado, setea `setUseItemInHand(Event.Result.DENY)` y devuelve true; `onInteract` retorna ahi mismo, asi el equip denegado no consume cooldown, no gasta durabilidad y no corre ninguna accion ni callback. Devuelve false en todos los otros caminos (no right-click, sin slot declarado, slot vanilla compatible o null).
-- `applyDurability`: resta `damage-per-use` via `DurabilityTracker.damage`; si queda > 0 re-setea el item en la mano usada, si llega a 0 delega en `DurabilityTracker.breakFor(ctx, def, player, item, hand, null)` (corre las break-actions y vacia esa mano).
+- `applyDurability`: resta `damage-per-use` via `DurabilityTracker.damage`; si queda > 0 re-setea el item en la mano usada, si llega a 0 delega en `DurabilityTracker.breakFor(ctx, def, player, item, hand, context)` con el contexto real de la interaccion, asi los guards de click/superficie dentro de las break-actions evaluan (corre las break-actions y vacia esa mano).
 
 ### DurabilityTracker (internal)
 `src/main/java/com/sn/lib/item/internal/DurabilityTracker.java`
@@ -2021,7 +2065,7 @@ Metodos:
 - `public static void initialize(JavaPlugin owner, ItemDef def, ItemStack stack)` - Siembra el tag a max completo y renderiza la linea de lore inicial. No-op si la definicion no tiene durabilidad custom o el stack ya lleva el tag.
 - `public static int durability(JavaPlugin owner, ItemDef def, ItemStack stack)` - Durabilidad restante; un stack sin tag cuenta como llena. Devuelve -1 si la definicion no tiene durabilidad custom o el stack no tiene meta.
 - `public static int damage(JavaPlugin owner, ItemDef def, ItemStack stack, int amount)` - Resta `amount` (piso 0), actualiza el tag y re-renderiza la linea de lore. Devuelve la restante (0 = roto), el valor actual intacto si `amount` no es positivo, o -1 sin durabilidad custom.
-- `public static boolean breakFor(Sn ctx, ItemDef def, Player player, ItemStack stack, @Nullable EquipmentSlot hand, @Nullable ActionContext context)` - Flujo de rotura compartido de un stack que llego a 0: (1) corre las break-actions de la definicion (con `context` cuando esta presente, para que los guards vean el click real; hoy ambos callers pasan null); (2) remueve el stack: con `hand` no-null (flujo interact) vacia esa mano y devuelve true; con `hand` null (flujo programatico) busca el stack por IDENTIDAD (`==`, nunca equals/isSimilar) en mano principal, offhand y los 36 slots de storage (indices de `getStorageContents` coinciden con los de `setItem`). Si no lo encuentra (el caller paso una copia) loguea una nota de debug y devuelve false sin remover nada.
+- `public static boolean breakFor(Sn ctx, ItemDef def, Player player, ItemStack stack, @Nullable EquipmentSlot hand, @Nullable ActionContext context)` - Flujo de rotura compartido de un stack que llego a 0: (1) corre las break-actions de la definicion con `context` cuando esta presente, para que los guards de click/superficie vean el click real (el interact listener pasa el contexto real de la interaccion, fix 1.1.0; la sobrecarga programatica `ItemRegistry.damage(Player, ItemStack, int)` pasa null porque no hay click); (2) remueve el stack: con `hand` no-null (flujo interact) vacia esa mano y devuelve true; con `hand` null (flujo programatico) busca el stack por IDENTIDAD con fallback a `equals` (en Paper los getters de inventario devuelven un wrapper espejo nuevo por llamada, asi la identidad sola practicamente nunca matchea; un match por equals es el mismo estado de item roto) en mano principal, despues offhand y despues los 36 slots de storage (indices de `getStorageContents` coinciden con los de `setItem`). Si no lo encuentra loguea una nota de debug y devuelve false sin remover nada.
 
 #### Notas y gotchas
 - `renderLore` reemplaza la linea en el indice recordado solo si sigue siendo valido (`0 <= index < lore.size()`); si no, la agrega al final y recuerda la nueva posicion.
@@ -2137,9 +2181,16 @@ Modulo de menus declarativos de SnLib (`com.sn.lib.gui`), accesible por contexto
 
 Un item de una definicion de GUI: toda la seccion de apariencia del golden spec mas `slots`, `update-interval` por item, requirements de vista/click y listas de acciones de click/deny. La apariencia NO se pre-construye: la definicion guarda su seccion yml y la relee en cada `render`, asi nombre, lore y todo string se resuelven por viewer via el pipeline de SnYml (locals, PAPI, `[rgb]`, `[center]`, MiniMessage). Los requirements se parsean UNA vez al load desde la seccion cruda (bypassean la resolucion de placeholders, asi los tokens llegan intactos a la evaluacion); las lineas de accion quedan crudas para el action engine, que las resuelve en runtime.
 
-Enum package-private `NavKind` (rol de navegacion, detectado de las click actions al parsear): `NONE`, `PREVIOUS`, `NEXT`.
+Matriz per-click (1.1.0): ademas de los genericos `click-actions`/`click-requirements`/`deny-actions`, cinco keys de click (`right`, `left`, `shift-right`, `shift-left`, `middle`) leen cada una tres listas opcionales (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`; 15 keys en total, matriz 5x3 guardada en un `EnumMap` inmutable del enum package-private `ClickKey` con el record privado `PerClick(actions, requirement, denyActions)`). Una lista cuenta como declarada solo si es no vacia; un requirement especifico se parsea UNA vez y solo si su lista es no vacia (uno ausente queda null para poder caer al generico). La resolucion es campo por campo y especifico-sobre-generico: gana la entrada shift exacta del click, despues la entrada del lado (RIGHT agrupa RIGHT/SHIFT_RIGHT; LEFT agrupa LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, consistente con `ClickType.isLeftClick()`; MIDDLE va solo), y al final el campo generico. Cada campo cae al generico de forma independiente: un item puede declarar `right-click-actions` sin `right-click-requirements` y su requirement resuelve igual del `click-requirements` generico.
 
-- `static @Nullable GuiItemDef parse(SnYml yml, String path, String id, Consumer<String> warn)` (package-private) - Parsea el item en `path`; los warnings van a `warn`. Devuelve null cuando la seccion no existe ("No existe la seccion '<path>' en <archivo>; item ignorado"). Parsea slots via `SlotParser`, `update-interval` (clamp a >= 0), `view-requirements`/`click-requirements` via `RequirementEngine`, `click-actions`/`deny-actions`; detecta `NavKind` buscando `[previous-page]`/`[next-page]` en las click actions y, si es item de navegacion y existe la subseccion `nav-disabled`, la parsea recursivamente como override.
+Enum package-private `NavKind` (rol de navegacion, detectado de las listas de acciones al parsear): `NONE`, `PREVIOUS`, `NEXT`.
+
+- `static @Nullable GuiItemDef parse(SnYml yml, String path, String id, Consumer<String> warn)` (package-private) - Parsea el item en `path`; los warnings van a `warn`. Devuelve null cuando la seccion no existe ("No existe la seccion '<path>' en <archivo>; item ignorado"). Parsea slots via `SlotParser`, `update-interval` (clamp a >= 0), `view-requirements`/`click-requirements` via `RequirementEngine`, `click-actions`/`deny-actions` y la matriz per-click (una entrada por key de click que declaro al menos una de sus tres listas); detecta `NavKind` buscando `[previous-page]`/`[next-page]` en TODAS las listas de acciones (la generica y las cinco entradas per-click) y, si es item de navegacion y existe la subseccion `nav-disabled`, la parsea recursivamente como override.
+- `public List<String> clickActionsFor(@Nullable ClickType click)` - Lineas de accion para el click dado: gana la entrada shift declarada, despues la del lado, despues el `clickActions()` generico. Un click null resuelve a la lista generica.
+- `public Requirement clickRequirementFor(@Nullable ClickType click)` - Requirement para el click dado, misma resolucion shift -> lado -> `clickRequirement()` generico; nunca null. Cada campo resuelve independiente (una lista de acciones especifica puede emparejarse con el requirement generico).
+- `public List<String> denyActionsFor(@Nullable ClickType click)` - Lineas de deny para el click dado, misma resolucion shift -> lado -> `denyActions()` generico.
+- `boolean specificActionsFor(@Nullable ClickType click)` (package-private) - True cuando el click resuelve sus acciones de una lista especifica declarada (entrada shift o de lado) en vez del fallback generico; lo consume el gate de strict-clicks de `GuiSession.runClick`.
+- `static @Nullable ClickKey shiftKey(@Nullable ClickType click)` / `static @Nullable ClickKey sideKey(@Nullable ClickType click)` / `static boolean basicClick(@Nullable ClickType click)` (package-private) - Mapeos puros de resolucion: key shift exacta (solo SHIFT_RIGHT/SHIFT_LEFT), key de lado (RIGHT agrupa RIGHT/SHIFT_RIGHT; LEFT agrupa LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE; MIDDLE solo; los clicks de teclado y desconocidos, NUMBER_KEY/DROP/CONTROL_DROP/SWAP_OFFHAND/UNKNOWN, no tienen lado y devuelven null) y el predicado de los 4 clicks basicos de mouse (LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT). Cubiertos por `ClickResolutionTest`.
 - `public String id()` - Id del item (su key dentro de `items:` o `templates:`).
 - `public int[] slots()` - Slots donde renderiza (copia defensiva via `clone()`); vacio para templates, cuyos slots vienen de los binds.
 - `boolean hasSlots()` (package-private) - True cuando el item declaro al menos un slot.
@@ -2155,7 +2206,7 @@ Enum package-private `NavKind` (rol de navegacion, detectado de las click action
 ### GuiDef
 `src/main/java/com/sn/lib/gui/GuiDef.java`
 
-Definicion inmutable de UN GUI, parseada desde un archivo bajo `guis/` siguiendo el golden spec (`docs/menu-example.yml`): `title`, `rows`, `inventory-type` leniente, `open-sound`, `update-interval` de menu, el flag opt-in `pagination`, la seccion `items:` y la seccion `templates:`. El flag `pagination` se resuelve UNA vez al load y por defecto es `false`; acciones de pagina y binds paginados sobre sesiones de un GUI no paginado son no-ops. La definicion y sus templates son inmutables y compartidos por cada `GuiSession` per-viewer. El Javadoc de la clase incluye el checklist campo por campo del golden spec (que campo parsea que clase).
+Definicion inmutable de UN GUI, parseada desde un archivo bajo `guis/` siguiendo el golden spec (`docs/menu-example.yml`): `title`, `rows`, `inventory-type` leniente, `open-sound`, `update-interval` de menu, los flags opt-in `pagination` y `strict-clicks`, la seccion `items:` y la seccion `templates:`. Ambos flags se resuelven UNA vez al load y por defecto son `false`; acciones de pagina y binds paginados sobre sesiones de un GUI no paginado son no-ops. La definicion y sus templates son inmutables y compartidos por cada `GuiSession` per-viewer. El Javadoc de la clase incluye el checklist campo por campo del golden spec (que campo parsea que clase).
 
 - `static GuiDef parse(Sn ctx, String id, SnYml yml)` (package-private) - Parsea el archivo entero; todo campo malformado emite WARN con prefijo `[gui <id>]` y hace fallback, nunca lanza. Archivo vacio/ilegible: WARN "Archivo vacio o ilegible; se usa un gui por defecto sin items" y devuelve un GUI default (titulo "Menu", 3 filas, sin items). `rows` fuera de 1-6 WARNea y usa 3. Items sin slots validos WARNean ("Item '<key>' sin slots validos; no se renderiza") y se descartan; los templates se parsean sin exigir slots.
 - `public String id()` - Id del GUI: su nombre de archivo sin la extension `.yml`.
@@ -2165,6 +2216,7 @@ Definicion inmutable de UN GUI, parseada desde un archivo bajo `guis/` siguiendo
 - `public String openSound()` - Spec de sonido de apertura (`"SOUND_ID [vol] [pitch]"`); vacio no reproduce nada.
 - `public int updateInterval()` - Intervalo de re-render del menu en ticks; 0 desactiva el timer del menu.
 - `public boolean pagination()` - Si este menu opto por paginacion; default false.
+- `public boolean strictClicks()` - Si este menu opto por strict clicks; default false (compat total con v1.0.0). Con true, un click fuera de los cuatro clicks basicos de mouse (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) se descarta salvo que una lista de acciones especifica declarada lo cubra (el gate concreto vive en `GuiSession.runClick`).
 - `public List<GuiItemDef> items()` - Items de la seccion `items:`, en orden de declaracion.
 - `public @Nullable GuiTemplate template(String templateId)` - Template declarado bajo `templates:` con el id dado, o null (tambien null si `templateId` es null).
 - `public Map<String, GuiTemplate> templates()` - Todos los templates de la seccion `templates:`, por id.
@@ -2223,7 +2275,7 @@ GUI vivo de UN viewer: cada viewer tiene su sesion con su PROPIO inventario, PRO
 - `public @Nullable GuiItemDef itemAt(int slot)` - Definicion renderizada en `slot` para este viewer con precedencia: bind de API, luego entrada paginada, luego item declarado del slot. Null para slot vacio.
 - `public void bind(int slot, GuiTemplate template, Ph... phs)` - Bindea un template a un slot de ESTA sesion con los placeholders locales dados y lo renderiza de inmediato. El bind sobrevive refreshes de pagina y recreaciones de inventario hasta ser sobreescrito; tiene precedencia sobre un item declarado en el mismo slot. Template null o slot negativo: no-op.
 - `public <T> void bindPaged(String templateId, List<T> data, int[] slots, BiConsumer<T, PhCollector> mapper)` - Bindea un data set paginado a ESTA sesion: un snapshot inmutable de `data` se pagina de a `slots.length` entradas y la pagina ACTUAL de este viewer renderiza en `slots` usando el template, una entrada por slot en orden. El mapper llena los placeholders locales de cada entrada; los slots sobrantes de una pagina corta quedan vacios. El bind sobrevive cambios de pagina y recreaciones hasta ser rebindeado; la pagina se clampea al total de paginas del snapshot, que ademas maneja el estado `nav-disabled` de los items de navegacion del YML. Con `pagination: false` (default del menu) la llamada se ignora con UN warning por GUI ("bindPaged en gui '<id>' ignorado: pagination false (opt-in por menu)"); template desconocido o slots vacios tambien WARNean una vez e ignoran. `mapper` null lanza NPE (`Objects.requireNonNull`).
-- `public void handleClick(int slot, ClickType click)` - Despacho de click invocado por el click listener compartido con un raw slot del top inventory: resuelve la definicion efectiva (bind manual, entrada paginada, item declarado), saltea items de navegacion deshabilitados y corre las acciones de click o deny con esta sesion como page target y el click type en el contexto. No-op si la sesion esta cerrada.
+- `public void handleClick(int slot, ClickType click)` - Despacho de click invocado por el click listener compartido con un raw slot del top inventory: resuelve la definicion efectiva (bind manual, entrada paginada, item declarado), saltea items de navegacion deshabilitados y delega en `runClick`, que resuelve la matriz per-click de la definicion (acciones, requirement y deny por `ClickType`, especifico-sobre-generico campo por campo) y aplica el gate opt-in de strict-clicks del menu, con esta sesion como page target y el click type en el contexto. No-op si la sesion esta cerrada.
 - `public void handleClose()` - Manejo de cierre invocado por el click listener cuando el cliente del viewer cerro el inventario: mismo teardown que `close()` pero sin force-cerrar la pantalla.
 - `public void nextPage()` - (override `PageTarget`) Avanza una pagina y refresca; no-op con debug si la paginacion esta apagada, y no pasa de la ultima pagina CONOCIDA (solo un bind paginado conoce el total).
 - `public void previousPage()` - (override) Retrocede una pagina si `page > 1` y refresca; no-op con debug sin paginacion.
@@ -2241,7 +2293,7 @@ GUI vivo de UN viewer: cada viewer tiene su sesion con su PROPIO inventario, PRO
 - Render (`renderContents`): limpia el inventario y renderiza en tres fases con precedencia: items declarados (salteando slots tomados por binds o por el bind paginado), luego la pagina actual del bind paginado (salteando slots con bind manual, clampeando `page` al total), luego los binds manuales. El view requirement de cada definicion se testea contra el resolver del viewer (PAPI + locals); si falla, el slot queda en null.
 - Marker anti-robo (`stamp`): cada stack renderizado se estampa via `TagIo.set(stack, ctx.plugin(), GuiManager.ITEM_TAG, def.id() + ":" + slot)` (PDC key `snlib_gui_item`, namespaceada por plugin owner, payload `"<guiId>:<slot>"`).
 - Timers (`startTimers`): si `update-interval` de menu > 0 arranca un timer de menu; por cada item con `update-interval` > 0 arranca un timer de item. Ambos ticks primero chequean `closed`, y si el viewer ya no esta viendo el inventario cierran la sesion (auto-limpieza). El tick de menu llama `refreshMenu()`: re-evalua titulo (y por ende recrea el inventario preservando sesion, pagina y binds cuando cambio); el tick de item re-renderiza solo ese item.
-- Clicks (`runClick`): construye un `ActionContext(viewer, ctx, this, click, phs)` y corre `clickActions` si el click requirement pasa, o `denyActions` si no, via `ctx.actions().run`.
+- Clicks (`runClick`): funnel unico de items declarados, binds manuales y entradas paginadas. Gate strict-clicks PRIMERO: con `strict-clicks: true`, un click fuera de los 4 basicos de mouse sin lista especifica declarada que lo cubra (`GuiItemDef.basicClick` + `specificActionsFor`) se descarta ANTES del test de requirement, con nota de debug: no corren ni las click actions ni las deny actions (el listener ya cancelo el evento). `middle-click-actions` habilita MIDDLE y una `left-click-actions` declarada habilita DOUBLE_CLICK y CREATIVE (un doble click vanilla son dos lefts; deliberado); NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND y UNKNOWN no tienen lista especifica posible y quedan siempre descartados en strict. Con strict false (default) el comportamiento es identico a v1.0.0. Pasado el gate, construye un `ActionContext(viewer, ctx, this, click, phs)` (sobrecarga de compat sin superficie: los clicks de GUI no tienen `ClickSurface`) y corre `clickActionsFor(click)` si `clickRequirementFor(click)` pasa, o `denyActionsFor(click)` si no, via `ctx.actions().run` (resolucion especifico-sobre-generico campo por campo).
 - Records privados: `Binding(GuiTemplate template, Ph[] phs)` (bind manual con sus locals capturados al bind) y `PagedBind<T>(GuiTemplate template, Pagination<T> pagination, int[] slots, BiConsumer<T, PhCollector> mapper)` (bind paginado vivo).
 
 #### Notas y gotchas
@@ -3032,11 +3084,13 @@ Spec golden del schema de configuracion de menus (Menu Lib): un GUI por archivo 
 
 - Campos raiz: `title` (default "Menu"), `rows` 1-6 (default 3), `open-sound` (default ''), `update-interval` en ticks (0 = sin auto-update; refresca items, titulo y rows), `inventory-type` (default CHEST; CHEST, DISPENSER, DROPPER, HOPPER, FURNACE, WORKBENCH, ENCHANTING, BREWING, ANVIL, BEACON, SHULKER_BOX, BARREL, etc).
 - `pagination` (opt-in por menu, default false): con `true` el GUI mantiene UNA GuiSession + UN Inventory POR VIEWER (page-state real por jugador; el mismo GUI sirve N jugadores en paginas distintas a la vez), funcionan `[next-page]`/`[previous-page]`/`[set-page]`/`[refresh-page]` y `bindPaged` llena los slots paginados via API. Con `false` (default) las acciones de paginacion son no-ops silenciosos con nota de debug y `bindPaged` WARNea una vez.
+- `strict-clicks` (opt-in por menu, default false): con `true` la lista generica `click-actions` solo dispara con los 4 clicks basicos de mouse (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT); los demas ClickType quedan cancelados sin accion, salvo que una lista especifica declarada los cubra (`middle-click-actions` habilita MIDDLE; una `left-click-actions` declarada habilita DOUBLE_CLICK y CREATIVE). Con `false` (default) el comportamiento es el historico de v1.0.0.
 - Schema de `items`: `display-name`, `material` (resuelve basehead-base64), `custom-model-data`, `amount`, `slots` (int, rango "0-2" o mix "0, 2, 4-6"), `glow`, `enchantments` (pares id/level), `flags` (HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS, y HIDE_ALL como combinacion), `color` (RGB "235, 64, 52" o HEX), `trim-pattern`/`trim-material` (armadura), `potion-effects` (ternas effect/level/duration), `update-interval` por item, `lore`, `click-requirements` y `view-requirements` (expresiones `%placeholder% > 0 && %placeholder% < 10`, `=`, `!=`), `deny-actions` (mismas acciones, corren si NO se cumplen los click-requirements) y `click-actions`.
-- Catalogo completo de acciones de click: `[player]`, `[player-as-op]`, `[right-click]`, `[left-click]`, `[shift-left-click]`, `[shift-right-click]`, `[console]`, `[message]`, `[sound]`, `[close]`, `[open] gui-id`, `[connect]` (switch BungeeCord), `[broadcastmessage]`, `[actionbar]`, `[title]` (formato `title;subtitle;fadeIn;stay;fadeOut`), `[next-page]`, `[previous-page]`, `[refresh-page]`, `[set-page]` (solo con pagination: true), `[refresh-menu]` y `[custom]` (acciones registrables por el plugin con cualquier string).
+- Matriz per-click (1.1.0): 15 keys opcionales por item, cinco keys de click (`right`, `left`, `shift-right`, `shift-left`, `middle`) por tres listas (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`), con la regla de resolucion especifico-sobre-generico campo por campo documentada en el spec (shift exacta -> lado -> generica; right cubre RIGHT/SHIFT_RIGHT, left cubre LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, middle cubre MIDDLE).
+- Catalogo completo de acciones de click: `[player]`, `[player-as-op]`, `[right-click]`, `[left-click]`, `[shift-left-click]`, `[shift-right-click]`, `[right-click-only]`, `[left-click-only]`, `[click=TIPO,...]`, `[middle-click]`, `[double-click]`, `[drop-click]`, `[number-key]`, `[swap-offhand]` (guards; el spec anota la compat inclusiva de `[right-click]`/`[left-click]` y que `[click-block]`/`[click-air]` en GUI siempre omiten la linea), `[console]`, `[message]`, `[sound]`, `[close]`, `[open] gui-id`, `[connect]` (switch BungeeCord), `[broadcastmessage]`, `[actionbar]`, `[title]` (formato `title;subtitle;fadeIn;stay;fadeOut`), `[next-page]`, `[previous-page]`, `[refresh-page]`, `[set-page]` (solo con pagination: true), `[refresh-menu]` y `[custom]` (acciones registrables por el plugin con cualquier string).
 - Items de navegacion de paginacion (`previous-page`/`next-page` de ejemplo): items normales cuyas click-actions usan las acciones de paginacion, con seccion opcional `nav-disabled`: override de apariencia renderizado en los MISMOS slots EN LUGAR del item de navegacion cuando no hay pagina a donde ir (primera pagina para previous, ultima para next). `nav-disabled` soporta los mismos campos de apariencia que un item normal pero sin slots ni acciones: una flecha deshabilitada jamas dispara nada.
-- Ejemplos del pipeline de texto (SnText): `[rgb]` aplica gradiente por caracter interpolado sobre 7 anchors fijos (#F300F3, #5555FF, #55FFFF, #55FF55, #FCFF21, #FF9B00, #FF5327), PISA los codigos de COLOR preexistentes y PRESERVA los de FORMATO (&l &o &n &m &k); `[center]` centra la linea a 154px sobre el string legacy ya coloreado (gradiente ya interpolado) como ULTIMO paso antes de renderizar a Component. Ambos tags prefix son componibles en CUALQUIER orden: `[center][rgb]` == `[rgb][center]`. Codigos legacy (&a, &#RRGGBB) y tags MiniMessage renderizan juntos.
-- Seccion `templates`: items IDENTICOS a los normales pero SIN `slots:`; el developer del plugin decide dinamicamente el slot via API Java y el usuario de config customiza la apariencia libremente. Pueden usar placeholders locales definidos por el plugin (ej `%index%`, `%warp_name%`). Incluye el ejemplo de uso de un plugin de mochilas (el plugin asigna por jugador que template va a cada slot).
+- Ejemplos del pipeline de texto (SnText): `[small]` sustituye a-z/A-Z por glifos small caps (des-acentua vocales, la enye conserva su glifo default; digitos, simbolos, codigos de color y tags MiniMessage pasan intactos; corre ANTES de `[rgb]`); `[rgb]` aplica gradiente por caracter interpolado sobre 7 anchors fijos (#F300F3, #5555FF, #55FFFF, #55FF55, #FCFF21, #FF9B00, #FF5327), PISA los codigos de COLOR preexistentes y PRESERVA los de FORMATO (&l &o &n &m &k); `[center]` centra la linea a 154px sobre el string legacy ya coloreado (gradiente ya interpolado) como ULTIMO paso antes de renderizar a Component. Los tres tags prefix ([small]/[rgb]/[center]) son componibles en CUALQUIER orden. Codigos legacy (&a, &#RRGGBB) y tags MiniMessage renderizan juntos.
+- Seccion `templates`: items IDENTICOS a los normales pero SIN `slots:`; el developer del plugin decide dinamicamente el slot via API Java y el usuario de config customiza la apariencia libremente. Pueden usar placeholders locales definidos por el plugin (ej `%index%`, `%warp_name%`). Soportan las mismas keys de la matriz per-click que los items regulares. Incluye el ejemplo de uso de un plugin de mochilas (el plugin asigna por jugador que template va a cada slot).
 
 ### docs/item-example.yml (spec golden de items fisicos)
 `docs/item-example.yml`
@@ -3045,9 +3099,9 @@ Spec golden del schema de items FISICOS (Item Lib): items que se entregan a juga
 - APPEARANCE: `display-name`, `material` (resuelve basehead-base64), `custom-model-data`, `amount`, `glow`, `lore`, `enchantments`, `flags` (mismo set que menus, con HIDE_ALL), `color` RGB/HEX, `trim-pattern`/`trim-material`, `potion-effects`.
 - PROPERTIES: `unbreakable` (default false), `max-stack-size` 1-64 (default vanilla del material), `droppable` (default true), `moveable` (default true), `placeable` (default true, solo bloques), `tradeable` (default true), `despawnable` (default true), `keep-on-death` (default false), `cooldown` en ticks (0 = sin cooldown).
 - LOCKED MODE Y OBTAIN CONTROL: `locked` (default false) fija el item a su slot y bloquea la extraccion por los 7 vectores de robo (drag, number-key swap, offhand swap, shift-move, drop, cursor pickup, transferencia hopper/inventario); el item real desplazado por uno locked se restaura en quit y shutdown via backup write-through (default-on: el backup sobrevive un crash del server sin onDisable). `no-drop` es alias duro de `droppable: false` (bloquea Q/drop y drag-out). `no-manual-equip` impide equipar manualmente en armadura u offhand (right-click equip, click de inventario, number-key y drag). `obtain-via` restringe como entra el item en circulacion: "" (default) sin restriccion; `COMMAND_ONLY` solo via comando o API del plugin, cancelando crafting/mob-pickup/otros caminos.
-- DURABILITY custom (separada de la vanilla, util para items sin durabilidad como sticks): `custom-durability.max` (0 = deshabilitado), `damage-per-use` (default 1), `break-actions` (acciones al llegar a 0) y `lore-format` con `%durability%`/`%max_durability%` actualizado automaticamente.
-- INTERACT ACTIONS (mundo, no GUI): 8 listas: `right-click-actions`, `left-click-actions`, `shift-right-click-actions`, `shift-left-click-actions`, `right-click-block-actions`, `right-click-air-actions`, `left-click-block-actions`, `left-click-air-actions`. Ademas de las acciones comunes suma `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]`, `[potion] EFFECT duration(ticks) amplifier`, `[remove-item]` (1 unidad) y `[remove-item] [N] [offhand|id:<item-id>|MATERIAL]`.
-- INTERACT REQUIREMENTS + `deny-actions` cuando no se cumplen.
+- DURABILITY custom (separada de la vanilla, util para items sin durabilidad como sticks): `custom-durability.max` (0 = deshabilitado), `damage-per-use` (default 1), `break-actions` (acciones al llegar a 0; desde 1.1.0 corren con el ClickType y la superficie BLOCK/AIR reales del interact que rompio el item, asi los guards de click/superficie dentro de la lista evaluan) y `lore-format` con `%durability%`/`%max_durability%` actualizado automaticamente.
+- INTERACT ACTIONS (mundo, no GUI): 12 listas: `right-click-actions`, `left-click-actions`, `shift-right-click-actions`, `shift-left-click-actions`, `right-click-block-actions`, `right-click-air-actions`, `left-click-block-actions`, `left-click-air-actions`, y las 4 shift-posicionales de 1.1.0 `shift-right-click-block-actions`, `shift-right-click-air-actions`, `shift-left-click-block-actions`, `shift-left-click-air-actions` (con shift, una shift-posicional CON comportamiento corre en lugar de la posicional simple; sin comportamiento cae a la simple). Flag `shift-overrides-generic` (default true; con false corren AMBAS variantes del par en shift-click, shift primero). Ademas de las acciones comunes suma `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]`, `[potion] EFFECT duration(ticks) amplifier`, `[remove-item]` (1 unidad), `[remove-item] [N] [offhand|id:<item-id>|MATERIAL]` y los guards posicionales/exactos de ejemplo (`[click-block]`, `[click-air]`, `[right-click-only]`, `[click=RIGHT]`).
+- INTERACT REQUIREMENTS + `deny-actions` cuando no se cumplen (desde 1.1.0 las deny-actions corren con el ClickType y la superficie reales del interact, asi los guards dentro de la lista evaluan).
 - PICKUP/DROP ACTIONS: `pickup-actions` y `drop-actions`.
 - HELD EFFECTS: efectos continuos mientras se sostiene o viste el item, por slot: `held-effects.mainhand`, `offhand`, `armor`; formato "EFFECT amplifier" (amplifier = level - 1).
 - `equipment-slot`: restringe donde se puede colocar (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET; default "" = cualquiera).
@@ -3072,9 +3126,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (13 suites, 146 tests, verdes)
+### Suites de tests (16 suites, 163 tests, verdes)
 
-Las 13 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas el subpaquete `com.sn.lib.item` de `SnItemAttributeParseTest`, que necesita acceso package-private a los helpers de `SnItem`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos). Total verificado con `mvn test`: 146 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 16 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest` y `com.sn.lib.gui` de `ClickResolutionTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards y resolucion de matrices de click). Total verificado con `mvn test`: 163 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3287,6 +3341,38 @@ Las 13 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, 
 - `void offhandMapsToOffHand()` - OFFHAND mapea a `EquipmentSlot.OFF_HAND`.
 - `void feetMapsDirect()` - FEET mapea directo a `EquipmentSlot.FEET`.
 
+### ClickGuardTest
+`src/test/java/com/sn/lib/action/ClickGuardTest.java`
+7 tests sobre los helpers package-private de `com.sn.lib.action.ActionEngine` para guards de click: `matchesExactClickGuard(String, ClickType)` (la matriz de guards nombrados) y `parseClickTypes(String)` (parseo fail-closed del spec de `[click=...]`). JVM puro: solo usa el enum `ClickType` de la API de Bukkit.
+
+- `void rightClickOnlyExcludesShiftAndDouble()` - `[right-click-only]` pasa solo con RIGHT: excluye SHIFT_RIGHT, DOUBLE_CLICK y CREATIVE.
+- `void leftClickOnlyExcludesShiftDoubleAndCreative()` - `[left-click-only]` pasa solo con LEFT: excluye SHIFT_LEFT, DOUBLE_CLICK y CREATIVE.
+- `void inclusiveGuardsKeepLegacySemantics()` - `[right-click]`/`[left-click]` conservan la semantica inclusiva v1.0.0: right pasa con SHIFT_RIGHT y left pasa con SHIFT_LEFT, DOUBLE_CLICK y CREATIVE.
+- `void sugarGuardsMatchExactly()` - los guards azucar matchean exactamente UN ClickType: `[middle-click]` MIDDLE, `[double-click]` DOUBLE_CLICK, `[drop-click]` DROP (CONTROL_DROP no pasa), `[number-key]` NUMBER_KEY, `[swap-offhand]` SWAP_OFFHAND.
+- `void shiftGuardsUnchanged()` - `[shift-right-click]`/`[shift-left-click]` siguen exactos: no pasan con RIGHT/LEFT planos.
+- `void parseClickTypesAcceptsCaseInsensitiveAndDashes()` - el spec acepta nombres case-insensitive y `-` como `_` ("right", "number-key", "MIDDLE,DROP", "swap_offhand").
+- `void parseClickTypesRejectsInvalidWholesale()` - fail-closed total: un nombre desconocido ("RIGTH"), un spec vacio o un token vacio ("RIGHT,,LEFT") devuelven null (la linea entera no corre).
+
+### ClickResolutionTest
+`src/test/java/com/sn/lib/gui/ClickResolutionTest.java`
+6 tests sobre los helpers package-private de `com.sn.lib.gui.GuiItemDef` que sostienen la resolucion de la matriz per-click y el gate strict-clicks: `shiftKey(ClickType)`, `sideKey(ClickType)` y `basicClick(ClickType)`. JVM puro.
+
+- `void shiftKeyMapsOnlyShiftClicks()` - `shiftKey` mapea SOLO SHIFT_RIGHT/SHIFT_LEFT a sus keys; todo lo demas (incluido null) devuelve null.
+- `void sideKeyGroupsRightFamily()` - el lado RIGHT agrupa RIGHT y SHIFT_RIGHT.
+- `void sideKeyGroupsDoubleClickAndCreativeWithLeft()` - el lado LEFT agrupa LEFT, SHIFT_LEFT, DOUBLE_CLICK y CREATIVE (consistente con `isLeftClick()`).
+- `void sideKeyMapsMiddle()` - MIDDLE mapea a su propio lado.
+- `void sideKeyNullForKeyboardAndUnknownClicks()` - NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND y UNKNOWN no tienen lado (null: caen al generico y en strict quedan descartados).
+- `void basicClickIsExactlyTheFourMouseClicks()` - `basicClick` es true exactamente para LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT y false para todo lo demas incluido null (el predicado del gate strict-clicks).
+
+### ItemDefVariantsTest
+`src/test/java/com/sn/lib/item/ItemDefVariantsTest.java`
+4 tests sobre las variantes shift-posicionales y el flag `shift-overrides-generic` de `com.sn.lib.item.ItemDef` construido por builder. JVM puro (los callbacks son lambdas que nunca se invocan).
+
+- `void shiftPositionalListsDefaultEmpty()` - las 4 listas shift-posicionales default vacias y sus 4 callbacks default null.
+- `void builderSetsShiftPositionalListsAndCallbacks()` - el builder setea las 4 listas y los 4 callbacks y los getters devuelven exactamente lo seteado (mismas instancias de callback).
+- `void shiftOverridesGenericDefaultsTrue()` - `shiftOverridesGeneric()` default true.
+- `void builderDisablesShiftOverridesGeneric()` - el builder puede apagarlo (en shift-click corren ambas variantes del par).
+
 ### Smoke gate de runtime
 
 Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real, en las dos puntas de la matriz soportada:
@@ -3308,4 +3394,4 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 146 tests en 13 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 163 tests en 16 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4).
