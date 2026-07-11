@@ -21,6 +21,7 @@ import com.sn.lib.item.internal.RecipeLoader;
 import com.sn.lib.lang.SnLang;
 import com.sn.lib.leaderboard.LeaderboardCache;
 import com.sn.lib.papi.SnPapi;
+import com.sn.lib.region.SelectionManager;
 import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
 import com.sn.lib.tenant.TenantRegistry;
@@ -62,6 +63,7 @@ public final class Sn {
     private final DiscordWebhook discord;
     private final UpdateChecker updates;
     private final ItemRegistry items;
+    private final SelectionManager selections;
     private final GuiManager guis;
     private final SnDb db;
     private final SnCommands commands;
@@ -101,6 +103,7 @@ public final class Sn {
                         + "el archivo no se monta y sn.items() queda solo programatico");
             }
         }
+        this.selections = new SelectionManager(this);
         this.guis = spec.guis() ? new GuiManager(this) : null;
         if (guis != null) {
             guis.load();
@@ -270,6 +273,15 @@ public final class Sn {
     }
 
     /**
+     * Cuboid selection module of the owning plugin; available in every context and 100%
+     * programmatic: register a {@code SelectionSpec}, hand the wand and receive the
+     * completed {@code Cuboid} through the callback or the cancellable event.
+     */
+    public SelectionManager selections() {
+        return selections;
+    }
+
+    /**
      * GUI module of the owning plugin: the {@code guis/} folder with one GUI per file,
      * one session and inventory per viewer, and opt-in pagination per menu.
      *
@@ -352,6 +364,7 @@ public final class Sn {
         }
         // 4. Only now cancel every remaining task of the owning plugin.
         items.cancelTasks();
+        selections.shutdown();
         scheduler.cancelAll();
         // 5. Locked items: put the displaced real equipment back; the write-through
         //    store persists synchronously through the shuttingDown flag.

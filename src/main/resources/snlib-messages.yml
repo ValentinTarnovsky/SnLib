@@ -27,3 +27,16 @@ snlib:
     entry: "&e{usage} &8- &7{permission}"
     # Printed after the entries only when the help spans several pages; {command} is the root command name.
     footer: "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"
+  selection:
+    # Sent when a selection wand sets position 1. Placeholders: {x} {y} {z} {world}
+    pos1-set: "&aPos1 set: &f{x}, {y}, {z} &7({world})"
+    # Sent when a selection wand sets position 2. Placeholders: {x} {y} {z} {world}
+    pos2-set: "&aPos2 set: &f{x}, {y}, {z} &7({world})"
+    # Sent when the two positions are in different worlds.
+    different-worlds: "&cBoth positions must be in the same world."
+    # Sent when the selected cuboid exceeds the allowed volume. Placeholders: {volume} {max}
+    too-big: "&cSelection too big: &f{volume} &7(max {max})"
+    # Sent when the player lacks the wand permission.
+    no-permission: "&cYou cannot use this wand."
+    # Sent when a selection session expires by timeout.
+    timeout: "&7Selection expired."
