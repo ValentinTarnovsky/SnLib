@@ -117,9 +117,11 @@ public final class DurabilityTracker {
      * break-actions (through {@code context} when present, so guards see the real click)
      * and removes the stack from the player's inventory. With a non-null {@code hand}
      * (interact flow) the used hand is emptied directly; with a null hand (programmatic
-     * flow) the stack is located by IDENTITY (never equals/isSimilar): main hand, then
-     * offhand, then the 36 storage slots. A caller that passed a copy finds nothing: a
-     * debug note is logged and nothing is removed.
+     * flow) the stack is located by identity first and by {@code equals} as fallback
+     * (on Paper the inventory getters mint a fresh mirror wrapper per call, so identity
+     * alone practically never matches; an equals match is the same broken item state):
+     * main hand, then offhand, then the 36 storage slots. No match logs a debug note
+     * and removes nothing.
      *
      * @return true when the stack was removed from the inventory
      */
@@ -135,25 +137,29 @@ public final class DurabilityTracker {
             inventory.setItem(hand, null);
             return true;
         }
-        if (inventory.getItemInMainHand() == stack) {
+        if (matches(inventory.getItemInMainHand(), stack)) {
             inventory.setItemInMainHand(null);
             return true;
         }
-        if (inventory.getItemInOffHand() == stack) {
+        if (matches(inventory.getItemInOffHand(), stack)) {
             inventory.setItemInOffHand(null);
             return true;
         }
         ItemStack[] storage = inventory.getStorageContents();
         for (int i = 0; i < storage.length; i++) {
-            if (storage[i] == stack) {
+            if (matches(storage[i], stack)) {
                 inventory.setItem(i, null);
                 return true;
             }
         }
-        ctx.debug().log(() -> "breakFor: el stack roto no se encontro por identidad en el"
-                + " inventario de " + player.getName()
-                + " (el caller paso una copia); no se removio nada");
+        ctx.debug().log(() -> "breakFor: el stack roto no se encontro (ni identidad ni"
+                + " equals) en el inventario de " + player.getName()
+                + "; no se removio nada");
         return false;
+    }
+
+    private static boolean matches(@Nullable ItemStack candidate, ItemStack stack) {
+        return candidate == stack || (candidate != null && candidate.equals(stack));
     }
 
     /**
