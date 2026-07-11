@@ -113,6 +113,10 @@ items:
   # ═══════════════════════════════════════════════════════════════════
   # TEXT PIPELINE EXAMPLES (SnText)
   # ═══════════════════════════════════════════════════════════════════
+  # [small]  -> small caps glyph substitution: a-z and A-Z map to small cap
+  #             glyphs, accented vowels lose the accent, enye keeps its default
+  #             glyph, digits/symbols/color codes/MiniMessage tags pass through.
+  #             Runs BEFORE [rgb] so the gradient colors the final glyphs.
   # [rgb]    -> per-character gradient interpolated over 7 fixed anchors
   #             (#F300F3,#5555FF,#55FFFF,#55FF55,#FCFF21,#FF9B00,#FF5327).
   #             Pre-existing COLOR codes are OVERRIDDEN; FORMAT codes
@@ -120,7 +124,7 @@ items:
   # [center] -> centers the line at 154px, applied over the legacy-colored
   #             string (gradient already interpolated) as the LAST step
   #             before rendering to Component.
-  # Both prefix tags are composable in ANY order: [center][rgb] == [rgb][center].
+  # All three prefix tags ([small]/[rgb]/[center]) are composable in ANY order.
   # Legacy codes (&a, &#RRGGBB) and MiniMessage tags render together.
 
   example-text-item:
@@ -131,6 +135,8 @@ items:
       - "[center][rgb]Centered gradient line"
       - "[rgb][center]Same result, tags in any order"
       - "[center]&eCentered legacy-only line"
+      - "[small]Small caps lore line"
+      - "[center][small][rgb]All three tags composed"
       - "<bold><#55FFFF>MiniMessage</#55FFFF></bold> &7mixed with &alegacy codes"
       - "&7Hex legacy: &#FF9B00orange &7plus <italic>MiniMessage italic</italic>"
 

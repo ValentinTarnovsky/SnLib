@@ -1,9 +1,9 @@
 # SnLib v1.0.0 - Documentacion tecnica del estado actual
 
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (105 archivos java), recursos, build y tests (11 suites).
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (105 archivos java), recursos, build y tests (12 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 114 tests JUnit verdes en 11 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 121 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -303,21 +303,22 @@ TODOs y limitaciones:
 
 ## 03. Pipeline de texto
 
-El paquete `com.sn.lib.text` implementa el pipeline de renderizado de texto compartido por todos los modulos de SnLib. El orden es FIJO y no configurable: locales -> PAPI -> `[rgb]` -> conversion de color legacy -> `[center]`. Los pasos de locales y PAPI los resuelve el llamador (los getters de SnYml) antes de invocar estos metodos; las tres clases de este modulo cubren el resto. `SnText` es el orquestador (tags de prefijo, conversion legacy a MiniMessage, escape de `<`, render final a `Component`); `RgbGradientUtil` interpola el gradiente de 7 anclas detras del tag `[rgb]`; `CenterUtil` centra la linea midiendo pixeles con la tabla de fuente vanilla. Las tres clases son transformaciones puras de strings (sin estado, sin Bukkit, sin ownership por plugin): son thread-safe y pueden usarse desde main o async indistintamente.
+El paquete `com.sn.lib.text` implementa el pipeline de renderizado de texto compartido por todos los modulos de SnLib. El orden es FIJO y no configurable: locales -> PAPI -> [small] -> [rgb] -> conversion de color legacy -> [center]. Los pasos de locales y PAPI los resuelve el llamador (los getters de SnYml) antes de invocar estos metodos; las cuatro clases de este modulo cubren el resto. `SnText` es el orquestador (tags de prefijo, conversion legacy a MiniMessage, escape de `<`, render final a `Component`); `SmallCapsUtil` sustituye letras por glifos small caps detras del tag `[small]`; `RgbGradientUtil` interpola el gradiente de 7 anclas detras del tag `[rgb]`; `CenterUtil` centra la linea midiendo pixeles con la tabla de fuente vanilla. Las cuatro clases son transformaciones puras de strings (sin estado, sin Bukkit, sin ownership por plugin): son thread-safe y pueden usarse desde main o async indistintamente.
 
 ### SnText
 `src/main/java/com/sn/lib/text/SnText.java`
 
-Clase final utilitaria (constructor privado) que orquesta el pipeline. Mantiene una instancia estatica de `MiniMessage.miniMessage()` y el mapa `MINI_TAGS` que traduce cada codigo legacy `&X` a su tag MiniMessage con nombre (`0`->`black`, `1`->`dark_blue`, `2`->`dark_green`, `3`->`dark_aqua`, `4`->`dark_red`, `5`->`dark_purple`, `6`->`gold`, `7`->`gray`, `8`->`dark_gray`, `9`->`blue`, `a`->`green`, `b`->`aqua`, `c`->`red`, `d`->`light_purple`, `e`->`yellow`, `f`->`white`, `k`->`obfuscated`, `l`->`bold`, `m`->`strikethrough`, `n`->`underlined`, `o`->`italic`, `r`->`reset`). Constantes privadas: `CENTER_TAG = "[center]"`, `RGB_TAG = "[rgb]"`, `SECTION = (char) 0xA7`. No expone constantes publicas ni enums.
+Clase final utilitaria (constructor privado) que orquesta el pipeline. Mantiene una instancia estatica de `MiniMessage.miniMessage()` y el mapa `MINI_TAGS` que traduce cada codigo legacy `&X` a su tag MiniMessage con nombre (`0`->`black`, `1`->`dark_blue`, `2`->`dark_green`, `3`->`dark_aqua`, `4`->`dark_red`, `5`->`dark_purple`, `6`->`gold`, `7`->`gray`, `8`->`dark_gray`, `9`->`blue`, `a`->`green`, `b`->`aqua`, `c`->`red`, `d`->`light_purple`, `e`->`yellow`, `f`->`white`, `k`->`obfuscated`, `l`->`bold`, `m`->`strikethrough`, `n`->`underlined`, `o`->`italic`, `r`->`reset`). Constantes privadas: `CENTER_TAG = "[center]"`, `RGB_TAG = "[rgb]"`, `SMALL_TAG = "[small]"`, `SECTION = (char) 0xA7`. No expone constantes publicas ni enums.
 
-- `public static Component color(String s)` - Render completo: consume los tags de prefijo `[rgb]`/`[center]`, convierte codigos legacy a tags MiniMessage y deserializa con MiniMessage. Input null rinde `Component.empty()`.
+- `public static Component color(String s)` - Render completo: consume los TRES tags de prefijo `[small]`/`[rgb]`/`[center]`, convierte codigos legacy a tags MiniMessage y deserializa con MiniMessage. Input null rinde `Component.empty()`.
 - `public static Component mini(String s)` - Render solo MiniMessage: sin tags de prefijo y sin conversion legacy. Null rinde `Component.empty()`.
 - `public static String colorLegacy(String s)` - Misma fase legacy que `color(String)` pero la salida queda como string legacy con codigos de section sign (`&#RRGGBB` se convierte en la secuencia hex de bungee `§x§R§R§G§G§B§B`). Para APIs que todavia exigen strings legacy; los tags MiniMessage quedan intactos. Null devuelve null.
 - `public static String normalizePapiOutput(String s)` - Convierte la salida de PlaceholderAPI de vuelta a la forma `&` que el pipeline entiende: las secuencias hex de bungee (`§x§R§R...`) pasan a `&#RRGGBB` y los codigos `§X` pasan a `&X`, para que los valores coloreados por PAPI sobrevivan la conversion a MiniMessage. Si el string es null o no contiene section sign, se devuelve tal cual sin alocar.
 - `public static String applyLocals(String s, Ph... phs)` - Resuelve placeholders locales a partir de pares `Ph` (key/value); arma un `HashMap` y delega en la sobrecarga con resolver. Devuelve el input intacto si el string es null/vacio o no hay pares.
 - `public static String applyLocals(String s, Function<String, String> resolver)` - Escaner de una sola pasada sobre tokens `%key%` y `{key}`. Si el resolver devuelve null el token queda intacto (asi los tokens PAPI no resueltos sobreviven sin tocar); los valores de reemplazo NO se re-escanean (sin expansion recursiva).
 - `public static List<Component> colorList(List<String> lines)` - Aplica `color(String)` a cada linea; una lista null o vacia devuelve una `ArrayList` vacia nueva.
-- `public static String applyPrefixTags(String line)` - Consume los tags de prefijo `[center]` y `[rgb]` al inicio de la linea, en cualquier orden y case-insensitive (via `regionMatches(true, ...)`), en un loop hasta que no quede ninguno. `[rgb]` se aplica de inmediato (delega en `RgbGradientUtil.applyRgbTag` sobre el contenido restante); `[center]` se re-emite como una unica marca lider normalizada `[center]` que consume la fase legacy final. Null devuelve null.
+- `public static String smallCaps(String s)` - Transformacion small caps programatica (scoreboards, tab, nombres) sin pasar por el tag `[small]`: delega en `SmallCapsUtil.applySmallTag`. Mapeo 1:1 char a char; los codigos de color legacy, las secuencias section-sign y los tags MiniMessage se saltean intactos. Null/vacio pass-through y devuelve la MISMA instancia cuando no hay cambios.
+- `public static String applyPrefixTags(String line)` - Consume los tags de prefijo `[center]`, `[rgb]` y `[small]` al inicio de la linea, en cualquier orden y case-insensitive (via `regionMatches(true, ...)`), en un loop hasta que no quede ninguno (una rama por tag). Orden interno FIJO de aplicacion: `[small]` corre primero (delega en `SmallCapsUtil.applySmallTag` sobre el contenido restante), despues `[rgb]` (delega en `RgbGradientUtil.applyRgbTag`); `[center]` se re-emite como una unica marca lider normalizada `[center]` que consume la fase legacy final. Small ANTES de rgb para que el gradiente coloree los glifos finales y la pasada small opere sobre el string corto (no sobre el string inflado 9x por los hex del gradiente); como el mapeo es 1:1 y no toca espacios, el conteo de visibles del gradiente no cambia y las 6 permutaciones de tags rinden identico. Null devuelve null.
 
 #### Logica interna (metodos privados)
 
@@ -331,11 +332,57 @@ Clase final utilitaria (constructor privado) que orquesta el pipeline. Mantiene 
 
 #### Notas y gotchas
 
-- El orden del pipeline es FIJO por Javadoc de clase: locales -> PAPI -> `[rgb]` -> conversion de color legacy -> `[center]`. "`[center]` al final" significa al final de la FASE LEGACY, nunca despues del render a `Component`: `CenterUtil` solo sabe medir strings legacy, por eso el centrado se aplica sobre el string legacy-coloreado (con los `&#RRGGBB` del gradiente ya interpolados) justo antes de `legacyToMini` + deserializacion.
+- El orden del pipeline es FIJO por Javadoc de clase: locales -> PAPI -> `[small]` -> `[rgb]` -> conversion de color legacy -> `[center]`. "`[center]` al final" significa al final de la FASE LEGACY, nunca despues del render a `Component`: `CenterUtil` solo sabe medir strings legacy, por eso el centrado se aplica sobre el string legacy-coloreado (con los `&#RRGGBB` del gradiente ya interpolados) justo antes de `legacyToMini` + deserializacion. `[small]` corre ANTES que ambos: el gradiente colorea los glifos finales y el centrado mide los glifos finales.
 - Legacy y MiniMessage se mezclan en el mismo string: los codigos `&X` / `&#RRGGBB` se traducen a tags MiniMessage y TODO el string pasa por MiniMessage al final, asi ambos formatos renderizan juntos. En `colorLegacy` es al reves: los tags MiniMessage quedan sin tocar dentro del string legacy.
 - Escape de `<`: solo se escapa (`\<`) cuando el caracter siguiente NO puede iniciar un tag segun `canStartTag`. Un `<` seguido de letra, `/`, `#`, `!` o `_` se deja pasar y MiniMessage intentara parsearlo como tag.
 - `applyLocals` corta la busqueda del delimitador de cierre en el primer `%`/`}` que encuentre; `%%` o `{}` (token vacio, `end == i + 1`) no se tratan como token y quedan literales.
 - El tag `[rgb]` apunta a titulos y lineas cortas: emite un codigo hex por caracter visible (muy verboso). SnLang cachea las lineas resueltas estaticamente para pagar ese costo una sola vez.
+
+### SmallCapsUtil
+`src/main/java/com/sn/lib/text/SmallCapsUtil.java`
+
+Clase final utilitaria (constructor privado). Sustitucion de letras por glifos small caps Unicode detras del tag de prefijo `[small]`. Transformacion pura de strings, sin Bukkit. El diccionario privado `SMALL` (escrito con escapes `\uXXXX`, indice = letra - 'a') mapea las 26 letras; todos los codepoints son BMP (un char de Java cada uno), asi el mapeo es SIEMPRE 1:1 char a char.
+
+Diccionario completo (letra -> glifo -> codepoint):
+
+| Letra | Glifo | Codepoint |
+|---|---|---|
+| a | ᴀ | U+1D00 |
+| b | ʙ | U+0299 |
+| c | ᴄ | U+1D04 |
+| d | ᴅ | U+1D05 |
+| e | ᴇ | U+1D07 |
+| f | ꜰ | U+A730 |
+| g | ɢ | U+0262 |
+| h | ʜ | U+029C |
+| i | ɪ | U+026A |
+| j | ᴊ | U+1D0A |
+| k | ᴋ | U+1D0B |
+| l | ʟ | U+029F |
+| m | ᴍ | U+1D0D |
+| n | ɴ | U+0274 |
+| o | ᴏ | U+1D0F |
+| p | ᴘ | U+1D18 |
+| q | ǫ | U+01EB |
+| r | ʀ | U+0280 |
+| s | ꜱ | U+A731 |
+| t | ᴛ | U+1D1B |
+| u | ᴜ | U+1D1C |
+| v | ᴠ | U+1D20 |
+| w | ᴡ | U+1D21 |
+| x | x | U+0078 (a si misma, ASCII) |
+| y | ʏ | U+028F |
+| z | ᴢ | U+1D22 |
+
+Semantica del mapeo (`mapChar`, privado): las mayusculas A-Z se transforman IGUAL que las minusculas (en small caps la caja no existe); las vocales acentuadas de AMBAS cajas se des-acentuan a los glifos small (a/e/i/o/u con tilde y la u con dieresis); la enye minuscula queda intacta y la enye mayuscula baja a la enye minuscula default U+00F1 (decision de disenio: el glifo small de la enye se ve mal en MC). Digitos, simbolos, espacios, glifos ya small y cualquier otro codepoint pasan intactos.
+
+- `public static String applySmallTag(String line)` - Aplica el mapeo small caps a una linea ya despojada de su prefijo `[small]`. Escaner de UNA pasada sin regex. Reglas de skip verbatim: codigos legacy `&X` / `&#RRGGBB` (helper `codeLength` duplicado de RgbGradientUtil, precedente de utils autocontenidas), codigos section-sign `§X` y la secuencia bungee completa de 14 chars (helper `sectionCodeLength`; los callers programaticos de `SnText.smallCaps` pueden pasar strings ya seccionados), y tags MiniMessage via la heuristica `canStartTag` con busqueda del `>` de cierre: si NO hay `>` en el resto de la linea el `<` se trata como literal y el texto sigue transformandose (asi `<bold>` queda intacto pero "i<3" se transforma). Los argumentos string dentro de tags (`hover:show_text:'...'`) NO se transforman porque viven entre `<` y `>`. Invariante de largo 1:1: el output SIEMPRE mide igual que el input (lo que preserva el conteo de visibles del gradiente `[rgb]`). Devuelve la MISMA instancia cuando ningun char mapeo (cero garbage en lineas que no cambian); null y vacio pass-through.
+- `static boolean isSmallGlyph(char c)` - Package-private, consumido por `CenterUtil.baseWidth`: switch O(1) que devuelve true para los 25 codepoints NO-ASCII del diccionario (todos menos la 'x').
+
+#### Notas y gotchas
+
+- El tag `[small]` corre ANTES que `[rgb]` y que `[center]` en el pipeline (ver `SnText.applyPrefixTags`): el gradiente colorea los glifos finales y el centrado mide los glifos finales.
+- Al posicionarse despues de locales/PAPI, los VALORES de placeholders tambien salen en small caps: comportamiento deseado.
 
 ### RgbGradientUtil
 `src/main/java/com/sn/lib/text/RgbGradientUtil.java`
@@ -382,7 +429,7 @@ Clase final utilitaria (constructor privado). Centrado de chat contra la semi-an
 
 - `measure(String s)` - Suma el ancho en pixeles de los caracteres visibles. Salta `&#RRGGBB` (avanza 8 chars) y los codigos `&X` / `§X`; trackea el estado bold: `&l`/`§l` lo enciende y `&r`/`§r` lo apaga (los demas codigos de color NO lo apagan durante la medicion).
 - `width(char c, boolean bold)` - Avance en pixeles: ancho de tabla mas 1px de separacion de glifo; bold suma 1px extra excepto para espacios.
-- `baseWidth(char c)` - Tabla de anchos vanilla DefaultFontInfo (ver tabla abajo).
+- `baseWidth(char c)` - Tabla de anchos vanilla DefaultFontInfo (ver tabla abajo). En la rama `default`, ANTES del check del rango ASCII imprimible, los glifos small caps (detectados via `SmallCapsUtil.isSmallGlyph`, acceso package-private dentro de `com.sn.lib.text`) devuelven base 5 como las mayusculas, salvo U+026A (la i small, angosta) que devuelve base 3 como la 'I' mayuscula; sin esta rama caerian en el fallback de 4 y una linea `[center][small]` saldria corrida a la derecha.
 - `isCodeChar(char c)` - Valida caracter de codigo legacy (`0-9`, `a-f`, `k-o`, `r`, `x`).
 - `isHex(String s, int from)` - Valida 6 digitos hex consecutivos.
 
@@ -396,7 +443,11 @@ Tabla de medicion en pixeles (ancho base por glifo, ANTES de sumar el gap de 1px
 | 4 | `f` `k` `(` `)` `{` `}` `<` `>` |
 | 5 | resto del rango ASCII imprimible (`!` a `~`) |
 | 6 | `@` |
+| 5 | glifos small caps del diccionario de `SmallCapsUtil` (salvo U+026A) |
+| 3 | U+026A (la i small caps, mide como la `I` mayuscula) |
 | 4 | fallback para glifos desconocidos (fuera de `!`-`~`) |
+
+Los anchos de los glifos small caps (5 y 3) son aproximaciones razonables ajustables en `baseWidth` unicamente: los avances exactos dependen de los bitmaps de la fuente accented del cliente.
 
 #### Notas y gotchas
 
@@ -638,7 +689,7 @@ Metodos privados, en el orden del flujo de carga:
 - `private static @Nullable List<String> readLines(YamlConfiguration cfg, String key)` - Lista YAML tal cual, string como lista de un elemento, otro tipo devuelve null.
 - `private static boolean isStatic(List<String> lines)` - Estatico significa renderizable una sola vez: ninguna linea contiene `%` (tokens PAPI) ni `{` (placeholders locales).
 - `private void deliver(Audience audience, @Nullable Player viewer, String key, Ph... phs)` - Entrega comun de send/broadcast: key inexistente manda el marker; mensaje de una linea recibe prefix (y usa el cache pre-renderizado solo si no hay prefix ni placeholders); mensajes multilinea se envian linea por linea SIN prefix.
-- `private String withPrefix(String line)` - Inserta el prefix configurado DESPUES de cualquier tag inicial `[center]`/`[rgb]` (matching case-insensitive, en loop, soporta tags encadenados): un mensaje con prefix mantiene sus tags en la posicion 0 para que sigan renderizando.
+- `private String withPrefix(String line)` - Inserta el prefix configurado DESPUES de cualquier tag inicial `[center]`/`[rgb]`/`[small]` (matching case-insensitive, en loop, soporta tags encadenados; `[small]` se saltea con sus 7 chars): un mensaje con prefix mantiene sus tags en la posicion 0 para que sigan renderizando. El prefix insertado despues del tag queda DENTRO del alcance de `[small]` y sale en small caps, consistente con `[rgb]` (que le aplica gradiente al prefix).
 - `private Component renderLine(String line, @Nullable Player viewer, Ph... phs)` - Pipeline fijo: `SnText.color(resolveLine(...))`.
 - `private String resolveLine(String line, @Nullable Player viewer, Ph... phs)` - Locals via `SnText.applyLocals`, luego PAPI por viewer via `ctx.papi().apply`, luego `SnText.normalizePapiOutput`.
 - `private Component missing(String key)` - Devuelve `Component.text("<missing:" + key + ">")` y emite UN solo WARN por key ("Key de mensaje 'X' no existe en lang/messages_en.yml"), deduplicado con la marca `missing:<key>` en `warnedKeys`.
@@ -2985,9 +3036,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (11 suites, 104 tests, verdes)
+### Suites de tests (12 suites, 121 tests, verdes)
 
-Las 11 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 104 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 121 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3123,7 +3174,7 @@ Las 11 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 
 ### CenterUtilTest
 `src/test/java/com/sn/lib/CenterUtilTest.java`
-8 tests sobre `com.sn.lib.text.CenterUtil.center(String)`: centrado pixel-exacto contra el half-width de 154px del chat, donde los codigos de color son invisibles al medir, el bold ensancha glifos y las lineas mas anchas que la ventana pasan intactas.
+9 tests sobre `com.sn.lib.text.CenterUtil.center(String)`: centrado pixel-exacto contra el half-width de 154px del chat, donde los codigos de color son invisibles al medir, el bold ensancha glifos y las lineas mas anchas que la ventana pasan intactas.
 
 - `void centersShortLineWithExactPixelMath()` - matematica de pixeles exacta: "ab" (12px) compensa 148px en espacios de 4px -> 37 espacios lideres.
 - `void emptyAndNullPassThrough()` - "" y null pasan sin tocar (null devuelve la MISMA referencia).
@@ -3132,7 +3183,29 @@ Las 11 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 - `void sectionSignCodesAreIgnoredWhileMeasuring()` - idem con codigos `§`.
 - `void boldWidensTheMeasuredLine()` - `&l` suma 1px por glifo no-espacio: una linea bold larga necesita menos espacios lideres.
 - `void resetStopsBoldMeasurement()` - `&r` corta la medicion en bold para los caracteres posteriores.
+- `void smallCapsLineMeasuresLikeUppercase()` - una linea small caps (`SnText.smallCaps`) recibe el mismo padding que su version en mayusculas: glifos small base 5 = mayusculas base 5 ("HELLO") y U+026A base 3 = 'I' base 3 ("HI").
 - `void centeredGradientLineKeepsPayloadIntact()` - una linea como sale de la fase `[rgb]` (un hex por caracter) conserva el payload intacto y solo cuentan los glifos visibles (H+i+! = 10px -> 38 espacios). Documenta el orden real del pipeline: `[center]` corre despues de `[rgb]`.
+
+### SmallCapsTest
+`src/test/java/com/sn/lib/SmallCapsTest.java`
+16 tests sobre `com.sn.lib.text.SmallCapsUtil.applySmallTag(String)` y la composicion del tag `[small]` en `com.sn.lib.text.SnText` (`applyPrefixTags`): la sustitucion small caps 1:1 con skip verbatim de codigos de color, secuencias section-sign y tags MiniMessage. Los glifos esperados se escriben con escapes `\uXXXX`.
+
+- `void lowercaseAlphabetMapsToSmallCaps()` - el alfabeto a-z completo mapea exactamente al diccionario SMALL de 26 glifos.
+- `void uppercaseMapsLikeLowercase()` - "ABCXYZ" produce lo mismo que "abcxyz" (la caja no existe en small caps).
+- `void enyeKeepsDefaultGlyph()` - la enye minuscula queda intacta y la mayuscula baja a la enye minuscula default U+00F1.
+- `void accentedVowelsLoseAccent()` - las vocales acentuadas (y la u con dieresis) de ambas cajas se des-acentuan a los glifos small.
+- `void digitsSymbolsAndSpacesPassThrough()` - digitos, simbolos y espacios pasan intactos.
+- `void legacyColorCodesSkipped()` - los codigos `&a`/`&l` quedan intactos (la 'a' y la 'l' del codigo no se mapean) y el texto visible se transforma.
+- `void legacyHexCodesSkipped()` - `&#ff9b00` queda intacto (los 6 digitos hex minusculas no se mapean) y el texto posterior se transforma.
+- `void sectionSignCodesSkipped()` - `§a` y la secuencia bungee completa de 14 chars quedan intactos; el texto visible se transforma.
+- `void miniMessageTagsSkipped()` - `<bold>` y `</bold>` quedan intactos y el contenido entre tags se transforma.
+- `void literalAngleBracketStillTransforms()` - un `<` sin `>` de cierre es literal y no frena la transformacion ("i<3" -> la i se mapea).
+- `void outputLengthAlwaysEqualsInput()` - invariante 1:1: el output mide igual que el input para inputs representativos (alfabeto, codigos, tags, linea mixta).
+- `void unchangedLineReturnsSameInstance()` - `assertSame`: una linea sin letras mapeables y un string ya en small caps devuelven la misma instancia.
+- `void nullAndEmptyPassThrough()` - null devuelve null y "" devuelve la misma instancia.
+- `void tagIsCaseInsensitive()` - `[SMALL]` y `[small]` rinden identico en `SnText.applyPrefixTags`.
+- `void smallAndRgbComposeInAnyOrder()` - `[small][rgb]` == `[rgb][small]` (orden interno fijo de aplicacion).
+- `void centerMarkSurvivesSmall()` - `[center][small]hi` re-emite la marca `[center]` lider con el resto ya en small caps.
 
 ### YamlUpdaterTest
 `src/test/java/com/sn/lib/YamlUpdaterTest.java`
@@ -3169,4 +3242,4 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 104 tests en 11 suites, todos verdes.
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 121 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest).

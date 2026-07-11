@@ -13,7 +13,7 @@ item-id: # can be anything as long it is unique
   # ═══════════════════════════════════════
   # APPEARANCE - How the item looks
   # ═══════════════════════════════════════
-  display-name: string # default: ""
+  display-name: string # supports [small]/[rgb]/[center] prefix tags # default: ""
   material: string (can resolve basehead-base64) # default: "STONE"
   custom-model-data: int # default: 0
   amount: int # default: 1
@@ -21,6 +21,7 @@ item-id: # can be anything as long it is unique
   lore: # default: []
     - "&7Line 1"
     - "&7Line 2"
+    - "[small]&7Small caps line"
     - ""
     - "&eSpecial item!"
   enchantments: list ex: [enchantment-id, level] or [enchantment-id, level, enchantment-id, level] # default: []
