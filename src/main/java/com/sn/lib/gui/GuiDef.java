@@ -17,8 +17,8 @@ import com.sn.lib.yml.SnYml;
 /**
  * Immutable definition of one GUI, parsed from a file under {@code guis/} following the
  * golden spec ({@code docs/menu-example.yml}): title, rows, lenient inventory type, open
- * sound, menu update interval, the opt-in {@code pagination} flag, the {@code items:}
- * section and the {@code templates:} section.
+ * sound, menu update interval, the opt-in {@code pagination} and {@code strict-clicks}
+ * flags, the {@code items:} section and the {@code templates:} section.
  *
  * <p>{@code pagination} is resolved ONCE at load and defaults to false; page actions and
  * paged binds on sessions of a non-paginated GUI are no-ops. The definition and its
@@ -27,7 +27,8 @@ import com.sn.lib.yml.SnYml;
  * <pre>
  * Golden spec checklist (docs/menu-example.yml) - field by field, where it parses:
  *   title, rows (1-6), open-sound, update-interval,     -> GuiDef.parse
- *     inventory-type (lenient valueOf), pagination
+ *     inventory-type (lenient valueOf), pagination,
+ *     strict-clicks (opt-in per menu, default false)
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, amount, glow, enchantments,     (re-read per viewer: locals,
@@ -42,9 +43,15 @@ import com.sn.lib.yml.SnYml;
  *        [connect], [broadcastmessage], [actionbar], [title], [right-click]/[left-click]/
  *        [shift-*-click] filters, [next-page], [previous-page], [set-page], [refresh-page],
  *        [refresh-menu], custom tags via GuiManager.registerAction)
+ *     per-click matrix (specific-over-generic,          -> GuiItemDef.parse; resolved per
+ *       field by field): right-click-actions,              ClickType by clickActionsFor /
+ *       right-click-requirements,                          clickRequirementFor /
+ *       right-click-deny-actions and the same three        denyActionsFor at click time
+ *       lists for left-click, shift-right-click,
+ *       shift-left-click and middle-click
  *     previous-page / next-page navigation items        -> GuiItemDef.parse (NavKind detected
- *       with nav-disabled override (same appearance        from the pagination actions;
- *       fields, no slots, no actions)                       nav-disabled parsed recursively)
+ *       with nav-disabled override (same appearance        from the pagination actions of
+ *       fields, no slots, no actions)                       every list; nav-disabled recursive)
  *   templates.&lt;id&gt; (same fields, no slots)              -> GuiDef.parse into GuiTemplate;
  *                                                           slots assigned via session binds
  *   [rgb], [center][rgb] composable in any order and    -> SnText pipeline used by every
@@ -60,12 +67,14 @@ public final class GuiDef {
     private final String openSound;
     private final int updateInterval;
     private final boolean pagination;
+    private final boolean strictClicks;
     private final List<GuiItemDef> items;
     private final Map<String, GuiTemplate> templates;
 
     private GuiDef(String id, String title, int rows, @Nullable InventoryType inventoryType,
                    String openSound, int updateInterval, boolean pagination,
-                   List<GuiItemDef> items, Map<String, GuiTemplate> templates) {
+                   boolean strictClicks, List<GuiItemDef> items,
+                   Map<String, GuiTemplate> templates) {
         this.id = id;
         this.title = title;
         this.rows = rows;
@@ -73,6 +82,7 @@ public final class GuiDef {
         this.openSound = openSound;
         this.updateInterval = updateInterval;
         this.pagination = pagination;
+        this.strictClicks = strictClicks;
         this.items = items;
         this.templates = templates;
     }
@@ -84,7 +94,7 @@ public final class GuiDef {
         ConfigurationSection root = yml.getSection("");
         if (root == null) {
             warn.accept("Archivo vacio o ilegible; se usa un gui por defecto sin items");
-            return new GuiDef(id, "Menu", 3, null, "", 0, false, List.of(), Map.of());
+            return new GuiDef(id, "Menu", 3, null, "", 0, false, false, List.of(), Map.of());
         }
         String title = root.getString("title", "Menu");
         int rows = root.getInt("rows", 3);
@@ -96,6 +106,7 @@ public final class GuiDef {
         String openSound = root.getString("open-sound", "");
         int updateInterval = Math.max(0, root.getInt("update-interval", 0));
         boolean pagination = root.getBoolean("pagination", false);
+        boolean strictClicks = root.getBoolean("strict-clicks", false);
         List<GuiItemDef> items = new ArrayList<>();
         ConfigurationSection itemsSection = root.getConfigurationSection("items");
         if (itemsSection != null) {
@@ -122,7 +133,7 @@ public final class GuiDef {
             }
         }
         return new GuiDef(id, title, rows, type, openSound, updateInterval, pagination,
-                List.copyOf(items), Map.copyOf(templates));
+                strictClicks, List.copyOf(items), Map.copyOf(templates));
     }
 
     /**
@@ -176,6 +187,15 @@ public final class GuiDef {
     /** Whether this menu opted in to pagination; default false. */
     public boolean pagination() {
         return pagination;
+    }
+
+    /**
+     * Whether this menu opted in to strict clicks; default false. With true, a click
+     * outside the four basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) is
+     * discarded unless a declared specific actions list covers it.
+     */
+    public boolean strictClicks() {
+        return strictClicks;
     }
 
     /** Items of the {@code items:} section, in declaration order. */

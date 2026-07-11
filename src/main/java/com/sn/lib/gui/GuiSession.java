@@ -242,8 +242,9 @@ public final class GuiSession implements PageTarget {
     /**
      * Click dispatch invoked by the shared click listener with a raw top-inventory slot:
      * resolves the effective definition (manual bind, paged entry, declared item), skips
-     * disabled navigation items and runs the click or deny actions with this session as
-     * page target and the click type in the context.
+     * disabled navigation items and delegates to {@link #runClick}, which resolves the
+     * per-click matrix of the definition (actions, requirement and deny list per
+     * {@link ClickType}) and applies the menu's opt-in strict-clicks gate.
      */
     public void handleClick(int slot, ClickType click) {
         if (closed) {
@@ -375,12 +376,29 @@ public final class GuiSession implements PageTarget {
         return true;
     }
 
-    /** Runs click or deny actions of the definition under this session's context. */
+    /**
+     * Runs click or deny actions of the definition under this session's context, single
+     * funnel for declared items, manual binds and paged entries. Actions, requirement
+     * and deny list resolve per {@link ClickType} through the per-click matrix
+     * (specific-over-generic, field by field). With {@code strict-clicks: true} a click
+     * outside the four basic mouse clicks is discarded BEFORE the requirement test (no
+     * click nor deny actions; the listener already cancelled the event) unless a declared
+     * specific actions list covers it: {@code middle-click-actions} enables MIDDLE and a
+     * declared {@code left-click-actions} enables DOUBLE_CLICK and CREATIVE (a vanilla
+     * double click is two lefts, deliberate). NUMBER_KEY, DROP, CONTROL_DROP,
+     * SWAP_OFFHAND and UNKNOWN have no possible specific list and stay always discarded
+     * in strict mode. With strict false (the default) behaviour is identical to v1.0.0.
+     */
     private void runClick(GuiItemDef item, Ph[] phs, ClickType click) {
+        if (def.strictClicks() && !GuiItemDef.basicClick(click) && !item.specificActionsFor(click)) {
+            ctx.debug().log(() -> "GUI '" + def.id() + "': click " + click
+                    + " descartado por strict-clicks (sin lista especifica)");
+            return;
+        }
         ActionContext context = new ActionContext(viewer, ctx, this, click, phs);
-        List<String> actions = item.clickRequirement().test(viewer, resolver(phs))
-                ? item.clickActions()
-                : item.denyActions();
+        List<String> actions = item.clickRequirementFor(click).test(viewer, resolver(phs))
+                ? item.clickActionsFor(click)
+                : item.denyActionsFor(click);
         ctx.actions().run(viewer, actions, context);
     }
 
