@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Sn;
 
@@ -26,13 +27,23 @@ public final class SnFuture<T> {
     private static final int JOIN_WARN_FRAMES = 5;
 
     private final Sn ctx;
-    private final SnDb db;
+    private final @Nullable SnDb db;
     final CompletableFuture<T> delegate;
 
-    SnFuture(Sn ctx, SnDb db, CompletableFuture<T> delegate) {
+    SnFuture(Sn ctx, @Nullable SnDb db, CompletableFuture<T> delegate) {
         this.ctx = ctx;
         this.db = db;
         this.delegate = delegate;
+    }
+
+    /**
+     * Wraps an arbitrary {@code CompletableFuture} in the SnFuture consumption surface
+     * ({@link #thenSync}, {@link #exceptionally}, {@link #join}) of the given context.
+     * Used by library modules outside the db package (such as {@code SnPapi.applyOnMain})
+     * and available to consumers.
+     */
+    public static <T> SnFuture<T> wrap(Sn ctx, CompletableFuture<T> future) {
+        return new SnFuture<>(ctx, null, future);
     }
 
     /**
@@ -93,7 +104,7 @@ public final class SnFuture<T> {
 
     private void warnIfMainThreadJoin() {
         if (delegate.isDone() || !Bukkit.isPrimaryThread()
-                || ctx.isShuttingDown() || db.inBootstrap()) {
+                || ctx.isShuttingDown() || (db != null && db.inBootstrap())) {
             return;
         }
         StackTraceElement[] stack = Thread.currentThread().getStackTrace();

@@ -3,7 +3,9 @@ package com.sn.lib.economy;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.Bukkit;
@@ -25,9 +27,9 @@ import com.sn.lib.economy.internal.VaultBackend;
  * reports failure ({@code 0} balance, {@code false} futures).</p>
  *
  * <p>Economy access is main-thread only: {@link #getBalance(Player)} must run on the
- * main thread (off it the call returns {@code 0} with one WARN), while the write
- * operations may be called from any thread because every backend hops to the main
- * thread on its own.</p>
+ * main thread (off it the call returns {@code 0} with one WARN per call site), while
+ * the write operations may be called from any thread because every backend hops to the
+ * main thread on its own.</p>
  */
 public final class EconomyBridge {
 
@@ -63,7 +65,7 @@ public final class EconomyBridge {
     private final Sn ctx;
     private final Map<String, Backend> backends = new LinkedHashMap<>();
     private final AtomicBoolean warnedNoBackend = new AtomicBoolean();
-    private final AtomicBoolean warnedOffMain = new AtomicBoolean();
+    private final Set<String> warnedOffMainSites = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates the bridge for the given context and registers the Vault backend.
@@ -83,13 +85,15 @@ public final class EconomyBridge {
 
     /**
      * Current balance of the player through the active backend; main-thread only. Off
-     * the main thread, or with no backend available, returns {@code 0} with one WARN.
+     * the main thread returns {@code 0} with one WARN per call site; with no backend
+     * available, {@code 0} with one WARN.
      */
     public double getBalance(Player player) {
         if (!Bukkit.isPrimaryThread()) {
-            if (warnedOffMain.compareAndSet(false, true)) {
-                ctx.plugin().getLogger().warning(
-                        "getBalance llamado fuera del main thread; devolviendo 0 (Economy siempre main thread)");
+            String site = callSiteTag();
+            if (warnedOffMainSites.add(site)) {
+                ctx.plugin().getLogger().warning("getBalance llamado fuera del main thread desde "
+                        + site + "; devolviendo 0 (Economy siempre main thread)");
             }
             return 0.0D;
         }
@@ -166,6 +170,15 @@ public final class EconomyBridge {
             }
         }
         return null;
+    }
+
+    private static String callSiteTag() {
+        return StackWalker.getInstance().walk(frames -> frames
+                .filter(frame -> !frame.getClassName().equals(EconomyBridge.class.getName()))
+                .findFirst()
+                .map(frame -> frame.getClassName() + "#" + frame.getMethodName()
+                        + ":" + frame.getLineNumber())
+                .orElse("unknown"));
     }
 
     private boolean validAmount(double amount) {

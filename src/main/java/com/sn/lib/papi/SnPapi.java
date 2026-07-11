@@ -3,15 +3,18 @@ package com.sn.lib.papi;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.IllegalPluginAccessException;
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Sn;
+import com.sn.lib.db.SnFuture;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.papi.internal.PapiHolder;
 
@@ -67,6 +70,64 @@ public final class SnPapi {
             out.add(apply(viewer, line));
         }
         return out;
+    }
+
+    /**
+     * Async-safe bridge to {@link #apply(Player, String)}. On the primary thread the
+     * text resolves inline and the returned future is already completed; off it, the
+     * resolution hops to the main thread through the context scheduler. Fail-open: a
+     * resolver error or a scheduling failure (plugin disabled before the hop) completes
+     * the future with the ORIGINAL unresolved text; null text completes with null.
+     * Canonical consumption is {@code thenSync(...)}, as with the db futures.
+     */
+    public SnFuture<String> applyOnMain(@Nullable Player viewer, String text) {
+        if (Bukkit.isPrimaryThread()) {
+            return SnFuture.wrap(ctx, CompletableFuture.completedFuture(apply(viewer, text)));
+        }
+        CompletableFuture<String> future = new CompletableFuture<>();
+        try {
+            ctx.scheduler().sync(() -> {
+                try {
+                    future.complete(apply(viewer, text));
+                } catch (Throwable t) {
+                    SnDebug debug = ctx.debug();
+                    if (debug != null) {
+                        debug.log(() -> "applyOnMain fallo al resolver; texto original intacto: " + t);
+                    }
+                    future.complete(text);
+                }
+            });
+        } catch (IllegalPluginAccessException e) {
+            future.complete(text);
+        }
+        return SnFuture.wrap(ctx, future);
+    }
+
+    /**
+     * List overload of {@link #applyOnMain(Player, String)}: resolves the whole list in
+     * ONE main-thread hop. Fail-open to the original list; null lines complete with null.
+     */
+    public SnFuture<List<String>> applyOnMain(@Nullable Player viewer, List<String> lines) {
+        if (Bukkit.isPrimaryThread()) {
+            return SnFuture.wrap(ctx, CompletableFuture.completedFuture(apply(viewer, lines)));
+        }
+        CompletableFuture<List<String>> future = new CompletableFuture<>();
+        try {
+            ctx.scheduler().sync(() -> {
+                try {
+                    future.complete(apply(viewer, lines));
+                } catch (Throwable t) {
+                    SnDebug debug = ctx.debug();
+                    if (debug != null) {
+                        debug.log(() -> "applyOnMain fallo al resolver la lista; lineas originales intactas: " + t);
+                    }
+                    future.complete(lines);
+                }
+            });
+        } catch (IllegalPluginAccessException e) {
+            future.complete(lines);
+        }
+        return SnFuture.wrap(ctx, future);
     }
 
     /** True when the PlaceholderAPI plugin is present and enabled. */

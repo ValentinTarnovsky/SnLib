@@ -24,7 +24,7 @@ import com.sn.lib.util.PlayerLookup;
 public final class SnLibPlugin extends JavaPlugin {
 
     /** Service id of SnLib at bstats.org. */
-    private static final int BSTATS_SERVICE_ID = 26887;
+    private static final int BSTATS_SERVICE_ID = 32541;
 
     private static volatile @Nullable SnLibPlugin instance;
 

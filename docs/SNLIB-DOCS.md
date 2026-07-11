@@ -56,7 +56,7 @@ Punto de entrada y registro de contextos de la libreria. Clase `final` con const
 
 Plugin de bootstrap del runtime de SnLib. Cargado en STARTUP antes que todo consumidor; punto unico que registra los listeners compartidos y el lado runtime del handshake de API level de los consumidores. Es dueño de su propio contexto sobre `plugins/SnLib/config.yml` (debug de la libreria mas el opt-out de bStats), creado por el mismo `SnLib.init` package-private que atraviesan todos los consumidores.
 
-Constantes: `private static final int BSTATS_SERVICE_ID = 26887` (id de servicio en bstats.org). Estado: `private static volatile @Nullable SnLibPlugin instance`, mas los campos de instancia `selfCtx` y `metrics` (ambos nullable).
+Constantes: `private static final int BSTATS_SERVICE_ID = 32541` (id de servicio real de SnLib en bstats.org). Estado: `private static volatile @Nullable SnLibPlugin instance`, mas los campos de instancia `selfCtx` y `metrics` (ambos nullable).
 
 - `public static SnLibPlugin get()` - bootstrap de SnLib en ejecucion. Los consumidores nunca lo llaman directo; `SnPlugin` lo usa para el handshake, garantizado presente por `depend: [SnLib]` mas `load: STARTUP`. Si `instance` es null lanza `IllegalStateException("SnLib no esta habilitado: el consumer necesita depend: [SnLib]")`.
 - `public int apiLevel()` - API level del SnLib.jar instalado: devuelve `SnApi.LEVEL` tal como quedo inlined en ESTE jar al compilarlo, comparado contra el `requiredApiLevel()` del consumidor.
@@ -72,7 +72,7 @@ Orden exacto del bootstrap (`onEnable`):
 3. `ListenerHub.registerAll(this)` - registra los listeners compartidos de la libreria.
 4. `Sn ctx = SnLib.init(this, buildSelfSpec())` - crea el contexto propio (`selfCtx`) con spec `SnSpec.builder().config("config.yml").debugCommand().build()` (solo config + comando de debug; sin lang/guis/items/db).
 5. `SnLibCommand.register(this, ctx)` - registra el comando administrativo `/snlib`.
-6. Si `ctx.yml().config().getBoolean("bstats", true)` esta activo, crea `new Metrics(this, 26887)`.
+6. Si `ctx.yml().config().getBoolean("bstats", true)` esta activo, crea `new Metrics(this, 32541)`.
 7. `ctx.scheduler().sync(this::purgeOrphanHolograms)` - scan de arranque de hologramas huerfanos, diferido al primer tick: SnLib se habilita en STARTUP antes de que cargue mundo alguno y antes de que ningun consumidor registre sus hologramas; para el primer tick ambas cosas ya pasaron y todo TextDisplay marcado sin registro vivo es sobra de una corrida anterior (`HologramChunkListener.purgeLoadedWorlds()`; si purgo > 0 loguea "Purgados N hologramas huerfanos de arranques previos").
 8. Log final: `"SnLib <version> enabled (API level " + SnApi.LEVEL + ")"`.
 
@@ -1401,6 +1401,8 @@ Servicio PlaceholderAPI de un contexto consumidor, alcanzado via `sn.papi()`. Cl
 - `public SnPapi(Sn ctx)` - crea el servicio para el contexto; construye un `PapiHolder(ctx.plugin())`. La presencia de PAPI se sondea lazy.
 - `public String apply(@Nullable Player viewer, String text)` - resuelve tokens PAPI en `text` contra el viewer, o contra el servidor cuando el viewer es null. Fast-path: texto null o sin `'%'` retorna tal cual sin tocar el holder. PAPI ausente: texto intacto. Resolucion main-thread ONLY: fuera del primary thread los tokens quedan intactos y el skip se registra via el servicio de debug del contexto ("PAPI omitido fuera del main thread; tokens intactos: ...").
 - `public List<String> apply(@Nullable Player viewer, List<String> lines)` - overload de lista, resuelve linea por linea; lista null o vacia retorna la misma referencia.
+- `public SnFuture<String> applyOnMain(@Nullable Player viewer, String text)` - (v1.1) puente async-safe hacia `apply`. En el primary thread resuelve INLINE y devuelve un future ya completado (`SnFuture.wrap(ctx, CompletableFuture.completedFuture(...))`); fuera de el, agenda un hop al main thread via `ctx.scheduler().sync(...)` y completa el future ahi. Fail-open: un error del resolver (try/catch de `Throwable` con nota de debug) o un fallo de scheduling (`IllegalPluginAccessException`: plugin deshabilitado antes del hop) completan con el TEXTO ORIGINAL sin resolver; text null completa con null. Consumo canonico: `thenSync(...)`, igual que los futures de db.
+- `public SnFuture<List<String>> applyOnMain(@Nullable Player viewer, List<String> lines)` - (v1.1) overload de lista: resuelve TODA la lista en UN solo hop con `apply(viewer, lines)`; fail-open a la lista original, lines null completa con null.
 - `public boolean available()` - true cuando el plugin PlaceholderAPI esta presente y habilitado (delegado al holder, cacheado).
 - `public void invalidate()` - descarta el probe de presencia cacheado; el proximo apply o register vuelve a sondear (util cuando el plugin PAPI se togglea).
 - `public ExpansionBuilder expansion(String identifier)` - arranca una expansion declarativa bajo `identifier`. Defaults del builder: autor = autores del plugin unidos con ", " (o el nombre del plugin si la lista esta vacia), version = version del `plugin.yml`.
@@ -1411,6 +1413,8 @@ Servicio PlaceholderAPI de un contexto consumidor, alcanzado via `sn.papi()`. Cl
 `src/main/java/com/sn/lib/papi/ExpansionBuilder.java`
 
 Builder declarativo de una expansion PlaceholderAPI, obtenido via `SnPapi#expansion(String)`. La expansion construida reporta `persist() = true` (sobrevive los reloads de expansiones de PlaceholderAPI y solo la remueve el teardown del contexto) y null-chequea el `OfflinePlayer` solicitante antes de tocar cualquier resolver: player null deja el token sin resolver. Contrato cache-only: los resolvers corren en el main thread dentro del parse de PAPI, asi que deben leer estado precomputado en memoria y jamas tocar disco, base de datos o red.
+
+Decision de disenio (v1.1, documentada en el Javadoc de clase): los resolvers async NO se soportan POR DISENIO - el parse de PlaceholderAPI es sincronico y main-thread por contrato de PAPI, no hay forma de esperar I/O adentro de un resolver. El patron soportado es precomputar cache (ej. LeaderboardCache) y resolver con lecturas lock-free; para el camino inverso (componer texto CON tokens PAPI desde flujos async: db, leaderboards, Discord) esta `SnPapi.applyOnMain`.
 
 - `public ExpansionBuilder placeholder(String param, Function<OfflinePlayer, String> resolver)` - liga `%<identifier>_<param>%` al resolver. Matching case-insensitive (la clave se lowercasea con `Locale.ROOT`); los placeholders exactos GANAN sobre los prefijados.
 - `public ExpansionBuilder prefixed(String prefix, BiFunction<OfflinePlayer, String, String> resolver)` - liga cada `%<identifier>_<prefix><rest>%` al resolver, que recibe el resto despues del prefijo como segundo argumento. Los prefijos se prueban EN ORDEN DE REGISTRO (LinkedHashMap), despues de los exactos.
@@ -1448,8 +1452,8 @@ No hay marcadores TODO/FIXME explicitos en ninguno de los archivos del alcance. 
 - `[particle]` soporta los dataTypes `Void`, `Particle.DustOptions` (opciones `color=`/`size=`, defaults Color.RED y 1.0f), `Particle.DustTransition` (`color=`/`to=`/`size=`), `BlockData` (`block=MATERIAL` obligatorio) e `ItemStack` (`item=MATERIAL` obligatorio); cualquier otro `dataType` (ej. Vibration, Trail) sigue ignorandose con WARN ("requiere datos no soportados").
 - `[remove-item]` cubre mano principal (default), `offhand`, material (`MATERIAL`, excluyendo stacks tagueados por SnLib) e `id:<item-id>`; el barrido por selector alcanza los slots de storage 0-35 mas la offhand (no toca armadura ni cursor) y no hay soporte de slot arbitrario.
 - La gramatica de requirements soporta agrupamiento con `( )` y quoting de operandos con `'` o `"`; la contracara es que un operando con `(`, `)`, `&&`, `||` o simbolos de operador literales ahora DEBE quotearse (sin comillas la linea cae en fail-open con WARN, nunca bloquea jugadores).
-- La resolucion PAPI es main-thread only por diseño: fuera del primary thread los tokens quedan intactos (con nota de debug), no hay cola ni fallback async.
-- Los resolvers de expansiones tienen contrato cache-only (memoria precomputada); el holder no ofrece variante async para resolvers con I/O.
+- La resolucion PAPI es main-thread only por diseño: fuera del primary thread `apply` deja los tokens intactos (con nota de debug); para flujos async el puente es `SnPapi.applyOnMain` (v1.1), que hopea la resolucion al main thread y devuelve un `SnFuture`.
+- Los resolvers de expansiones tienen contrato cache-only (memoria precomputada); el holder no ofrece variante async para resolvers con I/O (decision de disenio ratificada en v1.1: el parse de PAPI es sincronico por contrato).
 
 ---
 
@@ -2786,10 +2790,11 @@ Metodos package-private:
 ### SnFuture
 `src/main/java/com/sn/lib/db/SnFuture.java`
 
-Resultado de una operacion asincronica de base de datos; envuelve un `CompletableFuture` (campo `delegate`, package-private) junto al contexto `Sn` y el `SnDb` de origen. Constructor package-private: solo el modulo db crea instancias.
+Resultado de una operacion asincronica de base de datos; envuelve un `CompletableFuture` (campo `delegate`, package-private) junto al contexto `Sn` y el `SnDb` de origen (`@Nullable` desde v1.1: los futures creados via `wrap` no tienen db de origen). Constructor package-private: dentro de la libreria solo el modulo db crea instancias directas; el factory publico `wrap` cubre el resto.
 
 Constantes: `JOIN_WARN_FRAMES = 5` (privada; cantidad de frames del stack incluidos en el WARN de join).
 
+- `public static <T> SnFuture<T> wrap(Sn ctx, CompletableFuture<T> future)` - (v1.1) envuelve un `CompletableFuture` arbitrario en la superficie de consumo de SnFuture (`thenSync`/`exceptionally`/`join`) del contexto dado; usado por modulos de la libreria fuera del paquete db (`SnPapi.applyOnMain`) y disponible para consumers. El SnFuture resultante no tiene `SnDb` de origen (db null), asi que el WARN de join nunca se suprime por fase de bootstrap.
 - `public SnFuture<T> thenSync(Consumer<T> consumer)` - consume el valor en el main thread via el scheduler del owner; el hop se saltea cuando el plugin owner ya esta deshabilitado (guard is-enabled del scheduler), y un future fallido logea un WARN en vez de llegar al consumer. Devuelve `this` (encadenable).
 - `public SnFuture<T> exceptionally(Consumer<Throwable> handler)` - observa un fallo con los wrappers de completacion (`CompletionException` / `ExecutionException`) desenvueltos hasta la causa real.
 - `public T join()` - bloquea hasta que el valor este disponible y lo devuelve. Pensado SOLO para el flush de shutdown y el bootstrap de enable: cualquier otro join en el main thread (future no completado, fuera de `ctx.isShuttingDown()` y de `db.inBootstrap()`) logea un WARN `"SnFuture.join() en el main thread fuera de shutdown/bootstrap:"` con los primeros 5 frames llamadores.
@@ -2797,12 +2802,12 @@ Constantes: `JOIN_WARN_FRAMES = 5` (privada; cantidad de frames del stack inclui
 
 #### Notas y gotchas
 
-- El WARN de join se suprime en cuatro casos: future ya completado, thread no-main, contexto en shutdown, o fase de bootstrap del `SnDb` de origen. El stack se recorta empezando en el frame 3 para saltear los frames internos de `getStackTrace`/`join`.
+- El WARN de join se suprime en cuatro casos: future ya completado, thread no-main, contexto en shutdown, o fase de bootstrap del `SnDb` de origen (`db != null && db.inBootstrap()`; los futures de `wrap` no tienen db). El stack se recorta empezando en el frame 3 para saltear los frames internos de `getStackTrace`/`join`.
 
 ### EconomyBridge
 `src/main/java/com/sn/lib/economy/EconomyBridge.java`
 
-Servicio de economia de un contexto consumidor, accesible via `sn.economy()`. Las operaciones resuelven el PRIMER backend disponible en orden de registro (`LinkedHashMap`): Vault (registrado en el constructor), despues el command backend configurado con `useCommandBackend`, despues cualquier `Backend` custom via `registerBackend`. Sin backend disponible, toda operacion warnea UNA vez y reporta fallo (balance `0`, futures `false`). El acceso a economia es main-thread only: `getBalance(Player)` debe correr en el main thread (fuera de el devuelve `0` con un WARN unico), mientras que las escrituras pueden llamarse desde cualquier thread porque cada backend hace el hop al main por su cuenta.
+Servicio de economia de un contexto consumidor, accesible via `sn.economy()`. Las operaciones resuelven el PRIMER backend disponible en orden de registro (`LinkedHashMap`): Vault (registrado en el constructor), despues el command backend configurado con `useCommandBackend`, despues cualquier `Backend` custom via `registerBackend`. Sin backend disponible, toda operacion warnea UNA vez y reporta fallo (balance `0`, futures `false`). El acceso a economia es main-thread only: `getBalance(Player)` debe correr en el main thread (fuera de el devuelve `0` con un WARN por CALL SITE, v1.1), mientras que las escrituras pueden llamarse desde cualquier thread porque cada backend hace el hop al main por su cuenta.
 
 Interfaz anidada publica:
 
@@ -2817,7 +2822,7 @@ Constantes: `VAULT = "vault"`, `COMMAND = "command"` (privadas; nombres de regis
 Metodos publicos:
 
 - `public EconomyBridge(Sn ctx)` - crea el puente y registra el backend Vault. `VaultBackend` es la clase hook aislada: su constructor linkea contra la API de Vault, asi que con Vault ausente la instanciacion tira un linkage error que se captura aca (`catch (Throwable)`, nunca propaga) y el puente arranca sin ese backend (log de debug, no WARN).
-- `public double getBalance(Player player)` - balance actual a traves del backend activo; main-thread only. Fuera del main thread devuelve `0` con un WARN unico (`"getBalance llamado fuera del main thread; devolviendo 0 (Economy siempre main thread)"`); sin backend disponible, `0` con el WARN de no-backend.
+- `public double getBalance(Player player)` - balance actual a traves del backend activo; main-thread only. Fuera del main thread devuelve `0` con un WARN por call site (v1.1): `"getBalance llamado fuera del main thread desde <Clase#metodo:linea>; devolviendo 0 (Economy siempre main thread)"`, dedup en `Set<String> warnedOffMainSites` (`ConcurrentHashMap.newKeySet()`) con el tag del helper privado `callSiteTag()` (StackWalker, primer frame cuya clase no es `EconomyBridge`, patron duplicado deliberadamente de `SnCompat.callSiteTag`, orElse `"unknown"`); el costo del StackWalker solo se paga en el camino buggy off-main. Sin backend disponible, `0` con el WARN de no-backend.
 - `public CompletableFuture<Boolean> give(Player player, double amount)` - deposita `amount`. El future completa con el exito real; false ante monto invalido (no finito o no positivo, logeado solo en debug) o sin backend disponible.
 - `public CompletableFuture<Boolean> tryTake(Player player, double amount)` - retira `amount` solo si es pagable. El future completa con el exito REAL del retiro; false ante monto invalido, fondos insuficientes o sin backend.
 - `public synchronized void registerBackend(String name, Backend backend)` - registra (o reemplaza) un backend bajo `name` (lowercased). La seleccion camina los backends en orden de primer registro, asi Vault mantiene prioridad, el command backend sigue y los custom van despues salvo que reemplacen uno de esos nombres.
@@ -2826,7 +2831,7 @@ Metodos publicos:
 
 #### Notas y gotchas
 
-- El WARN de "sin backend" se emite una sola vez por instancia (`AtomicBoolean warnedNoBackend`): `"No hay backend de economia disponible: instala Vault o configura useCommandBackend(...); las operaciones devuelven false"`. Igual el WARN de off-main (`warnedOffMain`).
+- El WARN de "sin backend" se emite una sola vez por instancia (`AtomicBoolean warnedNoBackend`): `"No hay backend de economia disponible: instala Vault o configura useCommandBackend(...); las operaciones devuelven false"`. El WARN de off-main se dedupica POR CALL SITE (`warnedOffMainSites`, v1.1): cada punto de llamada buggy warnea una vez con su `Clase#metodo:linea`.
 - `active()` es `synchronized` y re-evalua `available()` de cada backend en cada operacion, asi un Vault que aparece tarde (o se cae) cambia la seleccion dinamicamente.
 
 ### VaultBackend (internal)
@@ -2878,7 +2883,7 @@ No existen marcadores TODO/FIXME/XXX/HACK en ningun archivo del alcance. Limitac
 - SQLite queda siempre pineado a `maximumPoolSize=1`; la clave `pool-size` del config solo afecta a MySQL.
 - La forma SQLite del upsert (`ON CONFLICT(keys)`) requiere una constraint UNIQUE o PRIMARY KEY sobre las columnas clave; la forma MySQL depende de los indices unicos de la tabla (las keys declaradas no se usan en la clausula `ON DUPLICATE KEY UPDATE`).
 - `CommandBackend` no puede verificar balances si el placeholder PAPI configurado no resuelve a un numero legible (WARN unico y `tryTake` devuelve false siempre).
-- `EconomyBridge.getBalance` fuera del main thread no lanza: devuelve `0` silenciosamente tras el primer WARN, lo que puede enmascarar bugs de threading en el consumidor.
+- `EconomyBridge.getBalance` fuera del main thread no lanza: devuelve `0` tras el primer WARN de cada call site (v1.1: el dedup por call site hace visible cada punto de llamada buggy, pero el retorno fail-open sigue pudiendo enmascarar bugs de threading en el consumidor).
 
 ---
 
@@ -3476,7 +3481,7 @@ Resultado del grep `TODO|FIXME|XXX|placeholder|PENDIENTE` sobre `src/` y `README
 
 Pendientes reales conocidos (handoff v1.0.0):
 
-- bStats: el service id `26887` (`private static final int BSTATS_SERVICE_ID = 26887` en `src/main/java/com/sn/lib/SnLibPlugin.java`) es un placeholder: falta registrar el servicio SnLib en bstats.org para que ese id sea real (o ajustar la constante al id asignado).
+- bStats: RESUELTO en v1.1 - service id real `32541` registrado en bstats.org (`private static final int BSTATS_SERVICE_ID = 32541` en `src/main/java/com/sn/lib/SnLibPlugin.java`); pendiente solo la verificacion post-deploy de que el panel recibe datos.
 - El WARN de degradacion en 1.20.4 (features gated por `SnCompat` apagadas) no es ejercitable de punta a punta sin un plugin consumer que use esas features: queda diferido a los pilotos.
 - Repo GitHub privado + release v1.0.0: pendientes de confirmacion.
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.

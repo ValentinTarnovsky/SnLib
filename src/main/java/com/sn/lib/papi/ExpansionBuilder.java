@@ -19,6 +19,12 @@ import org.bukkit.OfflinePlayer;
  *
  * <p>Cache-only contract: resolvers run on the main thread inside PAPI's parse, so they
  * must read precomputed in-memory state and never touch disk, database or network.</p>
+ *
+ * <p>Async resolvers are NOT supported by design: PlaceholderAPI's parse is synchronous
+ * and main-thread by PAPI's own contract, so there is no way to await I/O inside a
+ * resolver. The supported pattern is to precompute a cache (e.g. LeaderboardCache) and
+ * resolve with lock-free reads. For the inverse path (composing text WITH PAPI tokens
+ * from async flows: db, leaderboards, Discord) see {@code SnPapi#applyOnMain}.</p>
  */
 public final class ExpansionBuilder {
 
