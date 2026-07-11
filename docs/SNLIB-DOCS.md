@@ -3,7 +3,7 @@
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main); actualizada el 2026-07-11 para la release 1.1.0.
 > Cobertura: todas las clases de `src/main/java/com/sn/lib` (121 archivos java), recursos, build y tests (21 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.1.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 204 tests JUnit verdes en 21 suites; smoke gate verde en Paper 1.21.8 y 1.20.4 (v1.0.0; el smoke v1.1.0 se registra en el paso de release gate). La release 1.1.0 es 100% additive sobre 1.0.0 (API level 2, gate japicmp con baseline 1.0.0 activa); el smoke de 1.0.0 cerro 38/38 pasos en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.1.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 204 tests JUnit verdes en 21 suites; smoke gate verde en Paper 1.21.8 y 1.20.4 (ejecutado para v1.0.0 y re-ejecutado para v1.1.0 con el jar 1.1.0: `/snlib version` responde 1.1.0 + API level 2 en ambas versiones). La release 1.1.0 es 100% additive sobre 1.0.0 (API level 2, gate japicmp con baseline 1.0.0 activa); el smoke de 1.0.0 cerro 38/38 pasos en 46 commits atomicos.
 
 ## Indice
 
@@ -3098,7 +3098,7 @@ No hay marcadores TODO/FIXME/HACK en el codigo de este modulo. Limitaciones docu
 
 ## 16. Build, tests, specs golden y TODOs
 
-Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp ACTIVO contra la baseline 1.0.0 y manifest con metadata Sn), los cinco archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, spec de selection wand, pom template del consumer y reglas ProGuard del consumer), las 21 suites JUnit 5 de `src/test/java/com/sn/lib/` (204 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (degradacion 1.20.4, repo/release, pilotos y canary; el de bStats quedo resuelto en v1.1 con el service id real 32541). Tambien se registra el resultado del smoke gate v1.0.0 en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos); el smoke de la release 1.1.0 se ejecuta y registra en el paso de release gate (Paso 22 del plan v1.1).
+Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp ACTIVO contra la baseline 1.0.0 y manifest con metadata Sn), los cinco archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, spec de selection wand, pom template del consumer y reglas ProGuard del consumer), las 21 suites JUnit 5 de `src/test/java/com/sn/lib/` (204 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (degradacion 1.20.4, repo/release, pilotos y canary; el de bStats quedo resuelto en v1.1 con el service id real 32541). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499: verde en ambos tanto para la release 1.0.0 como para la 1.1.0 (gate re-ejecutado con el jar `SnLib-1.1.0.jar` en el Paso 22 del plan v1.1).
 
 ### pom.xml (build de SnLib)
 `pom.xml`
@@ -3506,12 +3506,14 @@ Las 21 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, 
 
 ### Smoke gate de runtime
 
-Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real (release 1.0.0), en las dos puntas de la matriz soportada:
+Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real, en las dos puntas de la matriz soportada, tanto para la release 1.0.0 como para la 1.1.0:
 
-- Paper 1.21.8 build 60 (target): verde.
-- Paper 1.20.4 build 499 (piso de runtime): verde.
+- Paper 1.21.8 build 60 (target): verde en 1.0.0 y en 1.1.0.
+- Paper 1.20.4 build 499 (piso de runtime): verde en 1.0.0 y en 1.1.0.
 
-En 1.20.4 el arranque es en modo degradado via `SnCompat.probe` (features 1.21+ apagadas con WARN); el smoke valida que SnLib como plugin standalone enciende y apaga limpio en ambas versiones. El smoke gate de la release 1.1.0 (mismo procedimiento, `/snlib version` esperando lib 1.1.0 + API level 2) se ejecuta y registra en el Paso 22 del plan v1.1.
+En 1.20.4 el arranque es en modo degradado via `SnCompat.probe` (features 1.21+ apagadas con WARN); el smoke valida que SnLib como plugin standalone enciende y apaga limpio en ambas versiones.
+
+Registro del gate v1.1.0 (Paso 22 del plan v1.1; JVM Java 21 Temurin 21.0.8, jar `SnLib-1.1.0.jar` instalado en `plugins/` de cada Paper local): en ambas versiones arranque sin errores ni excepciones con `SnLib 1.1.0 enabled (API level 2)`; `/snlib version` responde `SnLib version: 1.1.0` + `API level: 2` + la version del server (`1.21.8-R0.1-SNAPSHOT (detected: 1.21.8)` y `1.20.4-R0.1-SNAPSHOT (detected: 1.20.4)`); `/snlib plugins` e `/snlib integrations` responden; bStats (service id 32541) inicializa sin excepcion (la aparicion de datos en el panel de bstats.org es asincronica: verificacion post-deploy NO bloqueante); cero `NoSuchMethodError`/`NoClassDefFoundError` en 1.20.4; apagado limpio sin fugas en consola. Los WARN de degradacion de 1.20.4 (setMaxStackSize/glint y el fallback UUID de AttributeModifier) solo los dispara un consumer que ejercite esos probes: la lib sola no tiene ninguno que disparar y quedan cubiertos por los pilotos, mismo criterio que en v1.0.0. La particula DUST del selection wand resuelve en 1.20.4 via el alias bidireccional DUST/REDSTONE de `SelectionRenderer.resolveParticle` (fallback FLAME con WARN unico si el nombre no resuelve).
 
 ### TODOs y limitaciones
 

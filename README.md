@@ -463,6 +463,34 @@ Gate ejecutado sobre el jar construido, en Paper local con JVM Java 21:
   arrancar Paper con Java 21 (`java -jar paper.jar nogui`), correr
   `snlib version` en consola y revisar el log completo.
 
+## Smoke QA v1.1.0 (gate ejecutado)
+
+Gate ejecutado sobre el jar 1.1.0 recien construido, en los mismos Paper
+locales del gate v1.0.0, ambos con JVM Java 21 (Temurin 21.0.8):
+
+- Paper 1.21.8 (build 60): arranque SIN errores ni excepciones,
+  `SnLib 1.1.0 enabled (API level 2)`; `/snlib version` responde
+  `SnLib version: 1.1.0 / API level: 2 / Server: 1.21.8-R0.1-SNAPSHOT
+  (detected: 1.21.8)`; `/snlib plugins` e `/snlib integrations` responden;
+  disable y stop limpios.
+- Paper 1.20.4 (build 499, floor): arranque SIN errores, deteccion `1.20.4`,
+  `SnLib 1.1.0 enabled (API level 2)`; `/snlib version` responde
+  `SnLib version: 1.1.0 / API level: 2 / Server: 1.20.4-R0.1-SNAPSHOT
+  (detected: 1.20.4)`; cero `NoSuchMethodError`/`NoClassDefFoundError`,
+  disable y stop limpios. Los WARN de degradacion (setMaxStackSize/glint y
+  el fallback UUID de AttributeModifier de v1.1) solo se disparan cuando un
+  consumer construye items que ejercitan esos probes; la lib sola no tiene
+  ninguno que disparar, quedan cubiertos por los pilotos (mismo criterio que
+  en v1.0.0). La particula DUST del selection wand resuelve en 1.20.4 via el
+  alias bidireccional DUST/REDSTONE del SelectionRenderer (fallback FLAME
+  con WARN unico si el nombre no resuelve).
+- bStats (service id 32541) inicializa sin excepcion en ambas versiones; la
+  aparicion de datos en el panel de bstats.org es asincronica y queda como
+  verificacion post-deploy NO bloqueante.
+- Procedimiento reproducible: copiar `target/SnLib-1.1.0.jar` a `plugins/`,
+  arrancar Paper con Java 21 (`java -jar paper.jar nogui`), correr
+  `snlib version` en consola y revisar el log completo.
+
 ## Ruta de adopcion
 
 1. Release v1.0.0 + `mvn install` al `.m2` local.
