@@ -240,6 +240,22 @@ public final class GuiSession implements PageTarget {
     }
 
     /**
+     * No-slots variant of {@link #bindPaged(String, List, int[], BiConsumer)}: the
+     * target slots are the layout cells of the {@code paged-key} declared by the menu.
+     * When the menu declares no paged-key the call WARNs once and is ignored. Same
+     * rules as the int[] overload (pagination opt-in, existing template).
+     */
+    public <T> void bindPaged(String templateId, List<T> data, BiConsumer<T, PhCollector> mapper) {
+        int[] target = def.pagedSlots();
+        if (target.length == 0) {
+            ctx.guis().warnOnce("bind-paged-key:" + def.id(), "bindPaged en gui '" + def.id()
+                    + "' ignorado: el menu no declara paged-key en layout");
+            return;
+        }
+        bindPaged(templateId, data, target, mapper);
+    }
+
+    /**
      * Click dispatch invoked by the shared click listener with a raw top-inventory slot:
      * resolves the effective definition (manual bind, paged entry, declared item), skips
      * disabled navigation items and delegates to {@link #runClick}, which resolves the

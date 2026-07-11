@@ -24,6 +24,31 @@ inventory-type: string # default: "CHEST" (can be any of the following: CHEST, D
 pagination: true/false # default: false
 
 # ═══════════════════════════════════════════════════════════════════
+# LAYOUT - ASCII mask (alternative to slots:)
+# ═══════════════════════════════════════════════════════════════════
+# layout: optional list of 1-6 strings of up to 9 characters each, read top
+# to bottom over the 9-column chest grid: the cell at row i / column j is
+# slot i*9+j. ' ' (space) is ALWAYS an empty cell. Rows beyond 6 and
+# characters beyond 9 per row are truncated with a WARN. With a layout
+# present, rows derives from the number of layout rows; a contradictory
+# rows: value WARNs and the layout wins. Items reference layout characters
+# through their key: field (see example-layout-item below).
+# layout:
+#   - "fffffffff"
+#   - "f ddddd f"
+#   - "f ddddd f"
+#   - "fffffffff"
+#
+# paged-key: menu-level, exactly ONE character of the layout: its cells
+# become the target slots of the no-slots Java overload
+# bindPaged(templateId, data, mapper), so plugins can page data without
+# hardcoding an int[] (pagination: true required; with pagination false the
+# value is kept but bindPaged stays ignored until pagination is enabled).
+# An invalid paged-key, one absent from the layout or one declared without
+# layout WARNs and is ignored.
+# paged-key: d
+
+# ═══════════════════════════════════════════════════════════════════
 # STRICT CLICKS - OPT-IN per menu
 # ═══════════════════════════════════════════════════════════════════
 # strict-clicks: true  -> the generic click-actions list only fires with the
@@ -51,7 +76,7 @@ items:
     damage: int # initial vanilla damage already spent; needs a material with durability # default: not set
     custom-model-data: int # default: 0
     amount: int # default: 1
-    slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6]
+    slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6] # alternative: key (one layout character, see example-layout-item)
     glow: true/false # default: false
     enchantments: list ex: [enchantment-id, level] or [enchantment-id, level, enchantment-id, level] # default: []
     flags: # default: []
@@ -209,6 +234,20 @@ items:
       - "[center][small][rgb]All three tags composed"
       - "<bold><#55FFFF>MiniMessage</#55FFFF></bold> &7mixed with &alegacy codes"
       - "&7Hex legacy: &#FF9B00orange &7plus <italic>MiniMessage italic</italic>"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYOUT-KEYED ITEM - key: instead of slots: (requires a menu layout:)
+  # ═══════════════════════════════════════════════════════════════════
+  # key: exactly ONE character of the menu layout. The item renders in
+  # EVERY layout cell holding that character (a filler key appearing in N
+  # cells renders in the N slots). If both key and slots are declared,
+  # slots wins with a WARN and key is ignored. A key that does not appear
+  # in the layout (or an invalid multi-character key) ignores the item
+  # with a WARN. Templates and nav-disabled sections do not support key.
+  example-layout-item:
+    display-name: "&7Filler"
+    material: GRAY_STAINED_GLASS_PANE
+    key: f
 
 # ═══════════════════════════════════════════════════════════════════
 # TEMPLATES - Reusable items for plugin developers

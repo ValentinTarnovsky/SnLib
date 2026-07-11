@@ -29,13 +29,18 @@ import com.sn.lib.yml.SnYml;
  *   title, rows (1-6), open-sound, update-interval,     -> GuiDef.parse
  *     inventory-type (lenient valueOf), pagination,
  *     strict-clicks (opt-in per menu, default false)
+ *   layout (1-6 strings of up to 9 chars each; ' ' is   -> GuiDef.parse (ASCII mask; rows
+ *     an empty cell; every key char maps to its cells)     derives from the row count)
+ *   paged-key (one layout char at menu level: its       -> GuiDef.parse into pagedSlots(),
+ *     cells are the target of the no-slots bindPaged)      consumed by GuiSession.bindPaged
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, amount, glow, enchantments,     (re-read per viewer: locals,
  *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [rgb], [center],
  *       color RGB/HEX, trim-pattern, trim-material,         MiniMessage + legacy)
  *       potion-effects
- *     slots (int, list, ranges "0-8", mixed)            -> GuiItemDef.parse via SlotParser
+ *     slots (int, list, ranges "0-8", mixed) or key     -> GuiItemDef.parse via SlotParser
+ *       (one layout char; declared slots win over key)     or the menu layout map
  *     update-interval (per item)                        -> GuiItemDef.parse
  *     view-requirements, click-requirements             -> GuiItemDef.parse via RequirementEngine
  *     click-actions, deny-actions                       -> GuiItemDef.parse; run by ActionEngine
@@ -68,12 +73,13 @@ public final class GuiDef {
     private final int updateInterval;
     private final boolean pagination;
     private final boolean strictClicks;
+    private final int[] pagedSlots;
     private final List<GuiItemDef> items;
     private final Map<String, GuiTemplate> templates;
 
     private GuiDef(String id, String title, int rows, @Nullable InventoryType inventoryType,
                    String openSound, int updateInterval, boolean pagination,
-                   boolean strictClicks, List<GuiItemDef> items,
+                   boolean strictClicks, int[] pagedSlots, List<GuiItemDef> items,
                    Map<String, GuiTemplate> templates) {
         this.id = id;
         this.title = title;
@@ -83,6 +89,7 @@ public final class GuiDef {
         this.updateInterval = updateInterval;
         this.pagination = pagination;
         this.strictClicks = strictClicks;
+        this.pagedSlots = pagedSlots;
         this.items = items;
         this.templates = templates;
     }
@@ -94,24 +101,38 @@ public final class GuiDef {
         ConfigurationSection root = yml.getSection("");
         if (root == null) {
             warn.accept("Archivo vacio o ilegible; se usa un gui por defecto sin items");
-            return new GuiDef(id, "Menu", 3, null, "", 0, false, false, List.of(), Map.of());
+            return new GuiDef(id, "Menu", 3, null, "", 0, false, false, new int[0],
+                    List.of(), Map.of());
         }
         String title = root.getString("title", "Menu");
+        List<String> layoutRows = truncateLayout(root.getStringList("layout"), warn);
+        Map<Character, int[]> keySlots = layoutKeys(layoutRows);
         int rows = root.getInt("rows", 3);
-        if (rows < 1 || rows > 6) {
+        if (!layoutRows.isEmpty()) {
+            if (root.isSet("rows") && rows != layoutRows.size()) {
+                warn.accept("rows " + rows + " contradice layout de " + layoutRows.size()
+                        + " filas; usando " + layoutRows.size());
+            }
+            rows = layoutRows.size();
+        } else if (rows < 1 || rows > 6) {
             warn.accept("rows " + rows + " fuera de rango 1-6; usando 3");
             rows = 3;
         }
         InventoryType type = parseInventoryType(root.getString("inventory-type", ""), warn);
+        if (!layoutRows.isEmpty() && type != null) {
+            warn.accept("layout asume grilla de cofre de 9 columnas; con inventory-type "
+                    + type + " los slots fuera de rango no se renderizan");
+        }
         String openSound = root.getString("open-sound", "");
         int updateInterval = Math.max(0, root.getInt("update-interval", 0));
         boolean pagination = root.getBoolean("pagination", false);
         boolean strictClicks = root.getBoolean("strict-clicks", false);
+        int[] pagedSlots = parsePagedKey(root, keySlots, !layoutRows.isEmpty(), pagination, warn);
         List<GuiItemDef> items = new ArrayList<>();
         ConfigurationSection itemsSection = root.getConfigurationSection("items");
         if (itemsSection != null) {
             for (String key : itemsSection.getKeys(false)) {
-                GuiItemDef item = GuiItemDef.parse(yml, "items." + key, key, warn);
+                GuiItemDef item = GuiItemDef.parse(yml, "items." + key, key, keySlots, warn);
                 if (item == null) {
                     continue;
                 }
@@ -126,14 +147,109 @@ public final class GuiDef {
         ConfigurationSection templatesSection = root.getConfigurationSection("templates");
         if (templatesSection != null) {
             for (String key : templatesSection.getKeys(false)) {
-                GuiItemDef item = GuiItemDef.parse(yml, "templates." + key, key, warn);
+                GuiItemDef item = GuiItemDef.parse(yml, "templates." + key, key, null, warn);
                 if (item != null) {
                     templates.put(key, new GuiTemplate(item));
                 }
             }
         }
         return new GuiDef(id, title, rows, type, openSound, updateInterval, pagination,
-                strictClicks, List.copyOf(items), Map.copyOf(templates));
+                strictClicks, pagedSlots, List.copyOf(items), Map.copyOf(templates));
+    }
+
+    /**
+     * Truncates the raw {@code layout:} list to the 6x9 chest grid with a WARN per
+     * overflow: at most 6 rows and at most 9 characters per row. An empty list means
+     * the menu declared no layout.
+     */
+    private static List<String> truncateLayout(List<String> raw, Consumer<String> warn) {
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+        List<String> rows = raw;
+        if (rows.size() > 6) {
+            warn.accept("layout tiene " + rows.size() + " filas; se truncan a 6");
+            rows = rows.subList(0, 6);
+        }
+        List<String> out = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            String row = rows.get(i) == null ? "" : rows.get(i);
+            if (row.length() > 9) {
+                warn.accept("fila " + (i + 1) + " del layout tiene " + row.length()
+                        + " caracteres; se trunca a 9");
+                row = row.substring(0, 9);
+            }
+            out.add(row);
+        }
+        return out;
+    }
+
+    /**
+     * Maps every non-space layout character to the slots of its cells, in ascending
+     * row-major order (same geometry as {@link GuiMask}: slot = row * 9 + column). A key
+     * appearing in N cells accumulates the N slots.
+     */
+    private static Map<Character, int[]> layoutKeys(List<String> rows) {
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        Map<Character, List<Integer>> collected = new LinkedHashMap<>();
+        for (int row = 0; row < rows.size(); row++) {
+            String line = rows.get(row);
+            for (int column = 0; column < line.length(); column++) {
+                char key = line.charAt(column);
+                if (key == ' ') {
+                    continue;
+                }
+                collected.computeIfAbsent(key, unused -> new ArrayList<>())
+                        .add(row * 9 + column);
+            }
+        }
+        Map<Character, int[]> keySlots = new LinkedHashMap<>();
+        for (Map.Entry<Character, List<Integer>> entry : collected.entrySet()) {
+            List<Integer> cells = entry.getValue();
+            int[] slots = new int[cells.size()];
+            for (int i = 0; i < slots.length; i++) {
+                slots[i] = cells.get(i);
+            }
+            keySlots.put(entry.getKey(), slots);
+        }
+        return keySlots;
+    }
+
+    /**
+     * Resolves the menu-level {@code paged-key:} against the layout map: exactly one
+     * character that appears in the layout. Every invalid combination WARNs and yields
+     * an empty array; a valid key with {@code pagination: false} WARNs but the value is
+     * kept (the real gate is the existing one in {@code GuiSession.bindPaged}).
+     */
+    private static int[] parsePagedKey(ConfigurationSection root, Map<Character, int[]> keySlots,
+                                       boolean hasLayout, boolean pagination,
+                                       Consumer<String> warn) {
+        String raw = root.getString("paged-key", "");
+        if (raw.isEmpty()) {
+            return new int[0];
+        }
+        if (!hasLayout) {
+            warn.accept("paged-key declarado sin layout; ignorado");
+            return new int[0];
+        }
+        String trimmed = raw.trim();
+        if (trimmed.length() != 1) {
+            warn.accept("paged-key '" + raw + "' invalido (debe ser 1 caracter); ignorado");
+            return new int[0];
+        }
+        char key = trimmed.charAt(0);
+        int[] slots = keySlots.get(key);
+        if (slots == null) {
+            warn.accept("paged-key '" + key + "' no aparece en layout; ignorado");
+            return new int[0];
+        }
+        if (!pagination) {
+            warn.accept("paged-key declarado con pagination false; bindPaged quedara"
+                    + " ignorado hasta activar pagination");
+        }
+        return slots.clone();
     }
 
     /**
@@ -196,6 +312,14 @@ public final class GuiDef {
      */
     public boolean strictClicks() {
         return strictClicks;
+    }
+
+    /**
+     * Target slots of the no-slots {@code bindPaged}, resolved from the layout's
+     * {@code paged-key}; empty when the menu declares no paged-key.
+     */
+    public int[] pagedSlots() {
+        return pagedSlots.clone();
     }
 
     /** Items of the {@code items:} section, in declaration order. */

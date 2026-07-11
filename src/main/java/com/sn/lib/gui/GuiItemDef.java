@@ -23,6 +23,9 @@ import com.sn.lib.yml.SnYml;
 /**
  * One item of a GUI definition: the full appearance section of the golden spec plus
  * slots, per-item update interval, view/click requirements and click/deny action lists.
+ * Instead of {@code slots}, an item of the {@code items:} section may declare
+ * {@code key:} (one character) resolved against the menu's {@code layout:} mask: the
+ * item renders in EVERY layout cell holding that character; declared slots win over key.
  *
  * <p>Appearance is NOT pre-built: the definition keeps its yml section and re-reads it on
  * every {@link #render}, so name, lore and every other string resolve per viewer through
@@ -110,9 +113,15 @@ public final class GuiItemDef {
 
     /**
      * Parses the item found at {@code path} inside {@code yml}; warnings go to
-     * {@code warn}. Returns null when the section does not exist.
+     * {@code warn}. Returns null when the section does not exist, or when a declared
+     * {@code key:} is invalid or absent from the menu layout (the item is ignored).
+     * {@code layout} maps every layout character to its slots: an empty map for a menu
+     * without layout, null for sections where {@code key:} does not apply (templates
+     * and {@code nav-disabled} overrides).
      */
-    static @Nullable GuiItemDef parse(SnYml yml, String path, String id, Consumer<String> warn) {
+    static @Nullable GuiItemDef parse(SnYml yml, String path, String id,
+                                      @Nullable Map<Character, int[]> layout,
+                                      Consumer<String> warn) {
         ConfigurationSection sec = yml.getSection(path);
         if (sec == null) {
             warn.accept("No existe la seccion '" + path + "' en " + yml.file().getName()
@@ -121,6 +130,29 @@ public final class GuiItemDef {
         }
         int[] slots = SlotParser.parse(sec.get("slots"),
                 sec.isSet("slots") ? message -> warn.accept("Item '" + id + "': " + message) : null);
+        String keyRaw = sec.getString("key", "");
+        if (!keyRaw.isEmpty()) {
+            if (layout == null) {
+                warn.accept("Item '" + id + "': 'key' no aplica en esta seccion; se ignora");
+            } else if (slots.length > 0) {
+                warn.accept("Item '" + id + "': declara 'slots' y 'key'; gana slots"
+                        + " y se ignora key");
+            } else {
+                String trimmed = keyRaw.trim();
+                if (trimmed.length() != 1) {
+                    warn.accept("Item '" + id + "': key '" + keyRaw
+                            + "' invalido (debe ser 1 caracter); item ignorado");
+                    return null;
+                }
+                int[] keyed = layout.get(trimmed.charAt(0));
+                if (keyed == null) {
+                    warn.accept("Item '" + id + "': key '" + trimmed.charAt(0)
+                            + "' no aparece en layout; item ignorado");
+                    return null;
+                }
+                slots = keyed.clone();
+            }
+        }
         int updateInterval = Math.max(0, sec.getInt("update-interval", 0));
         Requirement viewReq = RequirementEngine.parse(sec.getStringList("view-requirements"),
                 message -> warn.accept("Item '" + id + "': " + message));
@@ -132,7 +164,7 @@ public final class GuiItemDef {
         NavKind navKind = detectNav(clickActions, perClick);
         GuiItemDef navDisabled = null;
         if (navKind != NavKind.NONE && sec.getConfigurationSection("nav-disabled") != null) {
-            navDisabled = parse(yml, path + ".nav-disabled", id + ".nav-disabled", warn);
+            navDisabled = parse(yml, path + ".nav-disabled", id + ".nav-disabled", null, warn);
         }
         return new GuiItemDef(id, yml, path, slots, updateInterval, viewReq, clickReq,
                 clickActions, denyActions, perClick, navKind, navDisabled);
