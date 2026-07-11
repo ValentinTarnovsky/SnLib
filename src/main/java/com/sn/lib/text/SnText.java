@@ -14,8 +14,8 @@ import com.sn.lib.Ph;
 /**
  * Text pipeline shared by every SnLib module.
  *
- * <p>FIXED pipeline order: locals -> PAPI -> {@code [rgb]} -> legacy color conversion ->
- * {@code [center]}. {@code [center]} is applied over the legacy-colored string (with the
+ * <p>FIXED pipeline order: locals -> PAPI -> {@code [small]} -> {@code [rgb]} -> legacy
+ * color conversion -> {@code [center]}. {@code [center]} is applied over the legacy-colored string (with the
  * gradient's {@code &#RRGGBB} already interpolated) as the LAST step of the legacy phase,
  * BEFORE rendering to a {@link Component}: "last" means last in the legacy phase, never
  * after the Component render, because {@link CenterUtil} can only measure legacy strings.
@@ -34,6 +34,7 @@ public final class SnText {
 
     private static final String CENTER_TAG = "[center]";
     private static final String RGB_TAG = "[rgb]";
+    private static final String SMALL_TAG = "[small]";
     private static final char SECTION = (char) 0xA7;
 
     private static final Map<Character, String> MINI_TAGS = Map.ofEntries(
@@ -50,8 +51,9 @@ public final class SnText {
     }
 
     /**
-     * Full render: {@code [rgb]}/{@code [center]} prefix tags, then legacy code conversion,
-     * then MiniMessage deserialization. Null input renders as the empty component.
+     * Full render: {@code [small]}/{@code [rgb]}/{@code [center]} prefix tags, then legacy
+     * code conversion, then MiniMessage deserialization. Null input renders as the empty
+     * component.
      */
     public static Component color(String s) {
         if (s == null) {
@@ -167,10 +169,26 @@ public final class SnText {
     }
 
     /**
-     * Consumes {@code [center]} and {@code [rgb]} prefix tags, in any order, at the start of
-     * the line. {@code [rgb]} is applied immediately (gradient interpolated into
-     * {@code &#RRGGBB} codes over the remaining content); {@code [center]} is re-emitted as
-     * a single normalized leading mark consumed by the final legacy phase.
+     * Programmatic small caps transform (scoreboards, tab, names) without the
+     * {@code [small]} tag: delegates to {@link SmallCapsUtil#applySmallTag(String)}. The
+     * mapping is 1:1 char to char; legacy color codes, section-sign sequences and
+     * MiniMessage tags are skipped verbatim. Null and empty pass through, and the SAME
+     * instance is returned when nothing changes.
+     */
+    public static String smallCaps(String s) {
+        return SmallCapsUtil.applySmallTag(s);
+    }
+
+    /**
+     * Consumes {@code [center]}, {@code [rgb]} and {@code [small]} prefix tags,
+     * case-insensitive and in any order, at the start of the line. Fixed internal
+     * application order: {@code [small]} runs BEFORE {@code [rgb]} so the gradient colors
+     * the final glyphs and the small pass operates on the short string (not on the string
+     * inflated 9x by the gradient hex codes); the gradient's visible count is unchanged
+     * because the small mapping is 1:1 and never touches spaces, so every tag permutation
+     * renders identically. {@code [small]} also runs before {@code [center]} so centering
+     * measures the final glyphs: {@code [center]} is re-emitted as a single normalized
+     * leading mark consumed by the final legacy phase.
      */
     public static String applyPrefixTags(String line) {
         if (line == null) {
@@ -178,6 +196,7 @@ public final class SnText {
         }
         boolean center = false;
         boolean rgb = false;
+        boolean small = false;
         String rest = line;
         boolean consumed = true;
         while (consumed) {
@@ -190,7 +209,14 @@ public final class SnText {
                 rgb = true;
                 rest = rest.substring(RGB_TAG.length());
                 consumed = true;
+            } else if (rest.regionMatches(true, 0, SMALL_TAG, 0, SMALL_TAG.length())) {
+                small = true;
+                rest = rest.substring(SMALL_TAG.length());
+                consumed = true;
             }
+        }
+        if (small) {
+            rest = SmallCapsUtil.applySmallTag(rest);
         }
         if (rgb) {
             rest = RgbGradientUtil.applyRgbTag(rest);

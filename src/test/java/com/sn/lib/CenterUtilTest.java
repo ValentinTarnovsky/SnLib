@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import com.sn.lib.text.CenterUtil;
+import com.sn.lib.text.SnText;
 
 /**
  * Pixel-exact centering against the 154px half-width: color codes are invisible while
@@ -70,6 +71,15 @@ class CenterUtilTest {
         String boldThenReset = CenterUtil.center("&lab&rcdefgh");
         String boldAll = CenterUtil.center("&labcdefgh");
         assertTrue(leadingSpaces(boldThenReset) >= leadingSpaces(boldAll));
+    }
+
+    @Test
+    void smallCapsLineMeasuresLikeUppercase() {
+        // Small caps glyphs measure base 5 like uppercase; U+026A measures like 'I' (base 3).
+        assertEquals(leadingSpaces(CenterUtil.center("HELLO")),
+                leadingSpaces(CenterUtil.center(SnText.smallCaps("HELLO"))));
+        assertEquals(leadingSpaces(CenterUtil.center("HI")),
+                leadingSpaces(CenterUtil.center(SnText.smallCaps("HI"))));
     }
 
     @Test

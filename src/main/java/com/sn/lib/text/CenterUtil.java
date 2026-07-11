@@ -76,7 +76,11 @@ public final class CenterUtil {
         return bold && c != ' ' ? base + 1 : base;
     }
 
-    /** Vanilla DefaultFontInfo widths; unknown glyphs fall back to 4. */
+    /**
+     * Vanilla DefaultFontInfo widths; small caps glyphs measure like uppercase (base 5,
+     * except the narrow small i U+026A which measures like 'I', base 3); unknown glyphs
+     * fall back to 4.
+     */
     private static int baseWidth(char c) {
         switch (c) {
             case 'i': case '!': case ':': case ';': case '\'': case '.': case ',': case '|':
@@ -90,6 +94,12 @@ public final class CenterUtil {
             case '@':
                 return 6;
             default:
+                // Small caps advance ~6px like uppercase (base 5 + 1 gap), except the
+                // narrow small i. 5 and 3 are reasonable approximations (exact advances
+                // depend on the client's accented font bitmaps), adjustable here only.
+                if (SmallCapsUtil.isSmallGlyph(c)) {
+                    return c == '\u026A' ? 3 : 5;
+                }
                 if (c >= '!' && c <= '~') {
                     return 5;
                 }

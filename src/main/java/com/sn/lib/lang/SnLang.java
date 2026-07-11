@@ -518,8 +518,11 @@ public final class SnLang {
     }
 
     /**
-     * Inserts the configured prefix AFTER any leading {@code [center]}/{@code [rgb]}
-     * tags: a prefixed message keeps its tags at position 0 so they still render.
+     * Inserts the configured prefix AFTER any leading {@code [center]}/{@code [rgb]}/
+     * {@code [small]} tags: a prefixed message keeps its tags at position 0 so they still
+     * render. The prefix inserted after {@code [small]} stays INSIDE the tag's scope and
+     * renders in small caps, consistent with {@code [rgb]} applying its gradient to the
+     * prefix.
      */
     private String withPrefix(String line) {
         if (prefix.isEmpty()) {
@@ -531,6 +534,8 @@ public final class SnLang {
                 i += 8;
             } else if (line.regionMatches(true, i, "[rgb]", 0, 5)) {
                 i += 5;
+            } else if (line.regionMatches(true, i, "[small]", 0, 7)) {
+                i += 7;
             } else {
                 break;
             }
