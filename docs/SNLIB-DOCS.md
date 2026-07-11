@@ -1,9 +1,9 @@
 # SnLib v1.0.0 - Documentacion tecnica del estado actual
 
 > Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main).
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (106 archivos java), recursos, build y tests (12 suites).
+> Cobertura: todas las clases de `src/main/java/com/sn/lib` (106 archivos java), recursos, build y tests (13 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 137 tests JUnit verdes en 12 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
+**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.0.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 146 tests JUnit verdes en 13 suites; smoke gate verde en Paper 1.21.8 y 1.20.4; 38/38 pasos del plan ejecutados en 46 commits atomicos.
 
 ## Indice
 
@@ -1125,10 +1125,12 @@ Notas y gotchas:
 
 `src/main/java/com/sn/lib/util/HeadUtil.java`
 
-Construye stacks de `PLAYER_HEAD` desde valores de textura sin NMS. Inputs aceptados: prefijos `texture-`/`texture:`, `base64-`/`base64:`, `basehead-` (desanidados recursivamente, ej. `basehead-eyJ...`), payloads base64 crudos (`eyJ...`) y URLs http(s) de skin (envueltas en el JSON de textures estandar y codificadas a base64).
+Construye stacks de `PLAYER_HEAD` desde valores de textura o desde un `OfflinePlayer` owner, sin NMS. Inputs de textura aceptados: prefijos `texture-`/`texture:`, `base64-`/`base64:`, `basehead-` (desanidados recursivamente, ej. `basehead-eyJ...`), payloads base64 crudos (`eyJ...`) y URLs http(s) de skin (envueltas en el JSON de textures estandar y codificadas a base64).
 
 - `public static ItemStack fromBase64(String value)` - crea un stack `PLAYER_HEAD` de amount 1 mostrando la textura dada; null o vacio devuelve una cabeza por defecto.
 - `public static void applyBase64(SkullMeta meta, String value)` - aplica una textura a un `SkullMeta` con UUID de perfil deterministico derivado de los bytes de la textura; valores no parseables dejan el meta intacto con un WARN unico; meta null es no-op.
+- `public static ItemStack fromPlayer(@Nullable OfflinePlayer owner)` - crea un stack `PLAYER_HEAD` de amount 1 con la skin del jugador dado; owner null devuelve la cabeza por defecto. Cero NMS y cero HTTP propio: la skin la resuelve el server desde su profile cache (Steve transitorio mientras el perfil no este cacheado).
+- `public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner)` - aplica un owner a un `SkullMeta` via `setOwningPlayer`; meta u owner null son no-op. Misma semantica de resolucion que `fromPlayer` (profile cache del server, Steve transitorio, sin NMS/HTTP).
 - `public static @Nullable String extractTextureValue(String value)` - normaliza un input crudo a su payload base64: quita prefijos (recursivo), codifica URLs http(s) al JSON `{"textures":{"SKIN":{"url":"..."}}}` en base64, acepta `eyJ...` tal cual; devuelve null cuando el input no es una textura.
 - `public static void clearCache()` - vacia el cache acotado de perfiles; lo invoca el plugin SnLib en su teardown (onDisable).
 
@@ -1751,7 +1753,7 @@ Builder fluido de stacks fisicos que cubre toda la seccion de apariencia de la s
 
 - `public static SnItem builder(Material material)` - Arranca el builder; material null cae a `STONE`.
 - `public static SnItem fromConfig(SnYml yml, @Nullable Player viewer, Ph... phs)` - Lee todos los campos de apariencia desde la raiz del yml; delega en la sobrecarga con path.
-- `public static SnItem fromConfig(SnYml yml, @Nullable String path, @Nullable Player viewer, Ph... phs)` - Mapea cada campo de apariencia de la spec bajo `path`: display-name, material (con la convencion de cabezas `texture-`/`basehead-`/`base64-` detectada via `HeadUtil.extractTextureValue`, que fuerza `PLAYER_HEAD`), custom-model-data (solo si esta seteado), amount, glow, lore, enchantments, flags, color, trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size y equipment-slot. Los strings resuelven con `viewer` mas los placeholders locales `phs`.
+- `public static SnItem fromConfig(SnYml yml, @Nullable String path, @Nullable Player viewer, Ph... phs)` - Mapea cada campo de apariencia de la spec bajo `path`: display-name, material (con la convencion de cabezas `texture-`/`basehead-`/`base64-` detectada via `HeadUtil.extractTextureValue`, que fuerza `PLAYER_HEAD`), custom-model-data (solo si esta seteado), amount, glow, lore, enchantments, flags, color, trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size, equipment-slot, skull-owner (pasa por `yml.getString(..., viewer)` + `applyLocals(phs)`, asi `skull-owner: "%player_name%"` resuelve por viewer), attributes (lineas `ATTRIBUTE OPERATION amount [slot-group]` tokenizadas por whitespace, SIN placeholders: valores estaticos de la definicion) y damage (solo si esta seteado). Los strings resuelven con `viewer` mas los placeholders locales `phs`.
 - `public SnItem name(String name)` - Display name; renderizado por el pipeline de texto, no-italico salvo pedido.
 - `public SnItem lore(List<String> lines)` - Agrega lineas de lore (null se convierte en ""); cada una pasa por el pipeline de texto.
 - `public SnItem lore(String... lines)` - Conveniencia varargs de la anterior.
@@ -1765,6 +1767,9 @@ Builder fluido de stacks fisicos que cubre toda la seccion de apariencia de la s
 - `public SnItem potionEffects(List<String> effects)` - Efectos de pocion custom para items con `PotionMeta`. Forma plana de la spec `[effect-id, level, duration]`; level default 1 (el amplifier es `level - 1`) y duration default 200 ticks.
 - `public SnItem modelData(int modelData)` - Custom model data; solo estampa el meta cuando fue seteado explicitamente.
 - `public SnItem headBase64(String value)` - Textura de cabeza aceptada por `HeadUtil.extractTextureValue`; requiere `PLAYER_HEAD` (otro material WARNea y se ignora).
+- `public SnItem skullOwner(String nameOrUuid)` - Cabeza por jugador (nombre o UUID, trimmed; null/blank es no-op); requiere `PLAYER_HEAD`. Resolucion en `build()`: primero `UUID.fromString` en try/catch -> `Bukkit.getOfflinePlayer(UUID)` (no bloqueante); si no parsea como UUID -> `Bukkit.getOfflinePlayerIfCached(nombre)`. PROHIBIDO `Bukkit.getOfflinePlayer(String)` (puede bloquear el main thread con lookup HTTP). Cache miss: WARN unico y cabeza default. Precedencia: si tambien hay `headBase64`, gana skull-owner y la textura base64 se ignora con WARN unico (`skull-owner-conflict`). La skin la aplica `HeadUtil.applyOwner`.
+- `public SnItem attribute(String attributeId, String operation, double amount, @Nullable String slotGroup)` - Agrega una linea de attribute modifier (ids trimmed; attributeId u operation null/blank se ignoran). El atributo resuelve leniente via `attributeKeyCandidates` (ver logica interna); la operation es un nombre de `AttributeModifier.Operation` (ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1); slotGroup es un nombre de `EquipmentSlotGroup` (null/blank = ANY).
+- `public SnItem damage(int damage)` - Durabilidad VANILLA gastada inicial; clamp a `[0, maxDurability]` al aplicar. Independiente del sistema `custom-durability` de ItemDef. Material sin durabilidad vanilla o meta que no es `Damageable` WARNea una vez y se ignora.
 - `public SnItem unbreakable(boolean unbreakable)` - Flag vanilla unbreakable.
 - `public SnItem maxStackSize(int maxStackSize)` - Max stack size via probe de `setMaxStackSize` (1.20.5+); en 1.20.4 el valor se omite con UN WARN (que ya emite el probe). El valor se clampa a 1..99 al aplicar.
 - `public SnItem equipmentSlot(String slot)` - Slot declarado de la spec (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET). Validado lenientemente en `build()` con UN WARN ante typos; el stack en si no se altera, el enforcement pertenece a la capa de definicion.
@@ -1775,6 +1780,8 @@ Builder fluido de stacks fisicos que cubre toda la seccion de apariencia de la s
 - `readEnchantments` y `applyPotionEffects` caminan la forma plana `[id, nivel, ...]` de la spec: `tokenize` parte cada entrada por espacios/comas/punto-y-coma, asi la forma plana y la inline parsean igual. Un numero sin id previo WARNea con el formato esperado y se ignora.
 - `resolveMaterial`: `Material.matchMaterial` primero, despues `Registry.MATERIAL` por NamespacedKey; invalido WARNea y usa `STONE`.
 - `resolveEnchant`/`resolveEffect`: Registry por key y fallback `getByName` legacy (deprecado a proposito, resuelve nombres tipo `FAST_DIGGING`).
+- `attributeKeyCandidates(String)` (package-private, puro, testeado en `SnItemAttributeParseTest`): normaliza (trim, lower, `-`->`_`, quita `minecraft:`) y devuelve en orden sin duplicados: (1) el normalizado tal cual, (2) sin prefijo `generic_`/`player_`/`zombie_` (keys 1.21.2+), (3) la forma con punto en el primer `_` si tenia prefijo (keys pre-1.21.3, ej `generic.movement_speed`), (4) `generic.` + la forma pelada (alias inverso: `ARMOR` resuelve como `generic.armor` en servers viejos). `resolveAttribute` itera los candidatos contra `Registry.ATTRIBUTE`; primer hit gana. Esto implementa el alias bidireccional `GENERIC_ARMOR` <-> `ARMOR` del rename 1.21.2+ sin tablas hardcodeadas.
+- `buildModifier`: doble rama. Moderna (gateada por `SnVersion.supports(21, 0)` + catch de Throwable, porque `SnCompat.probe` solo cubre metodos, no constructores): `new AttributeModifier(NamespacedKey.fromString("snlib:" + keyName), amount, op, EquipmentSlotGroup)` con key deterministica `snlib:attr_<i>_<attr-sanitizado>` (namespace fijo `snlib` via `fromString`: SnItem es un builder estatico sin referencia a plugin). Legacy (1.20.4 o Throwable): constructor deprecado con `UUID.nameUUIDFromBytes(keyName)` y `legacySlot` (package-private testeado: null/blank/ANY/ARMOR/BODY -> null = cualquier slot; el resto delega en `parseEquipmentSlot`).
 - `ItemFlag` se trata como enum abierto: `valueOf` individual en try/catch, nunca switch/EnumSet, para tolerar ramas de version distintas.
 - `warnOnce(tag, message)` dedupica los WARN en el set estatico `WARNED` (prefijo `[SnLib] ` via `Bukkit.getLogger()`). Estatico server-wide permitido por el contrato de SnLib: registra hechos de los registries de ESTE server, no de un consumidor.
 
@@ -2966,7 +2973,7 @@ No hay marcadores TODO/FIXME/HACK en el codigo de este modulo. Limitaciones docu
 
 ## 16. Build, tests, specs golden y TODOs
 
-Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp y manifest con metadata Sn), los cuatro archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, pom template del consumer y reglas ProGuard del consumer), las 11 suites JUnit 5 de `src/test/java/com/sn/lib/` (104 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (bStats, degradacion 1.20.4, repo/release, pilotos y canary). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos).
+Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp y manifest con metadata Sn), los cuatro archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, pom template del consumer y reglas ProGuard del consumer), las 13 suites JUnit 5 de `src/test/java/com/sn/lib/` (146 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (bStats, degradacion 1.20.4, repo/release, pilotos y canary). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499 (verde en ambos).
 
 ### pom.xml (build de SnLib)
 `pom.xml`
@@ -3065,9 +3072,9 @@ Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate
 - Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
 - `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
 
-### Suites de tests (12 suites, 137 tests, verdes)
+### Suites de tests (13 suites, 146 tests, verdes)
 
-Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard). Total verificado con `mvn test`: 137 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+Las 13 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas el subpaquete `com.sn.lib.item` de `SnItemAttributeParseTest`, que necesita acceso package-private a los helpers de `SnItem`), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos). Total verificado con `mvn test`: 146 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
@@ -3266,6 +3273,20 @@ Las 12 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`),
 - `void quotedResourceKeyInsertsWithItsTextualForm()` - una key quoted del recurso (`"bar": 3`) ausente en disco se inserta conservando las comillas del recurso.
 - `void pruneKeepsKeyWhenOnlyQuotingDiffers()` - prune con recurso `foo:` y disco `"foo":` no borra el bloque (solo difiere el quoting).
 
+### SnItemAttributeParseTest
+`src/test/java/com/sn/lib/item/SnItemAttributeParseTest.java`
+9 tests sobre los helpers package-private de `com.sn.lib.item.SnItem` para attribute modifiers: `attributeKeyCandidates(String)` (candidatos de resolucion leniente del rename 1.21.2+) y `legacySlot(String)` (mapeo de slot-group a `EquipmentSlot` legacy). JVM puro: los helpers no tocan Bukkit runtime.
+
+- `void genericPrefixedNameYieldsModernAndLegacyCandidates()` - "GENERIC_MOVEMENT_SPEED" produce "generic_movement_speed", "movement_speed" y "generic.movement_speed".
+- `void bareModernNameYieldsLegacyAlias()` - "ARMOR" produce "armor" y el alias inverso "generic.armor".
+- `void playerPrefixYieldsDottedForm()` - "PLAYER_BLOCK_INTERACTION_RANGE" produce "player.block_interaction_range" y "block_interaction_range".
+- `void namespacedInputNormalizes()` - "minecraft:generic.armor" normaliza a "generic.armor".
+- `void candidatesHaveNoDuplicates()` - la lista de candidatos no tiene duplicados para inputs representativos.
+- `void anyArmorAndBodyMapToNull()` - ANY/ARMOR/BODY/null/blank mapean a null (sin slot = cualquier slot).
+- `void mainhandMapsToHand()` - MAINHAND (en ambas cajas) mapea a `EquipmentSlot.HAND`.
+- `void offhandMapsToOffHand()` - OFFHAND mapea a `EquipmentSlot.OFF_HAND`.
+- `void feetMapsDirect()` - FEET mapea directo a `EquipmentSlot.FEET`.
+
 ### Smoke gate de runtime
 
 Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real, en las dos puntas de la matriz soportada:
@@ -3287,4 +3308,4 @@ Pendientes reales conocidos (handoff v1.0.0):
 - Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
 - Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
 - japicmp corre con `ignoreMissingOldVersion=true`: en 1.0.0 el gate es vacuo por no existir version previa publicada; la baseline real del contrato additive-only arranca en 1.0.1.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 137 tests en 12 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest).
+- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 146 tests en 13 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests).

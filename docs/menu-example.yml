@@ -27,6 +27,9 @@ items:
   item-id: #can be anything as long it is unique
     display-name: string # default: ""
     material: string (can resolve basehead-base64) #default: "STONE"
+    skull-owner: string # player name or UUID; placeholders resolve per viewer; requires PLAYER_HEAD # default: ""
+    attributes: list ex: ["ATTRIBUTE OPERATION amount [slot-group]"] # attribute modifiers, static values # default: []
+    damage: int # initial vanilla damage already spent; needs a material with durability # default: not set
     custom-model-data: int # default: 0
     amount: int # default: 1
     slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6]

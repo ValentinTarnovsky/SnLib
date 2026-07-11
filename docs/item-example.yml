@@ -15,6 +15,7 @@ item-id: # can be anything as long it is unique
   # ═══════════════════════════════════════
   display-name: string # supports [small]/[rgb]/[center] prefix tags # default: ""
   material: string (can resolve basehead-base64) # default: "STONE"
+  skull-owner: string # player name or UUID; resolves placeholders per viewer (%player_name%); requires PLAYER_HEAD; uncached name -> default head # default: ""
   custom-model-data: int # default: 0
   amount: int # default: 1
   glow: true/false # default: false
@@ -32,6 +33,8 @@ item-id: # can be anything as long it is unique
   trim-pattern: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
   trim-material: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
   potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
+  attributes: list ex: ["ATTRIBUTE OPERATION amount [slot-group]"] # ex "GENERIC_MOVEMENT_SPEED ADD_NUMBER 0.02 HAND"; operations: ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1; slot-groups: ANY, HAND, ARMOR, MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET # default: []
+  damage: int # initial vanilla damage already spent (0..max durability); independent from custom-durability # default: not set
 
   # ═══════════════════════════════════════
   # PROPERTIES - Item behavior

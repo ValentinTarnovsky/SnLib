@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.jetbrains.annotations.Nullable;
@@ -79,6 +80,39 @@ public final class HeadUtil {
             head.setItemMeta(skull);
         }
         return head;
+    }
+
+    /**
+     * Creates a {@code PLAYER_HEAD} stack showing the given player's skin.
+     *
+     * <p>No NMS and no HTTP of its own: the skin resolves from the server's profile cache
+     * (a transient Steve renders until the profile is cached).</p>
+     *
+     * @param owner the head owner; null yields a default head
+     * @return a {@code PLAYER_HEAD} stack of amount 1
+     */
+    public static ItemStack fromPlayer(@Nullable OfflinePlayer owner) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        if (owner == null) {
+            return head;
+        }
+        if (head.getItemMeta() instanceof SkullMeta skull) {
+            applyOwner(skull, owner);
+            head.setItemMeta(skull);
+        }
+        return head;
+    }
+
+    /**
+     * Applies a player owner to a skull meta via {@link SkullMeta#setOwningPlayer}. The
+     * skin resolves from the server's profile cache (transient Steve until cached); no NMS
+     * and no HTTP of its own. Null meta or null owner is a no-op.
+     */
+    public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner) {
+        if (meta == null || owner == null) {
+            return;
+        }
+        meta.setOwningPlayer(owner);
     }
 
     /**

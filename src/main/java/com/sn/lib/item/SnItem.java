@@ -1,25 +1,33 @@
 package com.sn.lib.item;
 
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.Registry;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.PotionMeta;
@@ -60,7 +68,15 @@ import com.sn.lib.yml.SnYml;
  * prefers {@link RegistryAccess} ({@code Registry.TRIM_*} is deprecated since 1.20.6) and
  * falls back to the legacy fields on older servers. {@link ItemFlag} is treated as an open
  * enum: individual {@code valueOf} in try/catch with the lenient
- * {@code HIDE_POTION_EFFECTS}/{@code HIDE_ADDITIONAL_TOOLTIP} alias, never switch/EnumSet.</p>
+ * {@code HIDE_POTION_EFFECTS}/{@code HIDE_ADDITIONAL_TOOLTIP} alias, never switch/EnumSet.
+ * {@link AttributeModifier} creation is dual-branch: the {@link NamespacedKey} constructor
+ * with {@link EquipmentSlotGroup} on 1.21+ (gated by {@link SnVersion#supports(int, int)}
+ * plus a Throwable catch, because {@link SnCompat#probe} covers methods, not constructors)
+ * and the deprecated UUID constructor with a deterministic name-derived UUID on 1.20.4.</p>
+ *
+ * <p>Covered fields: display-name, material (with head texture convention), skull-owner,
+ * custom-model-data, amount, glow, lore, enchantments, flags, color, trim, potion-effects,
+ * attributes, damage, unbreakable, max-stack-size and equipment-slot.</p>
  *
  * <p>Server-wide statics allowed by the SnLib contract: the WARN dedup set records facts
  * about this server's registries, not about a consumer.</p>
@@ -93,9 +109,17 @@ public final class SnItem {
     private final List<String> potionEffects = new ArrayList<>();
     private Integer modelData;
     private String headBase64;
+    private String skullOwner;
+    private final List<AttributeLine> attributes = new ArrayList<>();
+    private Integer vanillaDamage;
     private Boolean unbreakable;
     private Integer maxStackSize;
     private String equipmentSlot;
+
+    /** One declared attribute modifier line; static definition values, no placeholders. */
+    private record AttributeLine(String attribute, String operation, double amount,
+                                 @Nullable String slotGroup) {
+    }
 
     private SnItem(Material material) {
         this.material = material;
@@ -115,9 +139,11 @@ public final class SnItem {
      * Maps every appearance field of the golden spec found under {@code path}: display-name,
      * material (with the {@code texture-}/{@code basehead-}/{@code base64-} head convention),
      * custom-model-data (only when set), amount, glow, lore, enchantments, flags, color,
-     * trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size and
-     * equipment-slot. Strings resolve through the yml pipeline with {@code viewer} plus the
-     * extra local placeholders {@code phs}.
+     * trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size,
+     * equipment-slot, skull-owner (placeholder-resolved per viewer), attributes (static
+     * definition values, no placeholders) and damage (only when set). Strings resolve
+     * through the yml pipeline with {@code viewer} plus the extra local placeholders
+     * {@code phs}.
      *
      * @param path section path inside the file; null or empty reads from the root
      */
@@ -163,6 +189,14 @@ public final class SnItem {
         String slot = yml.getString(p + "equipment-slot", "");
         if (!slot.isEmpty()) {
             item.equipmentSlot(slot);
+        }
+        String owner = SnText.applyLocals(yml.getString(p + "skull-owner", "", viewer), phs);
+        if (!owner.isEmpty()) {
+            item.skullOwner(owner);
+        }
+        readAttributes(item, yml.getStringList(p + "attributes", List.of()));
+        if (yml.isSet(p + "damage")) {
+            item.damage(yml.getInt(p + "damage", 0));
         }
         return item;
     }
@@ -281,6 +315,47 @@ public final class SnItem {
         return this;
     }
 
+    /**
+     * Head owner by player name or UUID; requires PLAYER_HEAD. A UUID resolves via
+     * {@code Bukkit.getOfflinePlayer(UUID)} (non-blocking) and a name only via
+     * {@code Bukkit.getOfflinePlayerIfCached} (never the blocking string lookup); an
+     * uncached name leaves the default head with one WARN. Takes precedence over
+     * {@link #headBase64} when both are set. Null or blank is a no-op.
+     */
+    public SnItem skullOwner(String nameOrUuid) {
+        if (nameOrUuid != null && !nameOrUuid.isBlank()) {
+            this.skullOwner = nameOrUuid.trim();
+        }
+        return this;
+    }
+
+    /**
+     * Adds an attribute modifier line. Attribute ids resolve leniently across the
+     * 1.21.2+ rename (bidirectional {@code GENERIC_ARMOR} / {@code ARMOR} alias); the
+     * operation is an {@link AttributeModifier.Operation} name; {@code slotGroup} is an
+     * {@link EquipmentSlotGroup} name (null or blank means ANY). Null or blank
+     * {@code attributeId} or {@code operation} is a no-op.
+     */
+    public SnItem attribute(String attributeId, String operation, double amount,
+                            @Nullable String slotGroup) {
+        if (attributeId == null || attributeId.isBlank()
+                || operation == null || operation.isBlank()) {
+            return this;
+        }
+        attributes.add(new AttributeLine(attributeId.trim(), operation.trim(), amount,
+                slotGroup == null || slotGroup.isBlank() ? null : slotGroup.trim()));
+        return this;
+    }
+
+    /**
+     * Initial VANILLA durability already spent, clamped to [0, max durability] at build.
+     * Independent from the custom-durability system of the item definition layer.
+     */
+    public SnItem damage(int damage) {
+        this.vanillaDamage = damage;
+        return this;
+    }
+
     /** Vanilla unbreakable flag. */
     public SnItem unbreakable(boolean unbreakable) {
         this.unbreakable = unbreakable;
@@ -330,6 +405,7 @@ public final class SnItem {
         }
         applyTrim(meta);
         applyPotionEffects(meta);
+        applyAttributes(meta);
         if (modelData != null) {
             meta.setCustomModelData(modelData);
         }
@@ -339,7 +415,17 @@ public final class SnItem {
         if (maxStackSize != null) {
             applyMaxStackSize(meta);
         }
-        if (headBase64 != null) {
+        if (vanillaDamage != null) {
+            applyDamage(meta);
+        }
+        if (skullOwner != null) {
+            if (headBase64 != null) {
+                warnOnce("skull-owner-conflict:" + material, "skull-owner y textura base64 "
+                        + "definidos a la vez para " + material
+                        + "; gana skull-owner y la textura base64 se ignora");
+            }
+            applySkullOwner(meta);
+        } else if (headBase64 != null) {
             applyHead(meta);
         }
         validateEquipmentSlot();
@@ -390,6 +476,36 @@ public final class SnItem {
                 i++;
             }
             item.enchant(id, level);
+        }
+    }
+
+    /**
+     * Walks the {@code attributes:} list; each line is {@code ATTRIBUTE OPERATION amount
+     * [slot-group]} tokenized on whitespace. Lines never go through placeholders: they
+     * are static definition values. Fewer than 3 tokens or an unparseable amount skip the
+     * line with one WARN.
+     */
+    private static void readAttributes(SnItem item, List<String> raw) {
+        for (String line : raw) {
+            if (line == null || line.isBlank()) {
+                continue;
+            }
+            String[] tokens = line.trim().split("\\s+");
+            Double amount = tokens.length < 3 ? null : parseDouble(tokens[2]);
+            if (amount == null) {
+                warnOnce("attr-line:" + line, "Linea de atributo invalida '" + line
+                        + "' (formato: ATTRIBUTE OPERATION amount [slot-group]); se ignora");
+                continue;
+            }
+            item.attribute(tokens[0], tokens[1], amount, tokens.length >= 4 ? tokens[3] : null);
+        }
+    }
+
+    private static @Nullable Double parseDouble(String value) {
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException notANumber) {
+            return null;
         }
     }
 
@@ -643,6 +759,186 @@ public final class SnItem {
         }
     }
 
+    private void applyAttributes(ItemMeta meta) {
+        for (int i = 0; i < attributes.size(); i++) {
+            AttributeLine line = attributes.get(i);
+            Attribute attribute = resolveAttribute(line.attribute());
+            if (attribute == null) {
+                warnOnce("attribute:" + line.attribute(), "Atributo invalido '"
+                        + line.attribute()
+                        + "': no se resolvio por Registry en ninguna de sus formas; se ignora");
+                continue;
+            }
+            AttributeModifier.Operation operation = parseOperation(line.operation());
+            if (operation == null) {
+                continue;
+            }
+            String keyName = "attr_" + i + "_" + sanitizeKeyPart(line.attribute());
+            meta.addAttributeModifier(attribute,
+                    buildModifier(keyName, line.amount(), operation, line.slotGroup()));
+        }
+    }
+
+    /**
+     * Lenient attribute lookup: tries every candidate of {@link #attributeKeyCandidates}
+     * against {@code Registry.ATTRIBUTE}; first hit wins, all misses yield null. Covers
+     * the bidirectional {@code GENERIC_ARMOR} / {@code ARMOR} alias of the 1.21.2+ rename
+     * without hardcoded tables.
+     */
+    private static @Nullable Attribute resolveAttribute(String raw) {
+        for (String candidate : attributeKeyCandidates(raw)) {
+            NamespacedKey key = NamespacedKey.fromString(candidate);
+            if (key == null) {
+                continue;
+            }
+            Attribute attribute = Registry.ATTRIBUTE.get(key);
+            if (attribute != null) {
+                return attribute;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Ordered, duplicate-free registry key candidates for a raw attribute id. Normalizes
+     * (trim, lowercase, {@code '-'} to {@code '_'}, drops a {@code minecraft:} prefix) and
+     * emits: the normalized form, the form without a {@code generic_}/{@code player_}/
+     * {@code zombie_} prefix (1.21.2+ keys), the dotted pre-1.21.3 form when prefixed
+     * ({@code generic.movement_speed}), and the inverse {@code generic.} alias for bare
+     * modern names ({@code ARMOR} resolves as {@code generic.armor} on older servers).
+     */
+    static List<String> attributeKeyCandidates(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        if (normalized.startsWith("minecraft:")) {
+            normalized = normalized.substring("minecraft:".length());
+        }
+        Set<String> candidates = new LinkedHashSet<>();
+        candidates.add(normalized);
+        String stripped = normalized;
+        boolean prefixed = false;
+        for (String prefix : new String[] {"generic_", "player_", "zombie_"}) {
+            if (normalized.startsWith(prefix)) {
+                stripped = normalized.substring(prefix.length());
+                prefixed = true;
+                candidates.add(stripped);
+                break;
+            }
+        }
+        if (prefixed) {
+            candidates.add(normalized.replaceFirst("_", "."));
+        }
+        if (stripped.indexOf('.') < 0) {
+            candidates.add("generic." + stripped);
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static @Nullable AttributeModifier.Operation parseOperation(String raw) {
+        String name = raw.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+        try {
+            return AttributeModifier.Operation.valueOf(name);
+        } catch (IllegalArgumentException unknown) {
+            warnOnce("attr-op:" + raw, "Operacion de atributo invalida '" + raw
+                    + "' (se espera ADD_NUMBER, ADD_SCALAR o MULTIPLY_SCALAR_1); se ignora");
+            return null;
+        }
+    }
+
+    /**
+     * Dual-branch modifier construction. Modern branch (NamespacedKey constructor with
+     * {@link EquipmentSlotGroup}) gated by {@code SnVersion.supports(21, 0)} and wrapped
+     * in a Throwable catch: {@code SnCompat.probe} only covers methods, not constructors.
+     * The key is deterministic ({@code snlib:} namespace via {@code
+     * NamespacedKey.fromString}, no plugin reference needed). Legacy branch (1.20.4 or
+     * modern failure) uses the deprecated UUID constructor.
+     */
+    private static AttributeModifier buildModifier(String keyName, double amount,
+            AttributeModifier.Operation operation, @Nullable String slotGroup) {
+        if (SnVersion.supports(21, 0)) {
+            try {
+                return new AttributeModifier(NamespacedKey.fromString("snlib:" + keyName),
+                        amount, operation, resolveSlotGroup(slotGroup));
+            } catch (Throwable modernUnavailable) {
+                // Constructor o EquipmentSlotGroup ausentes pese a la version: rama legacy.
+            }
+        }
+        return legacyModifier(keyName, amount, operation, slotGroup);
+    }
+
+    private static EquipmentSlotGroup resolveSlotGroup(@Nullable String slotGroup) {
+        if (slotGroup == null || slotGroup.isBlank()) {
+            return EquipmentSlotGroup.ANY;
+        }
+        EquipmentSlotGroup group =
+                EquipmentSlotGroup.getByName(slotGroup.trim().toLowerCase(Locale.ROOT));
+        if (group == null) {
+            warnOnce("attr-slot:" + slotGroup, "Slot-group de atributo invalido '" + slotGroup
+                    + "'; se usa ANY");
+            return EquipmentSlotGroup.ANY;
+        }
+        return group;
+    }
+
+    @SuppressWarnings("deprecation") // Constructor UUID pre-NamespacedKey; fallback 1.20.4.
+    private static AttributeModifier legacyModifier(String keyName, double amount,
+            AttributeModifier.Operation operation, @Nullable String slotGroup) {
+        UUID id = UUID.nameUUIDFromBytes(keyName.getBytes(StandardCharsets.UTF_8));
+        EquipmentSlot slot = legacySlot(slotGroup);
+        return slot == null ? new AttributeModifier(id, keyName, amount, operation)
+                : new AttributeModifier(id, keyName, amount, operation, slot);
+    }
+
+    /**
+     * Legacy slot-group to single {@link EquipmentSlot}: null, blank, {@code ANY},
+     * {@code ARMOR} and {@code BODY} have no single-slot equivalent and yield null (the
+     * modifier applies to every slot); the rest delegates to {@link #parseEquipmentSlot}
+     * with one WARN and null on unknown names.
+     */
+    static @Nullable EquipmentSlot legacySlot(@Nullable String slotGroup) {
+        if (slotGroup == null || slotGroup.isBlank()) {
+            return null;
+        }
+        String name = slotGroup.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+        if (name.equals("ANY") || name.equals("ARMOR") || name.equals("BODY")) {
+            return null;
+        }
+        EquipmentSlot slot = parseEquipmentSlot(slotGroup);
+        if (slot == null) {
+            warnOnce("attr-slot:" + slotGroup, "Slot-group de atributo invalido '" + slotGroup
+                    + "'; se aplica a cualquier slot");
+        }
+        return slot;
+    }
+
+    /** Lowercases and maps every char outside {@code [a-z0-9._-]} to {@code '_'}. */
+    private static String sanitizeKeyPart(String raw) {
+        String lower = raw.toLowerCase(Locale.ROOT);
+        StringBuilder out = new StringBuilder(lower.length());
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            boolean valid = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '.' || c == '_' || c == '-';
+            out.append(valid ? c : '_');
+        }
+        return out.toString();
+    }
+
+    /**
+     * Initial vanilla damage, clamped to [0, max durability]. Materials without vanilla
+     * durability or metas that are not {@link Damageable} skip the field with one WARN.
+     */
+    private void applyDamage(ItemMeta meta) {
+        if (material.getMaxDurability() <= 0 || !(meta instanceof Damageable damageable)) {
+            warnOnce("damage-meta:" + material, "damage definido para " + material
+                    + " sin durabilidad vanilla; se ignora");
+            return;
+        }
+        damageable.setDamage(Math.max(0, Math.min(vanillaDamage, material.getMaxDurability())));
+    }
+
     private void applyMaxStackSize(ItemMeta meta) {
         Method setter = SnCompat.probe(ItemMeta.class, "setMaxStackSize", Integer.class);
         if (setter == null) {
@@ -662,6 +958,35 @@ public final class SnItem {
         } else {
             warnOnce("head-meta:" + material, "headBase64 requiere PLAYER_HEAD; material actual "
                     + material + "; se ignora");
+        }
+    }
+
+    private void applySkullOwner(ItemMeta meta) {
+        if (!(meta instanceof SkullMeta skull)) {
+            warnOnce("skull-owner-meta:" + material, "skull-owner requiere PLAYER_HEAD; "
+                    + "material actual " + material + "; se ignora");
+            return;
+        }
+        OfflinePlayer resolved = resolveSkullOwner(skullOwner);
+        if (resolved == null) {
+            warnOnce("skull-owner:" + skullOwner, "skull-owner '" + skullOwner
+                    + "' no es un UUID ni un nombre cacheado en este server; "
+                    + "se deja la cabeza por defecto");
+            return;
+        }
+        HeadUtil.applyOwner(skull, resolved);
+    }
+
+    /**
+     * UUID first via non-blocking {@code Bukkit.getOfflinePlayer(UUID)}; otherwise the
+     * profile cache via {@code Bukkit.getOfflinePlayerIfCached}. Never the blocking
+     * name-based lookup: it can hit HTTP on the main thread. Cache miss yields null.
+     */
+    private static @Nullable OfflinePlayer resolveSkullOwner(String raw) {
+        try {
+            return Bukkit.getOfflinePlayer(UUID.fromString(raw));
+        } catch (IllegalArgumentException notAUuid) {
+            return Bukkit.getOfflinePlayerIfCached(raw);
         }
     }
 
