@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import com.sn.lib.Sn;
 import com.sn.lib.SnLib;
 import com.sn.lib.action.ActionContext;
+import com.sn.lib.action.ClickSurface;
 import com.sn.lib.item.ItemDef;
 import com.sn.lib.item.internal.ItemPropertyListener.Match;
 import com.sn.lib.text.SnText;
@@ -124,7 +125,8 @@ public final class ItemInteractListener implements Listener {
         ClickType click = right
                 ? (shift ? ClickType.SHIFT_RIGHT : ClickType.RIGHT)
                 : (shift ? ClickType.SHIFT_LEFT : ClickType.LEFT);
-        ActionContext context = new ActionContext(player, ctx, null, click, null);
+        ActionContext context = new ActionContext(player, ctx, null, click,
+                block ? ClickSurface.BLOCK : ClickSurface.AIR, null);
         if (right) {
             if (shift && hasBehaviour(def.shiftRightClickActions(), def.onShiftRightClick())) {
                 runVariant(ctx, player, item, def.shiftRightClickActions(),

@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -49,12 +50,32 @@ import com.sn.lib.util.SoundUtil;
  * Executes YML action lists of the form {@code [tag] argumento}, reached through
  * {@code sn.actions()} (one engine per context).
  *
- * <p>Line anatomy: optional guard prefixes, then the action tag and its argument. Guards:
- * {@code [right-click]}, {@code [left-click]}, {@code [shift-right-click]} and
- * {@code [shift-left-click]} match against {@link ActionContext#clickType()} (without a
- * click the guarded line is skipped with a debug note), and {@code [chance=N]} rolls a
- * 0-100 chance (doubles allowed; a malformed value WARNs once and lets the line run). A
- * line without a leading tag runs as {@code [message]}.</p>
+ * <p>Line anatomy: optional guard prefixes, then the action tag and its argument. Guard
+ * catalog:</p>
+ * <ul>
+ *   <li>Inclusive click guards (v1.0.0 semantics intact): {@code [right-click]} passes
+ *       with RIGHT and SHIFT_RIGHT ({@link ClickType#isRightClick()});
+ *       {@code [left-click]} passes with LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE
+ *       ({@link ClickType#isLeftClick()}).</li>
+ *   <li>Exact click guards, each matching exactly one {@link ClickType}:
+ *       {@code [shift-right-click]}, {@code [shift-left-click]},
+ *       {@code [right-click-only]} (RIGHT, excludes SHIFT_RIGHT/DOUBLE_CLICK/CREATIVE),
+ *       {@code [left-click-only]} (LEFT), {@code [middle-click]}, {@code [double-click]},
+ *       {@code [drop-click]}, {@code [number-key]} and {@code [swap-offhand]}.</li>
+ *   <li>{@code [click=TYPE,...]}: comma-separated {@link ClickType} names, case
+ *       insensitive, dashes accepted for underscores; the line runs when the context
+ *       click is in the set. FAIL-CLOSED: an invalid spec WARNs once and skips the line
+ *       (unlike {@code [chance=N]}, which is fail-open), because a typo must never fire
+ *       actions on unwanted clicks.</li>
+ *   <li>Positional guards {@code [click-block]} / {@code [click-air]}: exact match
+ *       against {@link ActionContext#clickSurface()}. Only world item interactions carry
+ *       a surface; GUI clicks and clickless runs leave it null and the line is skipped
+ *       with a debug note.</li>
+ *   <li>{@code [chance=N]}: rolls a 0-100 chance (doubles allowed; a malformed value
+ *       WARNs once and lets the line run).</li>
+ * </ul>
+ * <p>Every click guard skips its line with a debug note when the context has no
+ * {@link ClickType}. A line without a leading tag runs as {@code [message]}.</p>
  *
  * <p>Every argument goes through local placeholders and PAPI (viewer-aware, through the
  * context papi service) before reaching its handler; message-like actions then run the
@@ -199,7 +220,12 @@ public final class ActionEngine {
     private static boolean isGuard(String tag) {
         return tag.equals("right-click") || tag.equals("left-click")
                 || tag.equals("shift-right-click") || tag.equals("shift-left-click")
-                || tag.startsWith("chance=");
+                || tag.equals("right-click-only") || tag.equals("left-click-only")
+                || tag.equals("middle-click") || tag.equals("double-click")
+                || tag.equals("drop-click") || tag.equals("number-key")
+                || tag.equals("swap-offhand") || tag.equals("click-block")
+                || tag.equals("click-air") || tag.startsWith("chance=")
+                || tag.startsWith("click=");
     }
 
     private boolean passesGuard(String tag, ActionContext context, String line) {
@@ -214,22 +240,82 @@ public final class ActionEngine {
                 return true;
             }
         }
+        if (tag.equals("click-block") || tag.equals("click-air")) {
+            ClickSurface surface = context.clickSurface();
+            if (surface == null) {
+                ctx.debug().log(() -> "Guard posicional [" + tag
+                        + "] sin ClickSurface en el contexto; linea omitida: " + line);
+                return false;
+            }
+            return surface == (tag.equals("click-block") ? ClickSurface.BLOCK
+                    : ClickSurface.AIR);
+        }
+        if (tag.startsWith("click=")) {
+            String spec = tag.substring("click=".length()).trim();
+            EnumSet<ClickType> allowed = parseClickTypes(spec);
+            if (allowed == null) {
+                warnOnce("click-guard:" + spec, "Guard [click=" + spec
+                        + "] con tipo invalido; linea omitida: " + line);
+                return false;
+            }
+            ClickType specClick = context.clickType();
+            if (specClick == null) {
+                ctx.debug().log(() -> "Guard de click [" + tag
+                        + "] sin ClickType en el contexto; linea omitida: " + line);
+                return false;
+            }
+            return allowed.contains(specClick);
+        }
         ClickType click = context.clickType();
         if (click == null) {
             ctx.debug().log(() -> "Guard de click [" + tag
                     + "] sin ClickType en el contexto; linea omitida: " + line);
             return false;
         }
-        if (tag.equals("right-click")) {
-            return click.isRightClick();
+        return matchesExactClickGuard(tag, click);
+    }
+
+    /**
+     * Named click guard matching. {@code right-click} / {@code left-click} keep the
+     * inclusive v1.0.0 semantics ({@link ClickType#isRightClick()} /
+     * {@link ClickType#isLeftClick()}); every other guard matches exactly one ClickType.
+     */
+    static boolean matchesExactClickGuard(String tag, ClickType click) {
+        return switch (tag) {
+            case "right-click" -> click.isRightClick();
+            case "left-click" -> click.isLeftClick();
+            case "shift-right-click" -> click == ClickType.SHIFT_RIGHT;
+            case "shift-left-click" -> click == ClickType.SHIFT_LEFT;
+            case "right-click-only" -> click == ClickType.RIGHT;
+            case "left-click-only" -> click == ClickType.LEFT;
+            case "middle-click" -> click == ClickType.MIDDLE;
+            case "double-click" -> click == ClickType.DOUBLE_CLICK;
+            case "drop-click" -> click == ClickType.DROP;
+            case "number-key" -> click == ClickType.NUMBER_KEY;
+            case "swap-offhand" -> click == ClickType.SWAP_OFFHAND;
+            default -> false;
+        };
+    }
+
+    /**
+     * Parses a comma-separated {@code [click=...]} spec into ClickType constants. Names
+     * are case insensitive and accept dashes for underscores. All-or-nothing: an empty
+     * spec, an empty token or any unknown name yields null so the guard fails closed.
+     */
+    static @Nullable EnumSet<ClickType> parseClickTypes(String spec) {
+        EnumSet<ClickType> types = EnumSet.noneOf(ClickType.class);
+        for (String token : spec.split(",")) {
+            String name = token.trim();
+            if (name.isEmpty()) {
+                return null;
+            }
+            try {
+                types.add(ClickType.valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_')));
+            } catch (IllegalArgumentException unknown) {
+                return null;
+            }
         }
-        if (tag.equals("left-click")) {
-            return click.isLeftClick();
-        }
-        if (tag.equals("shift-right-click")) {
-            return click == ClickType.SHIFT_RIGHT;
-        }
-        return click == ClickType.SHIFT_LEFT;
+        return types.isEmpty() ? null : types;
     }
 
     private void registerBuiltins() {
