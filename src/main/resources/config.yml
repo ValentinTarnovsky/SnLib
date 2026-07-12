@@ -33,3 +33,13 @@ bridge:
   max-message-bytes: 8388608
   # Max partially-received messages per connection.
   max-pending-messages: 8
+  # Tier 2 console verb allowlist (backend-authoritative). EMPTY = deny every console
+  # command. Anchored per-argument patterns only, never prefix wildcards. Tokens:
+  #   literal        exact token
+  #   <player>       a valid Minecraft name
+  #   <word>         any single token
+  #   <int:min..max> an integer within the inclusive range
+  # Example: "crates key give <player> vote <int:1..64>"
+  console-allowlist: []
+  # Max console verb executions per second (rate limit, shared across all callers).
+  console-rate-limit-per-second: 10

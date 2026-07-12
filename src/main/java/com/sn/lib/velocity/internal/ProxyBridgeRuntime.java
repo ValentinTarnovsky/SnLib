@@ -53,6 +53,7 @@ public final class ProxyBridgeRuntime {
     private final Map<String, ProxyChannelCore> byNamespace = new HashMap<>(8);
     private final Map<String, ProxyChannelCore> byChannelName = new HashMap<>(8);
     private final Map<String, ProxyChannelCore> legacyChannels = new HashMap<>(4);
+    private final ProxyChannelCore verbsCore;
     private final ScheduledTask sweeper;
 
     private ProxyBridgeRuntime(Object bootstrap, ProxyServer proxy, Logger logger,
@@ -65,10 +66,29 @@ public final class ProxyBridgeRuntime {
         this.signer = secret == null ? null : new HmacSigner(secret);
         this.sweeper = proxy.getScheduler().buildTask(bootstrap, this::sweepAll)
                 .repeat(1L, TimeUnit.SECONDS).schedule();
-        // Phase D infra channel (verbs), registered up front so its traffic ALWAYS
-        // lands on this listener and is never forwarded
+        // Tier 2 verb channel, wired up front so its traffic ALWAYS lands on this
+        // listener; every verb call is correlated, so the dispatcher is a no-op
         proxy.getChannelRegistrar().register(MinecraftChannelIdentifier.from("snlib:bridge"));
+        this.verbsCore = createCore("snlib", 1, "snlib:bridge",
+                (type, carrier, serverName, message) -> { });
+        verbsCore.registerTypes(com.sn.lib.bridge.wire.Verbs.Console.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Message.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Title.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Actionbar.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Sound.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Bossbar.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Actions.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Ack.TYPE,
+                com.sn.lib.bridge.wire.Verbs.AllowlistReq.TYPE,
+                com.sn.lib.bridge.wire.Verbs.Allowlist.TYPE);
+        byNamespace.put("snlib", verbsCore);
+        byChannelName.put("snlib:bridge", verbsCore);
         proxy.getEventManager().register(bootstrap, this);
+    }
+
+    /** The Tier 2 verbs channel core (namespace "snlib" over snlib:bridge). */
+    public ProxyChannelCore verbsCore() {
+        return verbsCore;
     }
 
     /** Called once from SnLibVelocity on ProxyInitializeEvent. */
@@ -132,7 +152,17 @@ public final class ProxyBridgeRuntime {
             return existing;
         }
         String channelName = "snlib:ext/" + namespace;
-        ProxyChannelCore core = new ProxyChannelCore(namespace, msgset, libVersion, signer,
+        ProxyChannelCore core = createCore(namespace, msgset, channelName, dispatcher);
+        byNamespace.put(namespace, core);
+        byChannelName.put(channelName, core);
+        proxy.getChannelRegistrar().register(MinecraftChannelIdentifier.from(channelName));
+        return core;
+    }
+
+    /** Builds one core wired to the channel sink and a rate-limited logger seam. */
+    private ProxyChannelCore createCore(String namespace, int msgset, String channelName,
+            ProxyChannelCore.Dispatcher dispatcher) {
+        return new ProxyChannelCore(namespace, msgset, libVersion, signer,
                 msgIds::incrementAndGet, () -> System.nanoTime() / 1_000_000L,
                 sinkFor(channelName), dispatcher,
                 new ProxyChannelCore.Log() {
@@ -157,10 +187,6 @@ public final class ProxyBridgeRuntime {
                     }
                 },
                 30_000L, 256, 8 * 1024 * 1024, 8);
-        byNamespace.put(namespace, core);
-        byChannelName.put(channelName, core);
-        proxy.getChannelRegistrar().register(MinecraftChannelIdentifier.from(channelName));
-        return core;
     }
 
     /** Registers a legacy channel for outdated-counterpart detection (sunk + counted). */

@@ -73,7 +73,15 @@ public final class BridgeRuntime {
 
     /** Called once from SnLibPlugin.onEnable, after the self context exists. */
     public static void init(SnLibPlugin plugin, Sn selfCtx) {
-        instance = new BridgeRuntime(plugin, selfCtx);
+        BridgeRuntime runtime = new BridgeRuntime(plugin, selfCtx);
+        instance = runtime;
+        if (runtime.available()) {
+            // Tier 2: SnLib itself serves the generic verbs on snlib:bridge, so a
+            // proxy-only plugin needs no Paper jar of its own
+            SnBridgeChannel verbChannel = runtime.createChannel(selfCtx, "snlib", 1,
+                    "snlib:bridge", VerbService.CAPABILITIES);
+            VerbService.install(selfCtx, verbChannel.core());
+        }
     }
 
     /** Called from SnLibPlugin.onDisable after the consumer cascade. */
@@ -139,10 +147,14 @@ public final class BridgeRuntime {
             }
             return existing;
         }
-        String channelName = "snlib:ext/" + namespace;
+        return createChannel(ctx, namespace, msgset, "snlib:ext/" + namespace, Map.of());
+    }
+
+    private SnBridgeChannel createChannel(Sn ctx, String namespace, int msgset,
+            String channelName, Map<String, Integer> capabilities) {
         SnBridgeChannel.HandlerTable handlers = new SnBridgeChannel.HandlerTable(ctx, namespace);
         ChannelCore core = new ChannelCore(namespace, msgset,
-                plugin.getPluginMeta().getVersion(), Map.of(), signer,
+                plugin.getPluginMeta().getVersion(), capabilities, signer,
                 msgIds::incrementAndGet, () -> System.nanoTime() / 1_000_000L,
                 sinkFor(channelName), handlers, handlers,
                 defaultTtlMillis, queueCap, maxMessageBytes, maxPendingPerConnection);

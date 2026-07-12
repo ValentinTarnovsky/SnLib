@@ -27,6 +27,7 @@ import com.sn.lib.bridge.wire.HelloMsg;
 import com.sn.lib.bridge.wire.HmacSigner;
 import com.sn.lib.bridge.wire.NackMsg;
 import com.sn.lib.bridge.wire.NackReason;
+import com.sn.lib.bridge.wire.SnNackException;
 import com.sn.lib.bridge.wire.SnWireException;
 import com.sn.lib.bridge.wire.SnWireType;
 import com.sn.lib.bridge.wire.UnknownWireIdException;
@@ -63,6 +64,11 @@ public final class ChannelCore {
         void debug(Supplier<String> message);
     }
 
+    /** Serves one request type arriving FROM the proxy; returns the response message. */
+    public interface Responder {
+        Object respond(UUID carrier, Object request);
+    }
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final String namespace;
@@ -81,6 +87,7 @@ public final class ChannelCore {
     private final int maxPendingPerConnection;
 
     private final WireTypeRegistry registry = new WireTypeRegistry();
+    private final Map<String, RespondEntry> responders = new HashMap<>(4);
     private final Map<UUID, Session> sessions = new HashMap<>(8);
     private final ArrayDeque<QueuedSend> queue = new ArrayDeque<>();
     private final Map<Integer, PendingRequest> requests = new HashMap<>(8);
@@ -171,6 +178,20 @@ public final class ChannelCore {
 
     public void onState(Consumer<SnBridgeState> callback) {
         stateCallbacks.add(callback);
+    }
+
+    /**
+     * Registers a respond handler: when {@code requestWireId} arrives, the responder's
+     * return value travels back auto-correlated (same msgId + response flag) so the
+     * proxy's request future completes. A handler throw answers a typed INTERNAL_ERROR
+     * NACK instead of silence.
+     */
+    public void respond(String requestWireId, SnWireType<?> responseType, Responder responder) {
+        RespondEntry previous = responders.putIfAbsent(requestWireId,
+                new RespondEntry(responseType, responder));
+        if (previous != null) {
+            throw new SnWireException("Duplicate respond handler for '" + requestWireId + "'");
+        }
     }
 
     // -------------------------------------------------------
@@ -450,7 +471,7 @@ public final class ChannelCore {
             counters.nacksReceived++;
             PendingRequest pending = requests.remove(nack.refMsgId());
             if (pending != null) {
-                pending.future.completeExceptionally(new SnWireException(
+                pending.future.completeExceptionally(new SnNackException(nack.reason(),
                         "NACK from the proxy (" + nack.reason() + "): " + nack.detail()));
             }
             log.warn("[" + namespace + "] NACK " + nack.reason() + " for '" + nack.refWireId()
@@ -458,18 +479,19 @@ public final class ChannelCore {
             return;
         }
         if (message instanceof HeartbeatMsg heartbeat) {
-            PendingRequest pending = requests.get(msgId);
-            if (isResponse && pending != null
-                    && pending.responseWireId.equals(HeartbeatMsg.TYPE.wireId())) {
-                requests.remove(msgId);
-                pending.future.complete(heartbeat);
+            // Echo ONLY a fresh ping: re-echoing a response-flagged heartbeat that has no
+            // pending match would loop forever between backend and proxy
+            if (!isResponse) {
+                deliverFrames(carrier, HeartbeatMsg.TYPE.encodeMessage(heartbeat), msgId,
+                        session.sessionNonce, true);
                 return;
             }
-            // Proxy-initiated ping: echo it back verbatim under the SAME msgId, marked
-            // as response so it can never be confused with an independent push
-            deliverFrames(carrier, HeartbeatMsg.TYPE.encodeMessage(heartbeat), msgId,
-                    session.sessionNonce, true);
-            return;
+            PendingRequest pending = requests.get(msgId);
+            if (pending != null && pending.responseWireId.equals(HeartbeatMsg.TYPE.wireId())) {
+                requests.remove(msgId);
+                pending.future.complete(heartbeat);
+            }
+            return; // a response with no matching pending is dropped, never re-echoed
         }
         // Correlation REQUIRES the response flag: a push whose msgId happens to collide
         // with an in-flight request id must dispatch normally, never be swallowed
@@ -478,10 +500,34 @@ public final class ChannelCore {
             if (pending != null && pending.responseWireId.equals(decoded.type().wireId())) {
                 requests.remove(msgId);
                 pending.future.complete(message);
+            }
+            return; // a response with no matching pending is dropped, never dispatched
+        }
+        RespondEntry responderEntry = responders.get(decoded.type().wireId());
+        if (responderEntry != null) {
+            Object response;
+            try {
+                response = responderEntry.responder.respond(carrier, message);
+            } catch (Throwable t) {
+                log.warn("[" + namespace + "] responder for " + decoded.type().wireId()
+                        + " threw " + t);
+                sendNack(carrier, session, msgId, decoded.type().wireId(),
+                        NackReason.INTERNAL_ERROR, String.valueOf(t.getMessage()));
                 return;
             }
+            // The reply travels under the SAME msgId + response flag: proxy-side correlation
+            if (deliverFrames(carrier, encodeResponse(responderEntry.responseType, response),
+                    msgId, session.sessionNonce, true)) {
+                counters.sent++;
+            }
+            return;
         }
         dispatcher.dispatch(decoded.type(), carrier, message);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <R> byte[] encodeResponse(SnWireType<R> type, Object response) {
+        return type.encodeMessage((R) response);
     }
 
     private void onHelloAck(UUID carrier, Session session, HelloAckMsg ack) {
@@ -664,5 +710,8 @@ public final class ChannelCore {
 
     private record PendingRequest(String responseWireId, CompletableFuture<Object> future,
             long deadline) {
+    }
+
+    private record RespondEntry(SnWireType<?> responseType, Responder responder) {
     }
 }

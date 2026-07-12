@@ -28,6 +28,12 @@ public enum SnDeliveryResult {
     /** The HELLO negotiation says the destination does not speak this msgset. */
     UNSUPPORTED_MSGSET,
 
+    /**
+     * Verbs only: the destination executed nothing for a reason of its own (target
+     * player offline, malformed spec); the detail says which.
+     */
+    FAILED_AT_DESTINATION,
+
     /** Died in queue: no carrier, no handshake, queue overflow, carrier lost mid-chunk, or shutdown. */
     EXPIRED_TTL,
 

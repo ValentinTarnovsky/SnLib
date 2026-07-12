@@ -45,6 +45,22 @@ public final class SoundUtil {
         player.playSound(player.getLocation(), parsed.sound(), parsed.volume(), parsed.pitch());
     }
 
+    /**
+     * True when {@code spec} would produce a sound: the intentional no-op specs (null,
+     * blank, {@code "none"}) count as resolvable, an unresolvable sound id does not. Lets
+     * callers distinguish "played nothing on purpose" from "bad spec" without a WARN.
+     */
+    public static boolean resolves(String spec) {
+        if (spec == null) {
+            return true;
+        }
+        String trimmed = spec.trim();
+        if (trimmed.isEmpty() || trimmed.equalsIgnoreCase("none")) {
+            return true;
+        }
+        return resolve(trimmed.split("\\s+")[0]) != null;
+    }
+
     /** Plays {@code spec} to every player near {@code location}. */
     public static void playAt(Location location, String spec) {
         if (location == null) {

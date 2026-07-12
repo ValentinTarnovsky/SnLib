@@ -1,6 +1,7 @@
 # SnBridge - Design specification (SnLib v1.2)
 
-> Status: Phase A (wire core, com.sn.lib.bridge.wire) IMPLEMENTED; the rest is planned.
+> Status: Phases A-D IMPLEMENTED (wire core, Paper side, Velocity side, verbs); the
+> remaining work is docs/gate, migrations (SnKeyAll, SnCredits) and the API freeze.
 > This document is the design spec approved on 2026-07-11;
 > it gets executed whenever the owner decides. It does not describe existing code (that is what
 > SNLIB-DOCS.md is for).
@@ -262,6 +263,22 @@ Hard verb rules:
 - **At-most-once**: documented and forbidden for paid deliveries without own DB persistence.
 - Vocabularies versioned in HELLO: if the proxy sends an action-tag that this backend's
   ActionEngine does not know, it is `UNSUPPORTED_AT_DESTINATION`, not a warn lost in a console.
+- **`actions` verb is presentation-only (fail-closed)**: it runs an action list through the
+  ActionEngine but ONLY when every line's effective tag (guards stripped) is in a safe set
+  (message, broadcastmessage, actionbar, title, sound, close, particle, potion, remove-item,
+  the page tags). Any command/op/network tag (`[console]`, `[player]`, `[player-as-op]`,
+  `[connect]`) denies the whole verb with `DENIED_BY_ALLOWLIST`, and an unknown tag denies with
+  `UNSUPPORTED_AT_DESTINATION`; nothing runs. Command execution goes ONLY through the console
+  verb and its anchored allowlist, so `actions` can never bypass it. The verb shares the
+  console rate limit.
+- **Verbs never lie about the result**: a verb whose target player is offline, whose sound spec
+  does not resolve, or whose bar id is unknown answers `FAILED_AT_DESTINATION`; an unknown
+  action tag answers `UNSUPPORTED_AT_DESTINATION`; a denied console/actions answers
+  `DENIED_BY_ALLOWLIST`. A backend NACK (older SnLib, throwing responder) surfaces on the proxy
+  as the matching typed result, never as a timeout.
+- **Bossbar verbs are per-player**: bars are keyed by `snbridge/<player>/<barId>`, so a shared
+  barId never evicts another player's bar; `hide` unregisters the bar (ids do not accumulate)
+  and works even if the player already left.
 
 ## 9. API sketch
 
@@ -372,7 +389,8 @@ WireId ledger (filled in during implementation):
 (infra reserved) snlib:hello, snlib:hello_ack, snlib:nack, snlib:heartbeat,
                  snlib:verb/console, snlib:verb/message, snlib:verb/title,
                  snlib:verb/actionbar, snlib:verb/sound, snlib:verb/bossbar,
-                 snlib:verb/actions
+                 snlib:verb/actions, snlib:verb/ack, snlib:verb/allowlist_req,
+                 snlib:verb/allowlist
 ```
 
 ## 13. Deferred items with an explicit trigger

@@ -28,6 +28,7 @@ import com.sn.lib.bridge.wire.HelloMsg;
 import com.sn.lib.bridge.wire.HmacSigner;
 import com.sn.lib.bridge.wire.NackMsg;
 import com.sn.lib.bridge.wire.NackReason;
+import com.sn.lib.bridge.wire.SnNackException;
 import com.sn.lib.bridge.wire.SnWireException;
 import com.sn.lib.bridge.wire.SnWireType;
 import com.sn.lib.bridge.wire.UnknownWireIdException;
@@ -96,6 +97,7 @@ public final class ProxyChannelCore {
     private final WireTypeRegistry registry = new WireTypeRegistry();
     private final Map<String, RespondEntry> responders = new HashMap<>(8);
     private final Map<UUID, Session> sessions = new HashMap<>(32);
+    private final Map<Integer, PendingRequest> requests = new HashMap<>(8);
     private final Map<UUID, ChunkReassembler> handshakeReassemblers = new HashMap<>(8);
     private final ArrayDeque<QueuedSend> queue = new ArrayDeque<>();
     private final BridgeCounters counters = new BridgeCounters();
@@ -209,7 +211,55 @@ public final class ProxyChannelCore {
             return future;
         }
         long ttl = ttlMillis < 0 ? defaultTtlMillis : ttlMillis;
-        enqueue(new QueuedSend(serverName, type.wireId(), body, clock.getAsLong() + ttl, future));
+        enqueue(new QueuedSend(serverName, type.wireId(), body, clock.getAsLong() + ttl, future,
+                null));
+        return future;
+    }
+
+    /**
+     * Request/response toward one backend server: correlated by msgId + response flag,
+     * bounded by {@code timeoutMillis} (which also caps the queue wait while the server
+     * has no session). Completes exceptionally on NACK or timeout.
+     */
+    public synchronized <T, R> CompletableFuture<Object> request(String serverName,
+            SnWireType<T> requestType, T request, SnWireType<R> responseType,
+            long timeoutMillis) {
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        if (closed) {
+            future.completeExceptionally(new SnWireException("channel released (shutdown)"));
+            return future;
+        }
+        if (signer == null) {
+            future.completeExceptionally(new SnWireException("bridge has no HMAC secret configured"));
+            return future;
+        }
+        byte[] body = requestType.encodeMessage(request);
+        long deadline = clock.getAsLong() + timeoutMillis;
+        UUID carrier = pickCarrierOn(serverName);
+        if (carrier != null) {
+            int msgId = msgIds.getAsInt();
+            requests.put(msgId, new PendingRequest(responseType.wireId(), future, deadline));
+            Session session = sessions.get(carrier);
+            if (deliverFrames(carrier, serverName, body, msgId, session.sessionNonce, false)) {
+                counters.sent++;
+            } else {
+                requests.remove(msgId);
+                counters.expired++;
+                future.completeExceptionally(new SnWireException(
+                        "backend connection lost while sending the request"));
+            }
+            return future;
+        }
+        CompletableFuture<SnDelivery> sendFuture = new CompletableFuture<>();
+        PendingRequest pending = new PendingRequest(responseType.wireId(), future, deadline);
+        enqueue(new QueuedSend(serverName, requestType.wireId(), body, deadline, sendFuture,
+                pending));
+        sendFuture.thenAccept(delivery -> {
+            if (!delivery.ok() && !future.isDone()) {
+                future.completeExceptionally(new SnWireException(
+                        "request expired in queue: " + delivery.detail()));
+            }
+        });
         return future;
     }
 
@@ -291,7 +341,7 @@ public final class ProxyChannelCore {
         }
     }
 
-    /** Periodic sweep: expires queued sends; completions run OUTSIDE the monitor. */
+    /** Periodic sweep: expires queued sends and request timeouts; completions run OUTSIDE the monitor. */
     public void sweep() {
         List<QueuedSend> expired = collectExpired();
         if (expired != null) {
@@ -299,6 +349,13 @@ public final class ProxyChannelCore {
                 entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
                         "expired in queue: no session on '" + entry.serverName + "' ("
                                 + entry.wireId + ")"));
+            }
+        }
+        List<PendingRequest> timedOut = collectTimedOutRequests();
+        if (timedOut != null) {
+            for (PendingRequest pending : timedOut) {
+                pending.future.completeExceptionally(new SnWireException(
+                        "request got no backend response (timeout)"));
             }
         }
     }
@@ -320,18 +377,42 @@ public final class ProxyChannelCore {
         return expired;
     }
 
+    /** Times out in-flight requests; completions run OUTSIDE the monitor via sweep(). */
+    private synchronized @Nullable List<PendingRequest> collectTimedOutRequests() {
+        long now = clock.getAsLong();
+        List<PendingRequest> timedOut = null;
+        for (Iterator<Map.Entry<Integer, PendingRequest>> it = requests.entrySet().iterator();
+                it.hasNext();) {
+            PendingRequest pending = it.next().getValue();
+            if (now >= pending.deadline) {
+                it.remove();
+                if (timedOut == null) {
+                    timedOut = new ArrayList<>(4);
+                }
+                timedOut.add(pending);
+            }
+        }
+        return timedOut;
+    }
+
     /** Terminal teardown; completions run OUTSIDE the monitor. */
     public void teardown() {
         List<QueuedSend> drained;
+        List<PendingRequest> drainedRequests;
         synchronized (this) {
             closed = true;
             drained = List.copyOf(queue);
             queue.clear();
+            drainedRequests = List.copyOf(requests.values());
+            requests.clear();
             sessions.clear();
             handshakeReassemblers.clear();
         }
         for (QueuedSend entry : drained) {
             entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "channel shutdown"));
+        }
+        for (PendingRequest pending : drainedRequests) {
+            pending.future.completeExceptionally(new SnWireException("channel shutdown"));
         }
     }
 
@@ -424,14 +505,35 @@ public final class ProxyChannelCore {
         }
         if (message instanceof NackMsg nack) {
             counters.nacksReceived++;
+            PendingRequest pending = requests.remove(nack.refMsgId());
+            if (pending != null) {
+                post.add(() -> pending.future.completeExceptionally(new SnNackException(
+                        nack.reason(), "backend NACK (" + nack.reason() + "): " + nack.detail())));
+            }
             log.warn("[" + namespace + "] NACK " + nack.reason() + " from '" + session.serverName
                     + "' for '" + nack.refWireId() + "': " + nack.detail());
             return;
         }
-        if (message instanceof HeartbeatMsg heartbeat) {
-            deliverFrames(carrier, session.serverName, HeartbeatMsg.TYPE.encodeMessage(heartbeat),
-                    msgId, session.sessionNonce, true);
-            return;
+        if (message instanceof HeartbeatMsg) {
+            // Echo ONLY a fresh ping (never a response): re-echoing a response-flagged
+            // heartbeat with no pending match would loop forever between the two sides.
+            // A response heartbeat falls through to the correlation block below.
+            if (!isResponse) {
+                deliverFrames(carrier, session.serverName,
+                        HeartbeatMsg.TYPE.encodeMessage((HeartbeatMsg) message), msgId,
+                        session.sessionNonce, true);
+                return;
+            }
+        }
+        // Correlation REQUIRES the response flag (a push with a colliding msgId must
+        // never be swallowed); completion is consumer-visible, so it runs post-lock
+        if (isResponse) {
+            PendingRequest pending = requests.get(msgId);
+            if (pending != null && pending.responseWireId.equals(decoded.type().wireId())) {
+                requests.remove(msgId);
+                post.add(() -> pending.future.complete(message));
+            }
+            return; // a response with no matching pending is dropped, never re-echoed
         }
         RespondEntry responderEntry = responders.get(decoded.type().wireId());
         if (responderEntry != null) {
@@ -495,7 +597,20 @@ public final class ProxyChannelCore {
             }
             it.remove();
             SnDelivery delivery;
-            if (deliverFrames(carrier, serverName, entry.body, msgIds.getAsInt(),
+            if (entry.request != null) {
+                int msgId = msgIds.getAsInt();
+                requests.put(msgId, entry.request);
+                if (deliverFrames(carrier, serverName, entry.body, msgId,
+                        sessions.get(carrier).sessionNonce, false)) {
+                    counters.sent++;
+                    delivery = SnDelivery.sent();
+                } else {
+                    requests.remove(msgId);
+                    counters.expired++;
+                    delivery = SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
+                            "carrier disconnected during the flush");
+                }
+            } else if (deliverFrames(carrier, serverName, entry.body, msgIds.getAsInt(),
                     sessions.get(carrier).sessionNonce, false)) {
                 counters.sent++;
                 delivery = SnDelivery.sent();
@@ -573,7 +688,11 @@ public final class ProxyChannelCore {
     }
 
     private record QueuedSend(String serverName, String wireId, byte[] body, long expiresAt,
-            CompletableFuture<SnDelivery> future) {
+            CompletableFuture<SnDelivery> future, @Nullable PendingRequest request) {
+    }
+
+    private record PendingRequest(String responseWireId, CompletableFuture<Object> future,
+            long deadline) {
     }
 
     private static final class Session {

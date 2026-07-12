@@ -69,6 +69,15 @@ public final class SnProxy {
         return channel;
     }
 
+    /**
+     * Tier 2 verbs: generic actions SnLib runs on a target backend (console, message,
+     * title, sound, bossbar, actions), so a proxy-only plugin needs no Paper jar. No
+     * namespace claim required; the verbs channel is served by SnLib itself.
+     */
+    public static SnVerbs verbs() {
+        return new SnVerbs(ProxyBridgeRuntime.get());
+    }
+
     /** Aggregated per-backend status table (log it or expose it in a plugin command). */
     public static String statusReport() {
         ProxyBridgeRuntime runtime = ProxyBridgeRuntime.live();

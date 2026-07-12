@@ -27,7 +27,10 @@ class WireIdLedgerTest {
 
     /** Every SnWireType shipped by the wire core; EXTEND this list with each new type. */
     private static final List<SnWireType<?>> SHIPPED = List.of(
-            HelloMsg.TYPE, HelloAckMsg.TYPE, NackMsg.TYPE, HeartbeatMsg.TYPE);
+            HelloMsg.TYPE, HelloAckMsg.TYPE, NackMsg.TYPE, HeartbeatMsg.TYPE,
+            Verbs.Console.TYPE, Verbs.Message.TYPE, Verbs.Title.TYPE, Verbs.Actionbar.TYPE,
+            Verbs.Sound.TYPE, Verbs.Bossbar.TYPE, Verbs.Actions.TYPE, Verbs.Ack.TYPE,
+            Verbs.AllowlistReq.TYPE, Verbs.Allowlist.TYPE);
 
     @Test
     void ledgerIsDuplicateFreeAndCoversEveryShippedType() throws IOException {

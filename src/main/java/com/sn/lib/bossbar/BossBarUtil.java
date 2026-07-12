@@ -52,6 +52,11 @@ public final class BossBarUtil {
         return new Builder(this, id);
     }
 
+    /** True when a bar is registered under {@code id}; never WARNs (unlike a get()). */
+    public boolean exists(String id) {
+        return byId.containsKey(id);
+    }
+
     /** Shows the bar to the viewer; unknown ids WARN once and no-op. */
     public void show(Player viewer, String id) {
         BarEntry entry = get(id);

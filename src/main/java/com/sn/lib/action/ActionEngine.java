@@ -143,6 +143,47 @@ public final class ActionEngine {
     }
 
     /**
+     * Resolves the effective (terminal) tag of each action line after stripping leading
+     * guard tags, WITHOUT running or evaluating anything. A line with no leading
+     * {@code [tag]} resolves to {@code "message"}. Tags are lowercased, matching the
+     * handler keys. Used to gate an untrusted action list before running it (the
+     * SnBridge {@code actions} verb screens these against a safe set).
+     */
+    public List<String> effectiveTags(List<String> actions) {
+        List<String> tags = new ArrayList<>();
+        if (actions == null) {
+            return tags;
+        }
+        for (String raw : actions) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            tags.add(terminalTag(raw));
+        }
+        return tags;
+    }
+
+    /**
+     * Effective tag of one line after stripping leading guard tags (pure; no Bukkit). A
+     * line with no leading {@code [tag]} resolves to {@code "message"}. Package-visible
+     * so the security gate of the SnBridge actions verb can be unit-tested.
+     */
+    static String terminalTag(String raw) {
+        String work = raw.trim();
+        Head head = head(work);
+        while (head != null && isGuard(head.tag())) {
+            work = head.arg();
+            head = head(work);
+        }
+        return head == null ? "message" : head.tag();
+    }
+
+    /** True when {@code tag} has a registered handler (built-in or custom). */
+    public boolean hasHandler(String tag) {
+        return handlers.containsKey(normalizeTag(tag));
+    }
+
+    /**
      * Registers a custom action under {@code tag} (with or without brackets, case
      * insensitive), replacing any previous handler including a built-in.
      */
