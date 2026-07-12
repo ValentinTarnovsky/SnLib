@@ -17,8 +17,10 @@ msgset per plugin     1 per proxy/paper pair (travels with the plugin's jars)
 ```
 
 The HELLO handshake negotiates the common minimum per (backend, namespace). A mixed fleet does
-NOT break: it degrades with a visible typed result (`UNSUPPORTED_MSGSET`,
-`UNSUPPORTED_AT_DESTINATION`).
+NOT break: msgset differences are absorbed by additive decoding (an older side just skips
+trailing fields a newer emitter added; a newer decoder defaults fields an older emitter never
+sent), logged as one `log.warn` ("mixed fleet, additive fields cover it"), not rejected. Verbs
+on an outdated backend answer the typed `UNSUPPORTED_AT_DESTINATION` instead.
 What WOULD be broken: silence. If there is silence, something is wrong (see section 5).
 
 ## 2. Hard deploy rules (NEVER violate)
@@ -28,7 +30,7 @@ What WOULD be broken: silence. If there is silence, something is wrong (see sect
 2. **Never** release a proxy plugin that REQUIRES (hard-requires, without graceful degradation)
    a msgset or verb above the floor of the backend fleet it runs on. The transient mixed-msgset
    window that rule 4 produces with staggered restarts is EXPECTED and covered: HELLO negotiates
-   and sends resolve as a typed `UNSUPPORTED_MSGSET` while it lasts.
+   and additive decoding keeps both sides working while it lasts (see section 1).
 3. **Never** roll back SnLib on a backend below the floor of verbs/msgsets that the proxy
    plugins already use (it silently strips capabilities from other plugins).
 4. The proxy/paper pair of a plugin (e.g. SnCredits velocity + its paper consumer) deploys
@@ -55,25 +57,31 @@ What WOULD be broken: silence. If there is silence, something is wrong (see sect
 | Proxy | `/snlibv status` | aggregated table per backend: frame, msgset, state, queue, drops |
 | Proxy | `/snlibv allowlist-audit` | diff of the console verb's effective allowlists across backends |
 
-NACKs (denied command, unsupported verb, old msgset) show up rate-limited in the proxy log:
-a single place to look at, not 8 consoles.
+Wire-level NACKs (unknown wireId, malformed frame, a responder that threw) show up rate-limited
+in the log of the side that receives them: a single place to look at, not 8 consoles. An
+allowlist/actions denial is NOT a NACK: it resolves as `DENIED_BY_ALLOWLIST` on the verb call's
+own future, so the CALLING plugin must log it if it wants visibility.
 
 ## 5. "A message is not arriving" checklist
 
 In order:
 
-1. **Is there a handshake?** `/snlibv status`. If the backend shows no handshake:
+1. **Is there a handshake?** `/snlibv status`. The command lists only backends with a live
+   session; a backend with none is simply ABSENT from the table (there is no explicit
+   "no handshake" row). If a backend you expect is missing from the list:
    - Empty backend? The handshake needs a carrier player. No players, no channel. Period.
    - SnLib installed and started on that backend? (`/snlib version` on its console)
-   - SnLib version too old for the frame? The status says it explicitly.
+   - SnLib version too old for the frame? Check that backend's own `/snlib bridge status`.
 2. **WARMING state?** The backend just restarted and the first player has not joined yet, or
    joined moments ago and the resync is in progress. Wait for the first join; the plugin
    decides what to show meanwhile (that is the consumer's responsibility, not the transport's).
 3. **Send result?** Every send returns a terminal result from the single `SnDeliveryResult`
-   enum. Look in the proxy plugin's log for:
+   enum. Look at what the CALLING plugin logged (SnLib does not auto-log a typed result, only
+   NACKs and warnings):
    `EXPIRED_TTL` (expired in queue: no carrier, no handshake, or carrier dropped mid-chunk),
-   `UNSUPPORTED_MSGSET` (update SnLib or the consumer on that backend),
-   `UNSUPPORTED_AT_DESTINATION` (verbs only: that backend's SnLib does not know the verb),
+   `UNSUPPORTED_AT_DESTINATION` (verbs only: that backend's SnLib does not know the verb -
+   `UNSUPPORTED_MSGSET` exists in the enum but is reserved for a future non-additive escape
+   hatch; a msgset mismatch today is absorbed silently, see section 1),
    `DENIED_BY_ALLOWLIST` (verbs only, see point 6), `UNKNOWN_SERVER` (typo in the name).
 4. **HMAC drops?** `/snlib bridge status` on the backend. Invalid HMAC counter going up =
    the forwarding secret differs between `velocity.toml` and that backend's `paper-global.yml`
@@ -95,8 +103,9 @@ In order:
   diffs the whole fleet is deferred (see SNLIB-DOCS 19.8). sn-deploy's yml merge PRESERVES local
   divergences: without an audit, a command allowed on Gens and forgotten on Work is a ghost
   incident.
-- A rejection shows up as a NACK on the proxy with the pattern that failed. It is not a bridge
-  bug: it is the allowlist working.
+- A rejection resolves `DENIED_BY_ALLOWLIST` on the verb call's own future (log it on the
+  calling plugin's side if you want visibility beyond the audit). It is not a bridge bug: it is
+  the allowlist working.
 
 ## 7. Forwarding secret rotation
 
@@ -140,9 +149,9 @@ NOT re-read them; a server RESTART is required for those to take effect.
 | Situation | Behavior |
 |-----------|----------------|
 | Proxy 1.2.1, backend 1.2.0, compatible frames | Negotiates the minimum; new frame features are not used with that backend |
-| Proxy requires msgset 3, backend consumer on msgset 2 | Typed `UNSUPPORTED_MSGSET` on every send + NACK; nothing explodes |
+| Proxy at msgset 3, backend consumer on msgset 2 | Absorbed by additive decode/encode (trailing new fields skipped, missing fields defaulted) + one `log.warn`; nothing explodes, no typed rejection |
 | New proxy verb, old SnLib on the backend | `UNSUPPORTED_AT_DESTINATION`; update that backend's SnLib |
 | Old proxy plugin (legacy channel) + new consumer | Protocol silence; the NEW side logs "outdated counterpart" via `detectLegacy` (the old side is old code: it stays mute) |
-| SnLib missing on a backend | No handshake; visible in `/snlibv status` |
+| SnLib missing on a backend | That backend is simply absent from `/snlibv status` (no explicit "no handshake" entry) |
 | Hacked client sends frames to the channel | Invalid HMAC -> discard + counter |
 | Authentic frame captured and reflected to the other direction | Receiver direction check in decode -> discard + its own counter |

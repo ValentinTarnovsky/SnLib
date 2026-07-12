@@ -5,7 +5,7 @@
 # it is NEVER obfuscated nor shaded into the consumer. Declare it as -libraryjars
 # just like paper-api. Adjust the path to the local .m2 or to the release jar.
 
--libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar
+-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.2.0/snlib-1.2.0.jar
 
 # SnLib does not travel inside the consumer jar: silence any warning
 # about references to classes of the lib.

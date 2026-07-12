@@ -1,9 +1,21 @@
-# SnLib v1.1.0 - Technical documentation of the current state
+# SnLib v1.2.0 - Technical documentation of the current state
 
-> Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11 for the 1.1.0 release.
-> Coverage: every class under `src/main/java/com/sn/lib` (121 java files), resources, build and tests (21 suites).
+> Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11 for
+> the 1.1.0 release, and again on 2026-07-12 for the 1.2.0 release (SnBridge, section 19).
+> Coverage: every class under `src/main/java/com/sn/lib` (165 java files), resources, build and
+> tests (37 suites, 323 tests).
 
-**Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins: a single `SnLib-1.1.0.jar` in `plugins/`, consumers with `depend: [SnLib]` and provided scope. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ with WARN. 204 green JUnit tests across 21 suites; smoke gate green on Paper 1.21.8 and 1.20.4 (executed for v1.0.0 and re-executed for v1.1.0 with the 1.1.0 jar: `/snlib version` answers 1.1.0 + API level 2 on both versions). The 1.1.0 release is 100% additive over 1.0.0 (API level 2, japicmp gate with the 1.0.0 baseline active); the 1.0.0 smoke closed 38/38 steps across 46 atomic commits.
+**Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins, now shipped as a
+DUAL-PLATFORM jar: the SAME `SnLib-1.2.0.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
+provided scope) AND a Velocity plugin (`velocity-plugin.json`, entry `SnLibVelocity`), so it hosts
+SnBridge's proxy side on the proxy and its backend side on every Paper server. Java 21, floor
+1.20.4, target 1.21.8, forward 1.22+ with WARN. 323 green JUnit tests across 37 suites; smoke gate
+green on Paper 1.21.8 and 1.20.4 (executed for v1.0.0, re-executed for v1.1.0 and v1.2.0 with each
+release's jar: `/snlib version` answers the release version + API level 2 on both server versions).
+The 1.1.0 and 1.2.0 releases are 100% additive over 1.0.0 for the frozen API (API level 2, japicmp
+gate with the 1.0.0 baseline active); SnBridge (section 19) is `@SnExperimental` and stays OUTSIDE
+that gate and outside API level 2 until a real migration stress-tests it and it freezes (deferred
+indefinitely, see section 19.8). The 1.0.0 smoke closed 38/38 steps across 46 atomic commits.
 
 ## Index
 
@@ -3085,11 +3097,11 @@ There are no TODO/FIXME/HACK markers in this module's code. Limitations document
 
 ## 16. Build, tests, golden specs and TODOs
 
-This module closes the documentation with the infrastructure that sustains the lib: the `pom.xml` (exact dependencies, internal shading with relocations and deliberate exclusions, an additive-only API gate with japicmp ACTIVE against the 1.0.0 baseline, and a manifest with Sn metadata), the five `docs/` files that act as golden specs and templates for consumers (the menu schema, the physical item schema, the selection wand spec, the consumer pom template and the consumer ProGuard rules), the 21 JUnit 5 suites of `src/test/java/com/sn/lib/` (204 tests, all green, verified with `mvn test` via surefire) and the complete pending-work inventory: what the TODO/FIXME/placeholder grep over the code yields plus the known handoff pendings (1.20.4 degradation, repo/release, pilots and canary; the bStats one was resolved in v1.1 with the real service id 32541). It also records the smoke gate result on Paper 1.21.8 build 60 and 1.20.4 build 499: green on both for the 1.0.0 release as well as the 1.1.0 one (gate re-run with the `SnLib-1.1.0.jar` in Step 22 of the v1.1 plan).
+This module closes the documentation with the infrastructure that sustains the lib: the `pom.xml` (exact dependencies, internal shading with relocations and deliberate exclusions, an additive-only API gate with japicmp ACTIVE against the 1.0.0 baseline, and a manifest with Sn metadata), the six `docs/` files that act as golden specs and templates for consumers (the menu schema, the physical item schema, the selection wand spec, the SnBridge config schema in `bridge-example.yml`, the consumer pom template and the consumer ProGuard rules), the 37 JUnit 5 suites of `src/test/java/com/sn/lib/` (323 tests, all green, verified with `mvn test` via surefire) and the complete pending-work inventory: what the TODO/FIXME/placeholder grep over the code yields plus the known handoff pendings (1.20.4 degradation, repo/release, pilots and canary; the bStats one was resolved in v1.1 with the real service id 32541). It also records the smoke gate result on Paper 1.21.8 build 60 and 1.20.4 build 499: green on both for the 1.0.0, 1.1.0 and 1.2.0 releases (gate re-run with each release's jar, most recently `SnLib-1.2.0.jar`).
 
 ### pom.xml (SnLib build)
 `pom.xml`
-Coordinates `com.sn:snlib:1.1.0`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=2`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (2 since the 1.1.0 release; history in SnApi's Javadoc).
+Coordinates `com.sn:snlib:1.2.0`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=2`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (2 since the 1.1.0 release, unchanged in 1.2.0 since SnBridge is experimental and outside the level; history in SnApi's Javadoc).
 
 Declared repositories:
 
@@ -3116,7 +3128,7 @@ Exact dependencies:
 
 Build:
 
-- `finalName`: `SnLib-${project.version}` (produces `SnLib-1.1.0.jar`).
+- `finalName`: `SnLib-${project.version}` (produces `SnLib-1.2.0.jar`).
 - Resources with `filtering=true` over `src/main/resources` (Maven property expansion in `plugin.yml`/`config.yml`).
 - `maven-compiler-plugin:3.13.0` and `maven-surefire-plugin:3.2.5` without extra configuration.
 - `maven-jar-plugin:3.4.1` - a manifest with two custom entries: `Sn-Lib-Version: ${project.version}` and `Sn-Api-Level: ${sn.api.level}`.
@@ -3129,7 +3141,7 @@ Build:
   - Explicit `oldVersion`: compares against `com.sn:snlib:1.0.0` (jar), the baseline installed into the local `.m2` by the 1.0.0 release.
   - `ignoreMissingOldVersion=false`: a missing baseline = a broken build (no more silent skip; until 1.0.0 the gate was vacuous because no previous version existed).
   - `ignoreMissingClasses=true`: the shaded jar includes an unrelocated mysql-connector-j whose X DevAPI classes reference protobuf (excluded from the shade on purpose); japicmp must not demand that classpath.
-  - Analysis excludes: `com.sn.lib.**.internal.**`, `com.sn.lib.libs.**` (relocated), and the shaded-but-unrelocated ones that are not SnLib API: `com.mysql.**`, `org.sqlite.**`, `org.slf4j.**`, `google.protobuf.**`.
+  - Analysis excludes: `com.sn.lib.**.internal.**`, `com.sn.lib.libs.**` (relocated); `com.sn.lib.bridge.**` and `com.sn.lib.velocity.**` (SnBridge is `@SnExperimental` and stays outside the gate until a real migration stress-tests it and it freezes - these two excludes are removed and `SnApi.LEVEL` bumps on that freeze); and the shaded-but-unrelocated ones that are not SnLib API: `com.mysql.**`, `org.sqlite.**`, `org.slf4j.**`, `google.protobuf.**`.
   - `onlyModified=true`, `breakBuildOnBinaryIncompatibleModifications=true`, `breakBuildOnSourceIncompatibleModifications=false`: it breaks the build only on BINARY incompatibility (the additive-only rule), tolerating source incompatibilities.
 
 #### Notes and gotchas
@@ -3176,7 +3188,7 @@ Golden spec of the PHYSICAL items schema (Item Lib): items given to players (inv
 - Resolution of `com.sn:snlib`: 1) publish SnLib to the local `.m2` with `mvn install -f <path>/SnLib/pom.xml`; 2) JitPack is NOT supported (the SnLib repo is private and JitPack does not build private repos): the ONLY resolution path is the local `.m2`; 3) at runtime NOTHING of SnLib shades into the consumer: the server loads `SnLib.jar` as a standalone plugin in `plugins/` and the consumer declares `depend: [SnLib]` in its plugin.yml. That is why the scope is `provided` and the template does NOT include maven-shade-plugin for the lib; if the consumer shades its own dependencies, NEVER include `com.sn:snlib` in the shade.
 - The consumer's minimal `plugin.yml` block: `name`, `main`, `version`, `api-version: '1.20'`, `depend: [SnLib]`, the main command and the `myplugin.admin` permission tree (default op) with the child `myplugin.admin.reload`.
 - The consumer's main class (the only init path: extending `SnPlugin`), with the contract's three signatures: `protected int requiredApiLevel()` returning `SnApi.LEVEL`, `protected SnSpec buildSpec()` (example: `SnSpec.builder().config("config.yml").lang().guis().build()`) and `protected void onInnerEnable()` where commands, guis, items, db, etc register on the Sn context.
-- The pom itself: `com.sn:myplugin:1.0.0`, Java 21, the papermc repo, dependencies `com.sn:snlib:1.1.0` (provided, from the local .m2; at runtime `SnLib.jar` in `plugins/` provides it) and `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), and only `maven-compiler-plugin:3.13.0` in build (no shade).
+- The pom itself: `com.sn:myplugin:1.0.0`, Java 21, the papermc repo, dependencies `com.sn:snlib:1.2.0` (provided, from the local .m2; at runtime `SnLib.jar` in `plugins/` provides it) and `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), and only `maven-compiler-plugin:3.13.0` in build (no shade).
 
 ### docs/snlib-consumer-rules.pro (consumer ProGuard rules)
 `docs/snlib-consumer-rules.pro`

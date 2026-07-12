@@ -1,7 +1,8 @@
 # SnBridge - Design specification (SnLib v1.2)
 
-> Status: Phases A-D IMPLEMENTED (wire core, Paper side, Velocity side, verbs); the
-> remaining work is docs/gate, migrations (SnKeyAll, SnCredits) and the API freeze.
+> Status: Phases A-E IMPLEMENTED (wire core, Paper side, Velocity side, verbs, docs/gate);
+> migrations (SnKeyAll, SnCredits) are deferred indefinitely by owner decision and the API
+> freeze (Phase H) will not happen without a real migration to stress-test it first.
 > This document is the design spec approved on 2026-07-11;
 > it gets executed whenever the owner decides. It does not describe existing code (that is what
 > SNLIB-DOCS.md is for).
@@ -90,7 +91,7 @@ com.sn.lib.bridge.internal   Paper plugin-message transport, carrier queue, reas
                              ListenerHub, new numbered step in Sn.shutdown()
                              (steps 0-13 today; the bridge adds step 14).
 com.sn.lib.velocity          Velocity bootstrap (SnLibVelocity, @Plugin id=snlib) + public
-                             proxy API: SnProxy.init(...), SnProxyBridge, client verbs.
+                             proxy API: SnProxy.channel(...)/SnProxyChannel, SnVerbs.
 com.sn.lib.velocity.internal Velocity transport, channel registration, per-backend queue,
                              fleet state aggregation.
 ```
@@ -314,7 +315,7 @@ public final class SnCreditsBridge extends SnPlugin {
     ch.detectLegacy("sncredits:main");            // migration window: logs "old proxy"
 
     ch.send(player, new ShopClick(player.getUniqueId(), cat, item));
-    ch.request(RequestConfig.INSTANCE, SyncConfig.TYPE, Duration.ofSeconds(5))
+    ch.request(RequestConfig.TYPE, RequestConfig.INSTANCE, SyncConfig.TYPE, Duration.ofSeconds(5))
       .thenSync(cfg -> configCache.accept(cfg))
       .exceptionally(t -> { getLogger().warning("config timeout"); return null; });
   }
@@ -450,19 +451,27 @@ included; v1.1 took 22 steps). During that span the other plugins receive no mai
 
 - **Phase 0 (done)**: spec + runbook written BEFORE implementing (this doc + SNBRIDGE-RUNBOOK.md).
   Forcing function: if the runbook is embarrassing, the design is wrong.
-- **Phase A - wire core** (1.5-2 wk): complete `bridge.wire` (SnBuf, frame, HMAC, chunking,
+- **Phase A - wire core (done)**: complete `bridge.wire` (SnBuf, frame, HMAC, chunking,
   HELLO, codecs) + selfTest + golden fixtures + ledger + platform purity test.
-- **Phase B - Paper side** (1 wk): `sn.bridge()`, tenancy/teardown, carrier queue with TTL/cap/
+- **Phase B - Paper side (done)**: `sn.bridge()`, tenancy/teardown, carrier queue with TTL/cap/
   counters, WARMING/READY, `detectLegacy`, `/snlib bridge status`, new step in `Sn.shutdown()`.
-- **Phase C - Velocity bootstrap** (1 wk): `SnLibVelocity` + `velocity-plugin.json`, `SnProxy.init`,
-  proxy-side typed channels, per-backend queue, `capabilities()`, `statusReport()`, Velocity smoke.
-- **Phase D - verbs** (1-1.5 wk): console+anchored allowlist+rate limit+NACKs, message/title/
-  actionbar/sound, bossbar, actions with a versioned vocabulary, `allowlist-audit`.
-- **Phase E - docs and gate** (0.5-1 wk): SnBridge section in SNLIB-DOCS while implementing,
-  golden spec `docs/bridge-example.yml`, full suite + smoke 1.20.4/1.21.8 + Velocity.
-- **Phase F - SnKeyAll migration** (2-4 days).
-- **Phase G - SnCredits migration** (4-7 days).
-- **Phase H - freeze**: API level 3, japicmp baseline, final 1.2.0 release.
+- **Phase C - Velocity bootstrap (done)**: `SnLibVelocity` + `velocity-plugin.json`,
+  `SnProxy.channel(...)`, proxy-side typed channels, per-backend queue, `capabilities()`,
+  `statusReport()`, Velocity smoke.
+- **Phase D - verbs (done)**: console+anchored allowlist+rate limit+NACKs, message/title/
+  actionbar/sound, bossbar, actions, fail-closed screening of dangerous action tags,
+  the programmatic `SnVerbs.allowlist()` audit (a dedicated `/snlibv allowlist-audit`
+  subcommand is deferred, see SNLIB-DOCS 19.8).
+- **Phase E - docs and gate (done)**: SnBridge section 19 in SNLIB-DOCS, golden spec
+  `docs/bridge-example.yml`, full suite + shade + japicmp, plus the defect fixes surfaced by
+  an independent final-check (two exhaustive Paper/Velocity test plugins).
+- **Phase F - SnKeyAll migration**: deferred indefinitely by owner decision (no plugin
+  migration scheduled).
+- **Phase G - SnCredits migration**: deferred indefinitely by owner decision.
+- **Phase H - freeze**: API level 3, japicmp baseline, final release. NOT scheduled: the
+  spec's own gate requires a real migration (F or G) to stress-test the API before it
+  freezes forever under japicmp; skipping F/G means SnBridge stays `@SnExperimental`
+  indefinitely, by design, until a real migration happens.
 
 ## 16. Resolved and remaining decisions
 
