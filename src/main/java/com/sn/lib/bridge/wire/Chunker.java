@@ -20,8 +20,8 @@ public final class Chunker {
      * @throws SnWireException when the body would need more than 65535 chunks (a payload
      *         that absurd is a bug upstream, not something to ship in pieces)
      */
-    public static List<byte[]> split(byte[] fullBody, boolean toProxy, int msgId,
-            HmacSigner signer, long sessionNonce) {
+    public static List<byte[]> split(byte[] fullBody, boolean toProxy, boolean response,
+            int msgId, HmacSigner signer, long sessionNonce) {
         if (fullBody == null || fullBody.length == 0) {
             throw new SnWireException("Body vacio: no hay nada que fragmentar");
         }
@@ -36,7 +36,7 @@ public final class Chunker {
         int offset = 0;
         for (int index = 0; index < chunkCount; index++) {
             int len = Math.min(maxChunk, fullBody.length - offset);
-            frames.add(FrameCodec.encode(msgId, index, chunkCount, toProxy,
+            frames.add(FrameCodec.encode(msgId, index, chunkCount, toProxy, response,
                     fullBody, offset, len, signer, sessionNonce));
             offset += len;
         }

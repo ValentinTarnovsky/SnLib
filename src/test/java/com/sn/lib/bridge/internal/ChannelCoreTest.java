@@ -155,7 +155,14 @@ class ChannelCoreTest {
 
     /** Feeds one proxy-to-backend message into the core. */
     private void feed(UUID carrier, byte[] body, int msgId, long nonce) {
-        for (byte[] frame : Chunker.split(body, false, msgId, signer, nonce)) {
+        for (byte[] frame : Chunker.split(body, false, false, msgId, signer, nonce)) {
+            core.onFrame(carrier, frame);
+        }
+    }
+
+    /** Feeds a proxy RESPONSE (header flag set) correlating to a request msgId. */
+    private void feedResponse(UUID carrier, byte[] body, int msgId, long nonce) {
+        for (byte[] frame : Chunker.split(body, false, true, msgId, signer, nonce)) {
             core.onFrame(carrier, frame);
         }
     }
@@ -238,10 +245,27 @@ class ChannelCoreTest {
         List<ProxyView> seen = proxyDecode(CARRIER_A, before);
         int requestMsgId = seen.get(seen.size() - 1).msgId();
 
-        feed(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("aca-tenes")),
+        feedResponse(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("aca-tenes")),
                 requestMsgId, proxyNonces.get(CARRIER_A));
         assertEquals(new RespMsg("aca-tenes"), future.join());
         assertTrue(dispatched.isEmpty(), "la respuesta correlacionada no pasa por el handler");
+    }
+
+    @Test
+    void pushCollidingWithARequestMsgIdIsNotSwallowed() {
+        handshake(CARRIER_A);
+        int before = deliveries.size();
+        CompletableFuture<Object> future = core.request(ReqMsg.TYPE, new ReqMsg("config?"),
+                RespMsg.TYPE, 5_000L);
+        int requestMsgId = proxyDecode(CARRIER_A, before).get(0).msgId();
+
+        // Mismo msgId y mismo TIPO que la respuesta esperada, pero SIN flag de response:
+        // es un push independiente y debe despachar al handler, no resolver el request
+        feed(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("push-casual")),
+                requestMsgId, proxyNonces.get(CARRIER_A));
+        assertFalse(future.isDone(), "el request sigue esperando su respuesta real");
+        assertEquals(1, dispatched.size());
+        assertEquals("test:resp", dispatched.get(0).wireId());
     }
 
     @Test
@@ -437,7 +461,7 @@ class ChannelCoreTest {
         }
         assertNotNull(hello);
         byte[] ackBody = HelloAckMsg.TYPE.encodeMessage(new HelloAckMsg(1, 1, "proxy", 7L, Map.of()));
-        for (byte[] frame : Chunker.split(ackBody, false, 9_500, signer, WireProtocol.HANDSHAKE_NONCE)) {
+        for (byte[] frame : Chunker.split(ackBody, false, false, 9_500, signer, WireProtocol.HANDSHAKE_NONCE)) {
             racy.onFrame(CARRIER_A, frame);
         }
         assertEquals(SnBridgeState.READY, racy.state());
@@ -468,3 +492,4 @@ class ChannelCoreTest {
         assertEquals(5, core.remoteMsgset(), "el msgset negociado no cambia");
     }
 }
+

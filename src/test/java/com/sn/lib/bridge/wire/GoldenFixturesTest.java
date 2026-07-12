@@ -67,7 +67,7 @@ class GoldenFixturesTest {
     @Test
     void frameLayoutIsByteStable() {
         byte[] expected = fromHex(FRAME_V1);
-        byte[] actual = FrameCodec.encode(0x0A0B0C0D, 0, 1, false,
+        byte[] actual = FrameCodec.encode(0x0A0B0C0D, 0, 1, false, false,
                 "abc".getBytes(StandardCharsets.UTF_8), 0, 3, FRAME_SIGNER, WireProtocol.HANDSHAKE_NONCE);
         assertArrayEquals(expected, actual, "frame v1");
 
@@ -85,3 +85,4 @@ class GoldenFixturesTest {
         return out;
     }
 }
+

@@ -35,6 +35,11 @@ public final class FrameHeader {
         return (flags & WireProtocol.FLAG_TO_PROXY) != 0;
     }
 
+    /** True when this frame answers the request whose msgId it carries. */
+    public boolean isResponse() {
+        return (flags & WireProtocol.FLAG_RESPONSE) != 0;
+    }
+
     /** Correlation id; unsigned 32-bit carried in an int bit pattern. */
     public int msgId() {
         return msgId;

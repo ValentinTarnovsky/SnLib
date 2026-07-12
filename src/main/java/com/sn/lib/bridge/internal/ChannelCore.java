@@ -350,7 +350,7 @@ public final class ChannelCore {
             sendNack(carrier, session, header.msgId(), "", NackReason.MALFORMED, e.getMessage());
             return;
         }
-        route(carrier, session, header.msgId(), decoded);
+        route(carrier, session, header.msgId(), header.isResponse(), decoded);
     }
 
     // -------------------------------------------------------
@@ -439,7 +439,7 @@ public final class ChannelCore {
     // Internals
     // -------------------------------------------------------
 
-    private void route(UUID carrier, Session session, int msgId,
+    private void route(UUID carrier, Session session, int msgId, boolean isResponse,
             WireTypeRegistry.DecodedMessage decoded) {
         Object message = decoded.message();
         if (message instanceof HelloAckMsg ack) {
@@ -459,21 +459,27 @@ public final class ChannelCore {
         }
         if (message instanceof HeartbeatMsg heartbeat) {
             PendingRequest pending = requests.get(msgId);
-            if (pending != null && pending.responseWireId.equals(HeartbeatMsg.TYPE.wireId())) {
+            if (isResponse && pending != null
+                    && pending.responseWireId.equals(HeartbeatMsg.TYPE.wireId())) {
                 requests.remove(msgId);
                 pending.future.complete(heartbeat);
                 return;
             }
-            // Proxy-initiated ping: echo it back verbatim under the SAME msgId
+            // Proxy-initiated ping: echo it back verbatim under the SAME msgId, marked
+            // as response so it can never be confused with an independent push
             deliverFrames(carrier, HeartbeatMsg.TYPE.encodeMessage(heartbeat), msgId,
-                    session.sessionNonce);
+                    session.sessionNonce, true);
             return;
         }
-        PendingRequest pending = requests.get(msgId);
-        if (pending != null && pending.responseWireId.equals(decoded.type().wireId())) {
-            requests.remove(msgId);
-            pending.future.complete(message);
-            return;
+        // Correlation REQUIRES the response flag: a push whose msgId happens to collide
+        // with an in-flight request id must dispatch normally, never be swallowed
+        if (isResponse) {
+            PendingRequest pending = requests.get(msgId);
+            if (pending != null && pending.responseWireId.equals(decoded.type().wireId())) {
+                requests.remove(msgId);
+                pending.future.complete(message);
+                return;
+            }
         }
         dispatcher.dispatch(decoded.type(), carrier, message);
     }
@@ -560,7 +566,12 @@ public final class ChannelCore {
     }
 
     private boolean deliverFrames(UUID carrier, byte[] body, int msgId, long nonce) {
-        List<byte[]> frames = Chunker.split(body, true, msgId, signer, nonce);
+        return deliverFrames(carrier, body, msgId, nonce, false);
+    }
+
+    private boolean deliverFrames(UUID carrier, byte[] body, int msgId, long nonce,
+            boolean response) {
+        List<byte[]> frames = Chunker.split(body, true, response, msgId, signer, nonce);
         return sink.deliver(carrier, frames);
     }
 

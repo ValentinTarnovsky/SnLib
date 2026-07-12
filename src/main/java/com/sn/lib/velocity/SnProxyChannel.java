@@ -60,7 +60,7 @@ public final class SnProxyChannel {
                         + "' usa el prefijo reservado snlib:");
             }
         }
-        core.registry().register(types);
+        core.registerTypes(types); // bajo el monitor del core: los threads netty lo leen
     }
 
     /** Handler for one message type arriving from any backend. */
@@ -90,7 +90,12 @@ public final class SnProxyChannel {
 
     /** Negotiation data of one backend, or empty while it has no live session. */
     public Optional<ProxyChannelCore.BackendInfo> capabilities(String serverName) {
-        return Optional.ofNullable(core.capabilities(serverName));
+        return Optional.ofNullable(core.capabilities(normalize(serverName)));
+    }
+
+    /** Server names are matched lowercased (Velocity resolves them case-insensitively). */
+    private static String normalize(String serverName) {
+        return serverName.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Messages queued right now waiting for a backend session. */
@@ -132,7 +137,8 @@ public final class SnProxyChannel {
                         SnDeliveryResult.UNKNOWN_SERVER,
                         "'" + serverName + "' no es un server registrado en velocity.toml"));
             }
-            return core.sendToServer(serverName, type, message, opts.ttlMillis());
+            // Normalizado: getServer es case-insensitive pero el core matchea exacto
+            return core.sendToServer(normalize(serverName), type, message, opts.ttlMillis());
         }
     }
 
@@ -145,6 +151,10 @@ public final class SnProxyChannel {
                 return; // sin handler: mensaje de aplicacion ignorado a proposito
             }
             Player player = runtime.proxy().getPlayer(carrier).orElse(null);
+            if (player == null) {
+                return; // el carrier se desconecto en vuelo: el contrato de SnProxySource
+                        // garantiza player no-null, asi que el handler se saltea
+            }
             try {
                 handler.accept(new SnProxySource(player, serverName), message);
             } catch (Throwable t) {
@@ -154,8 +164,11 @@ public final class SnProxyChannel {
         };
     }
 
-    /** Used by SnProxy to build the wrapper set. */
+    /**
+     * Used by SnProxy to build the wrapper set. Concurrent on purpose: on() writes from
+     * the consumer's init thread while netty threads read during dispatch.
+     */
     static Map<String, BiConsumer<SnProxySource, Object>> newHandlerTable() {
-        return new HashMap<>(8);
+        return new java.util.concurrent.ConcurrentHashMap<>(8);
     }
 }

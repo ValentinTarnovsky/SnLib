@@ -26,34 +26,46 @@ import com.sn.lib.velocity.internal.ProxyChannelCore;
 @SnExperimental
 public final class SnProxy {
 
-    /** Claims kept per namespace so a double channel() returns the same wrapper. */
-    private static final Map<String, SnProxyChannel> CHANNELS = new HashMap<>(8);
+    /** Claims kept per namespace: owner identity + wrapper (SnLib classes load once). */
+    private static final Map<String, Claim> CHANNELS = new HashMap<>(8);
+
+    private record Claim(Object owner, SnProxyChannel channel) {
+    }
 
     private SnProxy() {
     }
 
     /**
      * Claims a namespace and returns its typed channel. First-claim-wins across every
-     * proxy plugin; idempotent per namespace (the consumer keeps its own reference, the
-     * ownership check lives in the shared runtime).
+     * proxy plugin: claiming a namespace another plugin instance holds is a hard error
+     * (never silent handler sharing), mirroring the Paper side. Idempotent for the SAME
+     * consumer instance.
      *
-     * @param consumerPlugin the consumer's plugin main instance (for diagnostics)
+     * @param consumerPlugin the consumer's plugin main instance (ownership identity)
      * @param namespace      SAME string the backend side claims: lowercase [a-z0-9_-]+
      * @param msgsetVersion  version of this plugin's message set, negotiated in HELLO
      */
     public static synchronized SnProxyChannel channel(Object consumerPlugin, String namespace,
             int msgsetVersion) {
+        if (consumerPlugin == null) {
+            throw new IllegalArgumentException("consumerPlugin null: pasar la instancia del plugin");
+        }
         validate(namespace);
-        SnProxyChannel existing = CHANNELS.get(namespace);
+        Claim existing = CHANNELS.get(namespace);
         if (existing != null) {
-            return existing;
+            if (existing.owner != consumerPlugin) {
+                throw new IllegalStateException("Namespace de bridge '" + namespace
+                        + "' ya reclamado por " + existing.owner.getClass().getName()
+                        + " (first-claim-wins, elegir otro namespace)");
+            }
+            return existing.channel;
         }
         ProxyBridgeRuntime runtime = ProxyBridgeRuntime.get();
         Map<String, BiConsumer<SnProxySource, Object>> handlers = SnProxyChannel.newHandlerTable();
         ProxyChannelCore core = runtime.claim(namespace, msgsetVersion,
                 SnProxyChannel.dispatcher(runtime, handlers, namespace));
         SnProxyChannel channel = new SnProxyChannel(runtime, core, handlers);
-        CHANNELS.put(namespace, channel);
+        CHANNELS.put(namespace, new Claim(consumerPlugin, channel));
         return channel;
     }
 

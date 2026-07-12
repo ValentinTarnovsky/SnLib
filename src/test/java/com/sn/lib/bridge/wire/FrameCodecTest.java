@@ -17,7 +17,7 @@ class FrameCodecTest {
     private static final byte[] BODY = "cuerpo del mensaje".getBytes(StandardCharsets.UTF_8);
 
     private static byte[] frame(boolean toProxy, long nonce) {
-        return FrameCodec.encode(42, 0, 1, toProxy, BODY, 0, BODY.length, SIGNER, nonce);
+        return FrameCodec.encode(42, 0, 1, toProxy, false, BODY, 0, BODY.length, SIGNER, nonce);
     }
 
     @Test
@@ -104,3 +104,4 @@ class FrameCodecTest {
         assertFalse(HmacSigner.tagsEqual(a, new byte[] {1, 2}));
     }
 }
+

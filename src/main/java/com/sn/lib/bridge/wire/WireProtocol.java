@@ -47,6 +47,14 @@ public final class WireProtocol {
     /** Flags bit0: set = backend to proxy, clear = proxy to backend. */
     public static final int FLAG_TO_PROXY = 0x01;
 
+    /**
+     * Flags bit1: this frame ANSWERS the request whose msgId it carries. Correlation
+     * requires the flag, so a push whose msgId happens to collide with an in-flight
+     * request id can never be swallowed as its response (both sides draw msgIds from
+     * independent counters in the same 32-bit space).
+     */
+    public static final int FLAG_RESPONSE = 0x02;
+
     /** Max body bytes per chunk travelling proxy to backend (serverbound cap ~32KB, margin kept). */
     public static final int MAX_CHUNK_BODY_TO_BACKEND = 24_576;
 
@@ -60,9 +68,9 @@ public final class WireProtocol {
         // Constants only
     }
 
-    /** Flags byte for a frame heading in the given direction (no other flags defined in v1). */
-    public static int flags(boolean toProxy) {
-        return toProxy ? FLAG_TO_PROXY : 0;
+    /** Flags byte for direction plus the optional response marker. */
+    public static int flags(boolean toProxy, boolean response) {
+        return (toProxy ? FLAG_TO_PROXY : 0) | (response ? FLAG_RESPONSE : 0);
     }
 
     /** Max chunk body for the given direction. */

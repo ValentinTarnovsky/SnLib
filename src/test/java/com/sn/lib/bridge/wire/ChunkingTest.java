@@ -33,7 +33,7 @@ class ChunkingTest {
     @Test
     void singleChunkFastPath() {
         byte[] body = randomBody(1000);
-        List<byte[]> frames = Chunker.split(body, false, 7, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 7, SIGNER, 0L);
         assertEquals(1, frames.size());
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
         assertArrayEquals(body, reassemble(frames, r));
@@ -44,7 +44,7 @@ class ChunkingTest {
     void splitsToBackendAtSmallCapAndReassembles() {
         // 100KB in the CAPPED direction (proxy -> backend): the SnCredits config case
         byte[] body = randomBody(100_000);
-        List<byte[]> frames = Chunker.split(body, false, 1, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 1, SIGNER, 0L);
         assertEquals(5, frames.size()); // ceil(100000 / 24576)
         for (byte[] frame : frames) {
             assertEquals(true, frame.length <= WireProtocol.HEADER_LENGTH + WireProtocol.MAX_CHUNK_BODY_TO_BACKEND);
@@ -56,7 +56,7 @@ class ChunkingTest {
     @Test
     void toProxyDirectionUsesBigChunks() {
         byte[] body = randomBody(100_000);
-        List<byte[]> frames = Chunker.split(body, true, 1, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, true, false, 1, SIGNER, 0L);
         assertEquals(1, frames.size()); // fits the ~1MB clientbound budget in one frame
     }
 
@@ -64,8 +64,8 @@ class ChunkingTest {
     void interleavedMessagesReassembleIndependently() {
         byte[] bodyA = randomBody(60_000);
         byte[] bodyB = randomBody(30_000);
-        List<byte[]> framesA = Chunker.split(bodyA, false, 100, SIGNER, 0L);
-        List<byte[]> framesB = Chunker.split(bodyB, false, 200, SIGNER, 0L);
+        List<byte[]> framesA = Chunker.split(bodyA, false, false, 100, SIGNER, 0L);
+        List<byte[]> framesB = Chunker.split(bodyB, false, false, 200, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
 
         // A0, B0, A1, B1(done), A2(done)
@@ -85,7 +85,7 @@ class ChunkingTest {
     @Test
     void outOfOrderChunkKillsTheMessage() {
         byte[] body = randomBody(60_000);
-        List<byte[]> frames = Chunker.split(body, false, 5, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 5, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
         assertNull(feed(r, frames.get(0)));
         assertThrows(SnWireException.class, () -> feed(r, frames.get(2))); // skipped index 1
@@ -95,7 +95,7 @@ class ChunkingTest {
     @Test
     void lateChunkWithoutStartIsRejected() {
         byte[] body = randomBody(60_000);
-        List<byte[]> frames = Chunker.split(body, false, 5, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 5, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
         assertThrows(SnWireException.class, () -> feed(r, frames.get(1)));
     }
@@ -103,7 +103,7 @@ class ChunkingTest {
     @Test
     void messageSizeCapIsEnforced() {
         byte[] body = randomBody(60_000);
-        List<byte[]> frames = Chunker.split(body, false, 5, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 5, SIGNER, 0L);
         ChunkReassembler tiny = new ChunkReassembler(30_000, 8);
         assertNull(feed(tiny, frames.get(0))); // 24576 fits
         assertThrows(SnWireException.class, () -> feed(tiny, frames.get(1))); // would cross 30k
@@ -114,16 +114,16 @@ class ChunkingTest {
     void pendingMessagesCapIsEnforced() {
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 2);
         byte[] body = randomBody(50_000);
-        assertNull(feed(r, Chunker.split(body, false, 1, SIGNER, 0L).get(0)));
-        assertNull(feed(r, Chunker.split(body, false, 2, SIGNER, 0L).get(0)));
+        assertNull(feed(r, Chunker.split(body, false, false, 1, SIGNER, 0L).get(0)));
+        assertNull(feed(r, Chunker.split(body, false, false, 2, SIGNER, 0L).get(0)));
         assertThrows(SnWireException.class,
-                () -> feed(r, Chunker.split(body, false, 3, SIGNER, 0L).get(0)));
+                () -> feed(r, Chunker.split(body, false, false, 3, SIGNER, 0L).get(0)));
     }
 
     @Test
     void clearDropsPartialStateOnDisconnect() {
         byte[] body = randomBody(60_000);
-        List<byte[]> frames = Chunker.split(body, false, 9, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 9, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
         assertNull(feed(r, frames.get(0)));
         assertEquals(1, r.pendingCount());
@@ -137,15 +137,49 @@ class ChunkingTest {
     void bufferGrowthStaysClampedToNonPowerOfTwoCap() {
         // cap 100_000: internal buffer starts at 65_536 and must clamp its doubling to the cap
         byte[] body = randomBody(90_000);
-        List<byte[]> frames = Chunker.split(body, false, 11, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 11, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(100_000, 8);
         assertArrayEquals(body, reassemble(frames, r));
     }
 
     @Test
+    void tolerantModeReassemblesShuffledChunks() {
+        // Proxy side: Velocity's async event pool can invert chunk arrival; tolerant
+        // mode buffers by index and joins in order regardless
+        byte[] body = randomBody(60_000);
+        List<byte[]> frames = Chunker.split(body, false, false, 21, SIGNER, 0L);
+        assertEquals(3, frames.size());
+        ChunkReassembler tolerant = new ChunkReassembler(8 * 1024 * 1024, 8, true);
+        assertNull(feed(tolerant, frames.get(2)));
+        assertNull(feed(tolerant, frames.get(0)));
+        assertArrayEquals(body, feed(tolerant, frames.get(1)));
+        assertEquals(0, tolerant.pendingCount());
+    }
+
+    @Test
+    void tolerantModeKillsDuplicateChunks() {
+        byte[] body = randomBody(60_000);
+        List<byte[]> frames = Chunker.split(body, false, false, 22, SIGNER, 0L);
+        ChunkReassembler tolerant = new ChunkReassembler(8 * 1024 * 1024, 8, true);
+        assertNull(feed(tolerant, frames.get(1)));
+        assertThrows(SnWireException.class, () -> feed(tolerant, frames.get(1)));
+        assertEquals(0, tolerant.pendingCount());
+    }
+
+    @Test
+    void responseFlagRoundTripsInTheHeader() {
+        byte[] body = randomBody(100);
+        byte[] frame = Chunker.split(body, true, true, 23, SIGNER, 0L).get(0);
+        FrameHeader header = FrameCodec.decode(frame, SIGNER, 0L, true);
+        assertEquals(true, header.isResponse());
+        byte[] plain = Chunker.split(body, true, false, 24, SIGNER, 0L).get(0);
+        assertEquals(false, FrameCodec.decode(plain, SIGNER, 0L, true).isResponse());
+    }
+
+    @Test
     void restartFromChunkZeroReplacesOldState() {
         byte[] body = randomBody(60_000);
-        List<byte[]> frames = Chunker.split(body, false, 9, SIGNER, 0L);
+        List<byte[]> frames = Chunker.split(body, false, false, 9, SIGNER, 0L);
         ChunkReassembler r = new ChunkReassembler(8 * 1024 * 1024, 8);
         assertNull(feed(r, frames.get(0)));
         assertNull(feed(r, frames.get(0))); // sender retried from scratch
@@ -153,3 +187,4 @@ class ChunkingTest {
         assertArrayEquals(body, feed(r, frames.get(2)));
     }
 }
+

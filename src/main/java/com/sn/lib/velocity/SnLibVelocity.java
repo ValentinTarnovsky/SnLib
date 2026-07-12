@@ -45,8 +45,28 @@ public final class SnLibVelocity {
                 .flatMap(container -> container.getDescription().getVersion())
                 .orElse("desconocida");
         ProxyBridgeRuntime.init(this, proxy, logger, dataDirectory, version);
+        registerStatusCommand();
         logger.info("SnLib {} habilitado en Velocity (SnBridge proxy side{})", version,
                 ProxyBridgeRuntime.get().available() ? "" : ", SIN secreto HMAC: bridge apagado");
+    }
+
+    /** The runbook's operator surface on the proxy: {@code /snlibv status}. */
+    private void registerStatusCommand() {
+        proxy.getCommandManager().register(
+                proxy.getCommandManager().metaBuilder("snlibv").plugin(this).build(),
+                new com.velocitypowered.api.command.SimpleCommand() {
+                    @Override
+                    public void execute(Invocation invocation) {
+                        for (String line : SnProxy.statusReport().split("\n")) {
+                            invocation.source().sendPlainMessage(line);
+                        }
+                    }
+
+                    @Override
+                    public boolean hasPermission(Invocation invocation) {
+                        return invocation.source().hasPermission("snlib.admin.bridge");
+                    }
+                });
     }
 
     @Subscribe

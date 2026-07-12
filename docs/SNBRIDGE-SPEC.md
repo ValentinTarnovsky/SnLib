@@ -139,9 +139,16 @@ hmacTag        16B     HMAC-SHA256 truncado a 16B sobre (header[0..11) + session
   visible. Esto cierra a la vez: spoofing por conexion directa al backend, y el agujero de
   canal-sin-reclamar (si el plugin proxy no cargo, Velocity forwardea bytes del cliente; con
   HMAC son basura descartada, no comandos ejecutados).
-- Espejo backend->cliente del mismo agujero: SnLib en el proxy registra y HUNDE
-  (`ForwardResult.handled()`) TODOS los canales `snlib:*` incondicionalmente, reclamados o no.
-  Nada del bridge se forwardea jamas a un cliente, ni con el plugin consumidor crasheado.
+- Espejo backend->cliente: SnLib en el proxy HUNDE (`ForwardResult.handled()`) todo canal
+  snlib REGISTRADO (cada namespace reclamado + `snlib:bridge` pre-registrado al init + los
+  legacy de detectLegacy), en ambas direcciones, aun con el plugin consumidor crasheado.
+  Limite de plataforma declarado: Velocity NO dispara PluginMessageEvent para canales que
+  nadie registro, asi que el trafico de un canal snlib SIN reclamar se forwardea tal cual;
+  el piso que lo hace inerte en ambos extremos es el HMAC (basura sin la clave), y los
+  nombres de canal se anuncian a los clientes via minecraft:register (no son secreto).
+- Correlacion de respuestas: bit1 de flags (`FLAG_RESPONSE`, firmado) marca el frame que
+  RESPONDE al msgId que lleva; sin el flag un push cuyo msgId colisione con un request en
+  vuelo jamas puede ser tragado como su respuesta.
 
 ### Body
 ```

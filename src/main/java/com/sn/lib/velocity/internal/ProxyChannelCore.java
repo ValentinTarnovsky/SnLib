@@ -40,17 +40,24 @@ import com.sn.lib.bridge.wire.WireTypeRegistry;
  * proxy ANSWERS HELLO (never initiates), routes outbound sends by backend server name,
  * and serves {@code respond()} handlers with msgId-correlated replies.
  *
- * <p>Threading: unlike Paper, Velocity delivers plugin messages on per-connection netty
- * threads, so every public method is {@code synchronized} (coarse on purpose: bridge
- * message rates are join/click-scale, not tick-scale). Consumer handlers and future
- * completions run INSIDE the calling thread but always AFTER internal iteration ends
- * (drain-then-complete), and the lock is reentrant for handlers that send back.</p>
+ * <p>Threading: unlike Paper, Velocity delivers plugin messages on its async event
+ * executor, so internal state is guarded by the core monitor (coarse on purpose: bridge
+ * message rates are join/click-scale). CONSUMER CODE NEVER RUNS UNDER THE MONITOR:
+ * handlers, responders and future completions are collected as post-actions and executed
+ * after the lock is released, so a handler of namespace A sending into namespace B can
+ * never produce an ABBA deadlock. Chunks may also arrive out of order on that executor,
+ * hence the order-tolerant reassemblers.</p>
  */
 public final class ProxyChannelCore {
 
-    /** Delivers frames over the backend connection of one carrier player. */
+    /**
+     * Delivers frames over the backend connection of one carrier player. The intended
+     * server name travels along so the sink can refuse delivery when the carrier's
+     * CURRENT backend differs (server switch race): a frame must never reach the wrong
+     * backend with a positive SENT.
+     */
     public interface CarrierSink {
-        boolean deliver(UUID carrier, List<byte[]> frames);
+        boolean deliver(UUID carrier, String serverName, List<byte[]> frames);
     }
 
     /** Hands one decoded application message to the consumer handler layer. */
@@ -136,6 +143,11 @@ public final class ProxyChannelCore {
         }
     }
 
+    /** Type registration under the core monitor: netty threads read the same registry. */
+    public synchronized void registerTypes(SnWireType<?>... types) {
+        registry.register(types);
+    }
+
     /** Ready sessions currently living on the given backend server. */
     public synchronized int readySessionsOn(String serverName) {
         int count = 0;
@@ -207,23 +219,36 @@ public final class ProxyChannelCore {
 
     /**
      * Feeds one raw frame that arrived from a backend over {@code carrier}'s connection.
-     * Order: session nonce first, handshake nonce as fallback (a new HELLO after a
+     * Nonce order: session nonce first, handshake nonce as fallback (a new HELLO after a
      * server switch or backend restart arrives while an old session still exists).
+     * Consumer-facing work returned by the locked section runs here, lock-free.
      */
-    public synchronized void onFrame(UUID carrier, String serverName, byte[] frame) {
+    public void onFrame(UUID carrier, String serverName, byte[] frame) {
+        List<Runnable> post = processFrame(carrier, serverName, frame);
+        if (post != null) {
+            for (Runnable action : post) {
+                action.run();
+            }
+        }
+    }
+
+    private synchronized @Nullable List<Runnable> processFrame(UUID carrier, String serverName,
+            byte[] frame) {
         if (signer == null || closed) {
-            return;
+            return null;
         }
         Session session = sessions.get(carrier);
         if (session != null && session.serverName.equals(serverName)) {
             FrameHeader header = tryDecode(frame, session.sessionNonce);
             if (header != null) {
                 byte[] body = reassemble(session.reassembler, header, frame);
-                if (body != null) {
-                    counters.received++;
-                    routeApp(carrier, session, header.msgId(), body);
+                if (body == null) {
+                    return null;
                 }
-                return;
+                counters.received++;
+                List<Runnable> post = new ArrayList<>(2);
+                routeApp(carrier, session, header.msgId(), header.isResponse(), body, post);
+                return post;
             }
         }
         FrameHeader header = tryDecode(frame, WireProtocol.HANDSHAKE_NONCE);
@@ -231,26 +256,54 @@ public final class ProxyChannelCore {
             counters.hmacDrops++;
             log.debug(() -> "[" + namespace + "] frame rechazado de " + serverName
                     + " via " + carrier);
-            return;
+            return null;
         }
         ChunkReassembler reassembler = handshakeReassemblers.computeIfAbsent(carrier,
-                key -> new ChunkReassembler(maxMessageBytes, maxPendingPerConnection));
+                key -> new ChunkReassembler(maxMessageBytes, maxPendingPerConnection, true));
         byte[] body = reassemble(reassembler, header, frame);
         if (body == null) {
-            return;
+            return null;
         }
         handshakeReassemblers.remove(carrier);
-        onHandshakeBody(carrier, serverName, body);
+        List<Runnable> post = new ArrayList<>(2);
+        onHandshakeBody(carrier, serverName, body, post);
+        return post;
     }
 
-    /** Drops every session and handshake state riding this carrier (disconnect/switch). */
+    /** Drops every session and handshake state riding this carrier (proxy disconnect). */
     public synchronized void closeCarrier(UUID carrier) {
         sessions.remove(carrier);
         handshakeReassemblers.remove(carrier);
     }
 
-    /** Periodic sweep: expires queued sends (drain-then-complete). */
-    public synchronized void sweep() {
+    /**
+     * Server-switch cleanup: drops the carrier's session ONLY when it is stale (bound
+     * to a server other than the one the player just connected to). The conditional
+     * protects against the race where the NEW backend's HELLO landed on a netty thread
+     * before the ServerConnectedEvent handler ran - an unconditional close would wipe
+     * that fresh session.
+     */
+    public synchronized void closeCarrierIfNotOn(UUID carrier, String currentServer) {
+        Session session = sessions.get(carrier);
+        if (session != null && !session.serverName.equals(currentServer)) {
+            sessions.remove(carrier);
+            handshakeReassemblers.remove(carrier);
+        }
+    }
+
+    /** Periodic sweep: expires queued sends; completions run OUTSIDE the monitor. */
+    public void sweep() {
+        List<QueuedSend> expired = collectExpired();
+        if (expired != null) {
+            for (QueuedSend entry : expired) {
+                entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
+                        "expiro en cola: sin sesion en '" + entry.serverName + "' ("
+                                + entry.wireId + ")"));
+            }
+        }
+    }
+
+    private synchronized @Nullable List<QueuedSend> collectExpired() {
         long now = clock.getAsLong();
         List<QueuedSend> expired = null;
         for (Iterator<QueuedSend> it = queue.iterator(); it.hasNext();) {
@@ -264,22 +317,19 @@ public final class ProxyChannelCore {
                 expired.add(entry);
             }
         }
-        if (expired != null) {
-            for (QueuedSend entry : expired) {
-                entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                        "expiro en cola: sin sesion en '" + entry.serverName + "' ("
-                                + entry.wireId + ")"));
-            }
-        }
+        return expired;
     }
 
-    /** Terminal teardown. */
-    public synchronized void teardown() {
-        closed = true;
-        List<QueuedSend> drained = List.copyOf(queue);
-        queue.clear();
-        sessions.clear();
-        handshakeReassemblers.clear();
+    /** Terminal teardown; completions run OUTSIDE the monitor. */
+    public void teardown() {
+        List<QueuedSend> drained;
+        synchronized (this) {
+            closed = true;
+            drained = List.copyOf(queue);
+            queue.clear();
+            sessions.clear();
+            handshakeReassemblers.clear();
+        }
         for (QueuedSend entry : drained) {
             entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "shutdown del canal"));
         }
@@ -308,7 +358,8 @@ public final class ProxyChannelCore {
         }
     }
 
-    private void onHandshakeBody(UUID carrier, String serverName, byte[] body) {
+    private void onHandshakeBody(UUID carrier, String serverName, byte[] body,
+            List<Runnable> post) {
         Object message;
         try {
             message = registry.decode(body).message();
@@ -332,14 +383,14 @@ public final class ProxyChannelCore {
         }
         long proxyNonce = RANDOM.nextLong();
         HelloAckMsg ack = new HelloAckMsg(negotiated, msgset, libVersion, proxyNonce, Map.of());
-        if (!deliverFrames(carrier, HelloAckMsg.TYPE.encodeMessage(ack), msgIds.getAsInt(),
-                WireProtocol.HANDSHAKE_NONCE)) {
+        if (!deliverFrames(carrier, serverName, HelloAckMsg.TYPE.encodeMessage(ack),
+                msgIds.getAsInt(), WireProtocol.HANDSHAKE_NONCE, false)) {
             log.debug(() -> "[" + namespace + "] HELLO_ACK no entregable via " + carrier);
             return;
         }
         Session session = new Session(serverName, hello.nonce() ^ proxyNonce,
                 hello.msgsetVersion(), hello.libVersion(), hello.capabilities(),
-                new ChunkReassembler(maxMessageBytes, maxPendingPerConnection));
+                new ChunkReassembler(maxMessageBytes, maxPendingPerConnection, true));
         sessions.put(carrier, session);
         counters.handshakes++;
         log.debug(() -> "[" + namespace + "] handshake con '" + serverName + "' via " + carrier
@@ -348,10 +399,11 @@ public final class ProxyChannelCore {
             log.warn("[" + namespace + "] msgset local " + msgset + " vs backend '" + serverName
                     + "' " + hello.msgsetVersion() + ": flota mixta, campos aditivos cubren");
         }
-        flushQueue(serverName, carrier);
+        flushQueue(serverName, carrier, post);
     }
 
-    private void routeApp(UUID carrier, Session session, int msgId, byte[] body) {
+    private void routeApp(UUID carrier, Session session, int msgId, boolean isResponse,
+            byte[] body, List<Runnable> post) {
         WireTypeRegistry.DecodedMessage decoded;
         try {
             decoded = registry.decode(body);
@@ -377,31 +429,57 @@ public final class ProxyChannelCore {
             return;
         }
         if (message instanceof HeartbeatMsg heartbeat) {
-            deliverFrames(carrier, HeartbeatMsg.TYPE.encodeMessage(heartbeat), msgId,
-                    session.sessionNonce);
+            deliverFrames(carrier, session.serverName, HeartbeatMsg.TYPE.encodeMessage(heartbeat),
+                    msgId, session.sessionNonce, true);
             return;
         }
         RespondEntry responderEntry = responders.get(decoded.type().wireId());
         if (responderEntry != null) {
-            Object response;
-            try {
-                response = responderEntry.responder.respond(carrier, session.serverName, message);
-            } catch (Throwable t) {
-                counters.nacksSent++;
-                sendNack(carrier, session, msgId, decoded.type().wireId(),
-                        NackReason.INTERNAL_ERROR, String.valueOf(t.getMessage()));
-                log.warn("[" + namespace + "] responder de " + decoded.type().wireId()
-                        + " lanzo " + t);
-                return;
-            }
-            byte[] responseBody = encodeResponse(responderEntry.responseType, response);
-            // La respuesta viaja con el MISMO msgId: la correlacion del backend depende de eso
-            if (deliverFrames(carrier, responseBody, msgId, session.sessionNonce)) {
-                counters.sent++;
-            }
+            String serverName = session.serverName;
+            String requestWireId = decoded.type().wireId();
+            // El responder es codigo del consumer: corre FUERA del monitor
+            post.add(() -> {
+                Object response;
+                try {
+                    response = responderEntry.responder.respond(carrier, serverName, message);
+                } catch (Throwable t) {
+                    log.warn("[" + namespace + "] responder de " + requestWireId + " lanzo " + t);
+                    nackResponderFailure(carrier, msgId, requestWireId, t);
+                    return;
+                }
+                deliverResponse(carrier, msgId, responderEntry.responseType, response);
+            });
             return;
         }
-        dispatcher.dispatch(decoded.type(), carrier, session.serverName, message);
+        SnWireType<?> type = decoded.type();
+        String serverName = session.serverName;
+        // El handler es codigo del consumer: corre FUERA del monitor
+        post.add(() -> dispatcher.dispatch(type, carrier, serverName, message));
+    }
+
+    /** Re-acquires the monitor to answer a request; the session may be gone by now. */
+    private synchronized void deliverResponse(UUID carrier, int msgId,
+            SnWireType<?> responseType, Object response) {
+        Session session = sessions.get(carrier);
+        if (session == null || closed) {
+            return; // el backend ya no esta: el request morira por timeout alla
+        }
+        byte[] responseBody = encodeResponse(responseType, response);
+        // La respuesta viaja con el MISMO msgId + flag response: asi correla el backend
+        if (deliverFrames(carrier, session.serverName, responseBody, msgId,
+                session.sessionNonce, true)) {
+            counters.sent++;
+        }
+    }
+
+    private synchronized void nackResponderFailure(UUID carrier, int msgId, String requestWireId,
+            Throwable failure) {
+        Session session = sessions.get(carrier);
+        if (session == null || closed) {
+            return;
+        }
+        sendNack(carrier, session, msgId, requestWireId, NackReason.INTERNAL_ERROR,
+                String.valueOf(failure.getMessage()));
     }
 
     @SuppressWarnings("unchecked")
@@ -409,8 +487,7 @@ public final class ProxyChannelCore {
         return type.encodeMessage((R) response);
     }
 
-    private void flushQueue(String serverName, UUID carrier) {
-        List<Completion> completions = null;
+    private void flushQueue(String serverName, UUID carrier, List<Runnable> post) {
         for (Iterator<QueuedSend> it = queue.iterator(); it.hasNext();) {
             QueuedSend entry = it.next();
             if (!entry.serverName.equals(serverName)) {
@@ -418,8 +495,8 @@ public final class ProxyChannelCore {
             }
             it.remove();
             SnDelivery delivery;
-            if (deliverFrames(carrier, entry.body, msgIds.getAsInt(),
-                    sessions.get(carrier).sessionNonce)) {
+            if (deliverFrames(carrier, serverName, entry.body, msgIds.getAsInt(),
+                    sessions.get(carrier).sessionNonce, false)) {
                 counters.sent++;
                 delivery = SnDelivery.sent();
             } else {
@@ -427,22 +504,18 @@ public final class ProxyChannelCore {
                 delivery = SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
                         "carrier desconectado durante el flush");
             }
-            if (completions == null) {
-                completions = new ArrayList<>(4);
-            }
-            completions.add(new Completion(entry.future, delivery));
-        }
-        if (completions != null) {
-            for (Completion completion : completions) {
-                completion.future.complete(completion.delivery);
-            }
+            SnDelivery result = delivery;
+            CompletableFuture<SnDelivery> future = entry.future;
+            // Completions run outside the monitor with the rest of the post-actions
+            post.add(() -> future.complete(result));
         }
     }
 
     private void deliverAndComplete(UUID carrier, byte[] body, String wireId,
             CompletableFuture<SnDelivery> future) {
         Session session = sessions.get(carrier);
-        if (deliverFrames(carrier, body, msgIds.getAsInt(), session.sessionNonce)) {
+        if (deliverFrames(carrier, session.serverName, body, msgIds.getAsInt(),
+                session.sessionNonce, false)) {
             counters.sent++;
             future.complete(SnDelivery.sent());
         } else {
@@ -452,16 +525,17 @@ public final class ProxyChannelCore {
         }
     }
 
-    private boolean deliverFrames(UUID carrier, byte[] body, int msgId, long nonce) {
-        List<byte[]> frames = Chunker.split(body, false, msgId, signer, nonce);
-        return sink.deliver(carrier, frames);
+    private boolean deliverFrames(UUID carrier, String serverName, byte[] body, int msgId,
+            long nonce, boolean response) {
+        List<byte[]> frames = Chunker.split(body, false, response, msgId, signer, nonce);
+        return sink.deliver(carrier, serverName, frames);
     }
 
     private void sendNack(UUID carrier, Session session, int refMsgId, String refWireId,
             NackReason reason, String detail) {
         NackMsg nack = new NackMsg(refMsgId, refWireId, reason, detail == null ? "" : detail);
-        if (deliverFrames(carrier, NackMsg.TYPE.encodeMessage(nack), msgIds.getAsInt(),
-                session.sessionNonce)) {
+        if (deliverFrames(carrier, session.serverName, NackMsg.TYPE.encodeMessage(nack),
+                msgIds.getAsInt(), session.sessionNonce, false)) {
             counters.nacksSent++;
         }
     }
@@ -500,9 +574,6 @@ public final class ProxyChannelCore {
 
     private record QueuedSend(String serverName, String wireId, byte[] body, long expiresAt,
             CompletableFuture<SnDelivery> future) {
-    }
-
-    private record Completion(CompletableFuture<SnDelivery> future, SnDelivery delivery) {
     }
 
     private static final class Session {

@@ -79,7 +79,7 @@ class ProxyChannelCoreTest {
     void setUp() {
         core = new ProxyChannelCore("test", 3, "1.2.0", signer,
                 msgIds::incrementAndGet, clock::get,
-                (carrier, frames) -> {
+                (carrier, serverName, frames) -> {
                     deliveries.add(new Delivered(carrier, frames));
                     return true;
                 },
@@ -114,7 +114,7 @@ class ProxyChannelCoreTest {
     }
 
     private void feed(String serverName, byte[] body, int msgId, long nonce) {
-        for (byte[] frame : Chunker.split(body, true, msgId, signer, nonce)) {
+        for (byte[] frame : Chunker.split(body, true, false, msgId, signer, nonce)) {
             core.onFrame(CARRIER, serverName, frame);
         }
     }
@@ -254,6 +254,26 @@ class ProxyChannelCoreTest {
     }
 
     @Test
+    void switchToNonClaimingServerDropsTheStaleSession() {
+        // El jugador paso de gens a lobby y lobby NUNCA manda HELLO (no reclama el
+        // namespace): sin la limpieza condicional la sesion de gens queda zombie
+        backendHandshake("gens");
+        core.closeCarrierIfNotOn(CARRIER, "lobby");
+        assertEquals(0, core.readySessionsOn("gens"));
+        assertNull(core.capabilities("gens"));
+        assertTrue(core.liveServers().isEmpty());
+    }
+
+    @Test
+    void conditionalCloseNeverWipesAFreshSessionOnTheSameServer() {
+        // Race: el HELLO del backend nuevo llego ANTES del ServerConnectedEvent; la
+        // limpieza condicional debe preservar esa sesion fresca
+        backendHandshake("work");
+        core.closeCarrierIfNotOn(CARRIER, "work");
+        assertEquals(1, core.readySessionsOn("work"));
+    }
+
+    @Test
     void teardownResolvesQueuedSends() {
         CompletableFuture<SnDelivery> queued = core.sendToServer("gens",
                 ShopClick.TYPE, new ShopClick(CARRIER, "x"), -1L);
@@ -264,3 +284,4 @@ class ProxyChannelCoreTest {
         assertEquals(SnDeliveryResult.EXPIRED_TTL, late.join().result());
     }
 }
+

@@ -19,7 +19,8 @@ public final class FrameCodec {
 
     /** Encodes one complete frame with its computed HMAC tag. */
     public static byte[] encode(int msgId, int chunkIndex, int chunkCount, boolean toProxy,
-            byte[] chunkBody, int bodyOff, int bodyLen, HmacSigner signer, long sessionNonce) {
+            boolean response, byte[] chunkBody, int bodyOff, int bodyLen, HmacSigner signer,
+            long sessionNonce) {
         if (chunkCount < 1 || chunkCount > 0xFFFF) {
             throw new SnWireException("chunkCount fuera de rango: " + chunkCount);
         }
@@ -29,7 +30,7 @@ public final class FrameCodec {
         byte[] frame = new byte[WireProtocol.HEADER_LENGTH + bodyLen];
         frame[0] = (byte) WireProtocol.MAGIC;
         frame[1] = (byte) WireProtocol.FRAME_VERSION;
-        frame[2] = (byte) WireProtocol.flags(toProxy);
+        frame[2] = (byte) WireProtocol.flags(toProxy, response);
         frame[3] = (byte) (msgId >>> 24);
         frame[4] = (byte) (msgId >>> 16);
         frame[5] = (byte) (msgId >>> 8);
