@@ -125,8 +125,8 @@ public final class GuiItemDef {
                                       Consumer<String> warn) {
         ConfigurationSection sec = yml.getSection(path);
         if (sec == null) {
-            warn.accept("No existe la seccion '" + path + "' en " + yml.file().getName()
-                    + "; item ignorado");
+            warn.accept("Section '" + path + "' does not exist in " + yml.file().getName()
+                    + "; item ignored");
             return null;
         }
         int[] slots = SlotParser.parse(sec.get("slots"),
@@ -134,21 +134,21 @@ public final class GuiItemDef {
         String keyRaw = sec.getString("key", "");
         if (!keyRaw.isEmpty()) {
             if (layout == null) {
-                warn.accept("Item '" + id + "': 'key' no aplica en esta seccion; se ignora");
+                warn.accept("Item '" + id + "': 'key' does not apply in this section; ignored");
             } else if (slots.length > 0) {
-                warn.accept("Item '" + id + "': declara 'slots' y 'key'; gana slots"
-                        + " y se ignora key");
+                warn.accept("Item '" + id + "': declares both 'slots' and 'key'; slots"
+                        + " wins and key is ignored");
             } else {
                 String trimmed = keyRaw.trim();
                 if (trimmed.length() != 1) {
                     warn.accept("Item '" + id + "': key '" + keyRaw
-                            + "' invalido (debe ser 1 caracter); item ignorado");
+                            + "' is invalid (must be 1 character); item ignored");
                     return null;
                 }
                 int[] keyed = layout.get(trimmed.charAt(0));
                 if (keyed == null) {
                     warn.accept("Item '" + id + "': key '" + trimmed.charAt(0)
-                            + "' no aparece en layout; item ignorado");
+                            + "' does not appear in layout; item ignored");
                     return null;
                 }
                 slots = keyed.clone();

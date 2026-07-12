@@ -83,7 +83,7 @@ public final class SnBridgeChannel {
         for (SnWireType<?> type : types) {
             if (type.wireId().startsWith(WireIds.RESERVED_PREFIX)) {
                 throw new SnWireException("wireId '" + type.wireId()
-                        + "' usa el prefijo reservado snlib:");
+                        + "' uses the reserved snlib: prefix");
             }
         }
         core.registry().register(types);
@@ -166,9 +166,9 @@ public final class SnBridgeChannel {
         long now = System.currentTimeMillis();
         if (now - lastLegacyWarn > 30_000L) {
             lastLegacyWarn = now;
-            ctx.plugin().getLogger().warning("[SnBridge] Trafico en el canal legacy '"
-                    + legacyChannel + "': la contraparte proxy de '" + core.namespace()
-                    + "' sigue en el stack viejo (actualizarla)");
+            ctx.plugin().getLogger().warning("[SnBridge] Traffic on legacy channel '"
+                    + legacyChannel + "': the proxy counterpart of '" + core.namespace()
+                    + "' is still on the old stack (update it)");
         }
     }
 
@@ -198,8 +198,8 @@ public final class SnBridgeChannel {
         public void dispatch(SnWireType<?> type, java.util.UUID carrier, Object message) {
             BiConsumer<Player, Object> handler = byWireId.get(type.wireId());
             if (handler == null) {
-                ctx.debug().log("bridge", () -> "[" + namespace + "] sin handler para "
-                        + type.wireId() + ", mensaje ignorado");
+                ctx.debug().log("bridge", () -> "[" + namespace + "] no handler for "
+                        + type.wireId() + ", message ignored");
                 return;
             }
             Player player = Bukkit.getPlayer(carrier);
@@ -209,8 +209,8 @@ public final class SnBridgeChannel {
             try {
                 handler.accept(player, message);
             } catch (Throwable t) {
-                ctx.plugin().getLogger().warning("[SnBridge] handler de " + type.wireId()
-                        + " lanzo " + t.getClass().getSimpleName() + ": " + t.getMessage());
+                ctx.plugin().getLogger().warning("[SnBridge] handler for " + type.wireId()
+                        + " threw " + t.getClass().getSimpleName() + ": " + t.getMessage());
             }
         }
 

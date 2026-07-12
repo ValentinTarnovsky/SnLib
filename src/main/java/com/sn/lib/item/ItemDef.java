@@ -214,8 +214,8 @@ public final class ItemDef {
     static @Nullable ItemDef fromYml(SnYml yml, String path, Consumer<String> warn) {
         ConfigurationSection sec = yml.getSection(path);
         if (sec == null) {
-            warn.accept("No existe la seccion '" + path + "' en " + yml.file().getName()
-                    + "; item ignorado");
+            warn.accept("Section '" + path + "' does not exist in " + yml.file().getName()
+                    + "; item ignored");
             return null;
         }
         Builder b = builder();
@@ -1064,7 +1064,7 @@ public final class ItemDef {
                         }
                     }
                     if (shape.isEmpty() || ingredients.isEmpty()) {
-                        warn.accept("Receta SHAPED sin shape o sin ingredients; se ignora");
+                        warn.accept("SHAPED recipe without shape or ingredients; ignored");
                         return null;
                     }
                     return shaped(shape, ingredients);
@@ -1072,7 +1072,7 @@ public final class ItemDef {
                 case "SHAPELESS" -> {
                     List<String> ingredients = sec.getStringList("ingredients");
                     if (ingredients.isEmpty()) {
-                        warn.accept("Receta SHAPELESS sin ingredients; se ignora");
+                        warn.accept("SHAPELESS recipe without ingredients; ignored");
                         return null;
                     }
                     return shapeless(ingredients);
@@ -1080,7 +1080,7 @@ public final class ItemDef {
                 case "FURNACE", "SMOKING", "BLASTING", "CAMPFIRE" -> {
                     String input = sec.getString("input", "");
                     if (input.isEmpty()) {
-                        warn.accept("Receta " + type + " sin input; se ignora");
+                        warn.accept("Recipe " + type + " without input; ignored");
                         return null;
                     }
                     return cooking(type, input, sec.getDouble("experience", 0.0),
@@ -1089,13 +1089,13 @@ public final class ItemDef {
                 case "STONECUTTING" -> {
                     String input = sec.getString("input", "");
                     if (input.isEmpty()) {
-                        warn.accept("Receta STONECUTTING sin input; se ignora");
+                        warn.accept("STONECUTTING recipe without input; ignored");
                         return null;
                     }
                     return stonecutting(input);
                 }
                 default -> {
-                    warn.accept("Tipo de receta desconocido '" + type + "'; se ignora");
+                    warn.accept("Unknown recipe type '" + type + "'; ignored");
                     return null;
                 }
             }

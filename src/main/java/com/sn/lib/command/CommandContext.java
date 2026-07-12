@@ -36,7 +36,7 @@ public final class CommandContext {
         if (sender instanceof Player player) {
             return player;
         }
-        throw new IllegalStateException("El sender de este comando no es un jugador");
+        throw new IllegalStateException("The sender of this command is not a player");
     }
 
     /**
@@ -48,7 +48,7 @@ public final class CommandContext {
     public <T> T get(String name) {
         Object value = values.get(name);
         if (value == null) {
-            throw new IllegalArgumentException("Argumento no declarado: '" + name + "'");
+            throw new IllegalArgumentException("Argument not declared: '" + name + "'");
         }
         return (T) value;
     }

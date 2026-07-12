@@ -33,8 +33,8 @@ public abstract class SnPlugin extends JavaPlugin {
         int installed = SnLibPlugin.get().apiLevel();
         int required = requiredApiLevel();
         if (installed < required) {
-            getLogger().severe("Requiere SnLib API level " + required + " (instalado: " + installed
-                    + "). Actualiza SnLib.jar (requiere restart): https://github.com/ValentinTarnovsky/SnLib/releases");
+            getLogger().severe("Requires SnLib API level " + required + " (installed: " + installed
+                    + "). Update SnLib.jar (restart required): https://github.com/ValentinTarnovsky/SnLib/releases");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -42,7 +42,7 @@ public abstract class SnPlugin extends JavaPlugin {
         try {
             onInnerEnable();
         } catch (Throwable t) {
-            getLogger().log(Level.SEVERE, "onInnerEnable fallo", t);
+            getLogger().log(Level.SEVERE, "onInnerEnable failed", t);
             getServer().getPluginManager().disablePlugin(this);
         }
     }

@@ -100,8 +100,8 @@ public final class Sn {
             if (yml != null) {
                 items.loadAll(yml.managed(itemsFile));
             } else {
-                plugin.getLogger().warning("items(\"" + itemsFile + "\") declarado sin config(): "
-                        + "el archivo no se monta y sn.items() queda solo programatico");
+                plugin.getLogger().warning("items(\"" + itemsFile + "\") declared without config(): "
+                        + "the file is not mounted and sn.items() stays programmatic only");
             }
         }
         this.selections = new SelectionManager(this);
@@ -138,7 +138,7 @@ public final class Sn {
     public YmlManager yml() {
         if (yml == null) {
             throw new UnsupportedOperationException(
-                    "Modulo yml no declarado: falta SnSpec.builder().config(\"config.yml\")");
+                    "yml module not declared: missing SnSpec.builder().config(\"config.yml\")");
         }
         return yml;
     }
@@ -151,7 +151,7 @@ public final class Sn {
     /**
      * SnBridge module of the owning plugin (typed channels toward the Velocity proxy);
      * available in every context. EXPERIMENTAL: outside the japicmp gate and
-     * {@code SnApi.LEVEL} until the API freezes (docs/SNBRIDGE-SPEC.md seccion 3).
+     * {@code SnApi.LEVEL} until the API freezes (docs/SNBRIDGE-SPEC.md section 3).
      */
     @SnExperimental
     public com.sn.lib.bridge.SnBridge bridge() {
@@ -176,7 +176,7 @@ public final class Sn {
 
     /**
      * Action engine of the owning plugin; available in every context. Runs YML action
-     * lists of the form {@code [tag] argumento} and accepts custom tags via
+     * lists of the form {@code [tag] argument} and accepts custom tags via
      * {@link ActionEngine#register}.
      */
     public ActionEngine actions() {
@@ -202,7 +202,7 @@ public final class Sn {
     public SnLang lang() {
         if (lang == null) {
             throw new UnsupportedOperationException(
-                    "Modulo lang no declarado: falta SnSpec.builder().lang()");
+                    "lang module not declared: missing SnSpec.builder().lang()");
         }
         return lang;
     }
@@ -303,7 +303,7 @@ public final class Sn {
     public GuiManager guis() {
         if (guis == null) {
             throw new UnsupportedOperationException(
-                    "Modulo guis no declarado: falta SnSpec.builder().guis()");
+                    "guis module not declared: missing SnSpec.builder().guis()");
         }
         return guis;
     }
@@ -318,7 +318,7 @@ public final class Sn {
     public SnDb db() {
         if (db == null) {
             throw new UnsupportedOperationException(
-                    "Modulo db no declarado: falta SnSpec.builder().db()");
+                    "db module not declared: missing SnSpec.builder().db()");
         }
         return db;
     }

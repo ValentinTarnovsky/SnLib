@@ -139,8 +139,8 @@ public final class HeldEffectsTask {
             String[] parts = line.trim().split("\\s+");
             PotionEffectType type = resolveEffect(parts[0]);
             if (type == null) {
-                warnOnce(id + ":" + parts[0], "Efecto held invalido '" + parts[0]
-                        + "' en el item '" + id + "'; se ignora");
+                warnOnce(id + ":" + parts[0], "Invalid held effect '" + parts[0]
+                        + "' on item '" + id + "'; ignored");
                 continue;
             }
             int amplifier = 0;
@@ -148,8 +148,8 @@ public final class HeldEffectsTask {
                 try {
                     amplifier = Math.max(0, Integer.parseInt(parts[1].trim()));
                 } catch (NumberFormatException notANumber) {
-                    warnOnce(id + ":amp:" + parts[1], "Amplificador invalido '" + parts[1]
-                            + "' en el item '" + id + "'; se usa 0");
+                    warnOnce(id + ":amp:" + parts[1], "Invalid amplifier '" + parts[1]
+                            + "' on item '" + id + "'; using 0");
                 }
             }
             out.add(new PotionEffect(type, DURATION_TICKS, amplifier, true, false));
@@ -157,7 +157,7 @@ public final class HeldEffectsTask {
         return List.copyOf(out);
     }
 
-    @SuppressWarnings("deprecation") // getByName resuelve nombres legacy (FAST_DIGGING).
+    @SuppressWarnings("deprecation") // getByName resolves legacy names (FAST_DIGGING).
     private static @Nullable PotionEffectType resolveEffect(String id) {
         NamespacedKey key = NamespacedKey.fromString(
                 id.trim().toLowerCase(Locale.ROOT).replace(' ', '_'));

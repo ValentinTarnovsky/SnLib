@@ -65,8 +65,8 @@ public final class ProxyBridgeRuntime {
         this.signer = secret == null ? null : new HmacSigner(secret);
         this.sweeper = proxy.getScheduler().buildTask(bootstrap, this::sweepAll)
                 .repeat(1L, TimeUnit.SECONDS).schedule();
-        // Infra channel de la Fase D (verbos), registrado desde ya para que su trafico
-        // caiga SIEMPRE en este listener y nunca se forwardee
+        // Phase D infra channel (verbs), registered up front so its traffic ALWAYS
+        // lands on this listener and is never forwarded
         proxy.getChannelRegistrar().register(MinecraftChannelIdentifier.from("snlib:bridge"));
         proxy.getEventManager().register(bootstrap, this);
     }
@@ -99,7 +99,7 @@ public final class ProxyBridgeRuntime {
         ProxyBridgeRuntime runtime = instance;
         if (runtime == null) {
             throw new IllegalStateException(
-                    "SnBridge no inicializado en el proxy: falta SnLib.jar en plugins/ de Velocity");
+                    "SnBridge not initialized on the proxy: SnLib.jar missing from Velocity's plugins/");
         }
         return runtime;
     }
@@ -140,7 +140,7 @@ public final class ProxyBridgeRuntime {
 
                     @Override
                     public void warn(String message) {
-                        // Rate-limited como exige el contrato del seam (y la spec para NACKs)
+                        // Rate-limited as the seam contract demands (and the spec for NACKs)
                         long now = System.nanoTime() / 1_000_000L;
                         if (now - lastWarn > 10_000L) {
                             lastWarn = now;
@@ -150,7 +150,7 @@ public final class ProxyBridgeRuntime {
 
                     @Override
                     public void debug(java.util.function.Supplier<String> message) {
-                        // Velocity: sin SnDebug; el nivel debug del logger del proxy decide
+                        // Velocity: no SnDebug; the proxy logger's debug level decides
                         if (logger.isDebugEnabled()) {
                             logger.debug("[SnBridge] {}", message.get());
                         }
@@ -169,8 +169,8 @@ public final class ProxyBridgeRuntime {
         try {
             identifier = MinecraftChannelIdentifier.from(legacyChannel);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Canal legacy invalido: '" + legacyChannel
-                    + "' (formato namespace:nombre)", e);
+            throw new IllegalArgumentException("Invalid legacy channel: '" + legacyChannel
+                    + "' (namespace:name format)", e);
         }
         proxy.getChannelRegistrar().register(identifier);
         legacyChannels.put(legacyChannel, core);
@@ -187,8 +187,8 @@ public final class ProxyBridgeRuntime {
             if (connection.isEmpty()) {
                 return false;
             }
-            // Defensa contra el race de server-switch: un frame firmado para 'gens'
-            // JAMAS se escribe a la conexion de otro backend con un SENT positivo
+            // Defense against the server-switch race: a frame signed for 'gens' is
+            // NEVER written to another backend's connection with a positive SENT
             if (!connection.get().getServerInfo().getName()
                     .toLowerCase(Locale.ROOT).equals(serverName)) {
                 return false;
@@ -200,8 +200,8 @@ public final class ProxyBridgeRuntime {
                 }
                 return allSent;
             } catch (IllegalStateException e) {
-                // Velocity tira 'Not connected to server!' (nunca devuelve false) justo
-                // en la ventana de teardown del switch: para el core es un false honesto
+                // Velocity throws 'Not connected to server!' (it never returns false)
+                // right in the switch teardown window: to the core that is an honest false
                 return false;
             }
         };
@@ -221,9 +221,9 @@ public final class ProxyBridgeRuntime {
             legacyOwner = legacyChannels.get(channel);
         }
         if (legacyOwner != null) {
-            // Canal del stack viejo reclamado via detectLegacy: hundir SIEMPRE, pero
-            // contar/avisar solo trafico real de backends (un cliente no puede spamear
-            // el log ni inflar el diagnostico) y con rate limit como el lado Paper
+            // Old-stack channel claimed via detectLegacy: ALWAYS sink it, but only
+            // count/warn on real backend traffic (a client cannot spam the log or
+            // inflate the diagnostics) and rate-limited like the Paper side
             event.setResult(PluginMessageEvent.ForwardResult.handled());
             if (event.getSource() instanceof ServerConnection) {
                 legacyOwner.counters().legacyFrame();
@@ -237,8 +237,8 @@ public final class ProxyBridgeRuntime {
                     }
                 }
                 if (warn) {
-                    logger.warn("[SnBridge] Trafico en canal legacy '{}': la contraparte backend"
-                            + " de '{}' sigue en el stack viejo (actualizarla)",
+                    logger.warn("[SnBridge] Traffic on legacy channel '{}': the backend"
+                            + " counterpart of '{}' is still on the old stack (update it)",
                             channel, legacyOwner.namespace());
                 }
             }
@@ -247,11 +247,11 @@ public final class ProxyBridgeRuntime {
         if (!channel.startsWith("snlib:")) {
             return;
         }
-        // Todo canal snlib REGISTRADO cae aca y se hunde; los no reclamados no generan
-        // evento (limite de plataforma documentado en el javadoc de la clase)
+        // Every REGISTERED snlib channel lands here and is sunk; unclaimed ones fire
+        // no event (platform limit documented in the class javadoc)
         event.setResult(PluginMessageEvent.ForwardResult.handled());
         if (!(event.getSource() instanceof ServerConnection connection)) {
-            return; // frame originado por un cliente: spoof, muere aca
+            return; // frame originated by a client: spoof, dies here
         }
         ProxyChannelCore core;
         synchronized (this) {
@@ -311,22 +311,22 @@ public final class ProxyBridgeRuntime {
     /** Aggregated status: one block per namespace with its live backends and counters. */
     public synchronized String statusReport() {
         if (!available()) {
-            return "SnBridge SIN secreto HMAC en el proxy: nada fluye (ver log de arranque).";
+            return "SnBridge has NO HMAC secret on the proxy: nothing flows (see startup log).";
         }
         if (byNamespace.isEmpty()) {
-            return "SnBridge: sin namespaces reclamados en el proxy.";
+            return "SnBridge: no namespaces claimed on the proxy.";
         }
         StringBuilder report = new StringBuilder("SnBridge proxy status:\n");
         List<ProxyChannelCore> sorted = new ArrayList<>(byNamespace.values());
         sorted.sort(Comparator.comparing(ProxyChannelCore::namespace));
         for (ProxyChannelCore core : sorted) {
             report.append("- ").append(core.namespace())
-                    .append(" cola=").append(core.pending())
+                    .append(" queue=").append(core.pending())
                     .append(' ').append(core.counters().snapshot()).append('\n');
             for (String server : core.liveServers()) {
                 ProxyChannelCore.BackendInfo info = core.capabilities(server);
                 report.append("    ").append(server)
-                        .append(": sesiones=").append(core.readySessionsOn(server));
+                        .append(": sessions=").append(core.readySessionsOn(server));
                 if (info != null) {
                     report.append(" msgset=").append(info.msgset())
                             .append(" snlib=").append(info.libVersion());

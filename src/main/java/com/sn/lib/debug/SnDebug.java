@@ -204,8 +204,8 @@ public final class SnDebug {
         try {
             return Level.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Valor invalido en " + KEY_LEVEL + ": '" + raw
-                    + "', usando " + Level.DEBUG.name());
+            plugin.getLogger().warning("Invalid value in " + KEY_LEVEL + ": '" + raw
+                    + "', using " + Level.DEBUG.name());
             return Level.DEBUG;
         }
     }

@@ -55,9 +55,9 @@ public final class SnCompat {
      */
     public static @Nullable Method probe(Class<?> owner, String name, Class<?>... params) {
         if (isForeignPluginClass(owner)) {
-            warnOnce("loader:" + owner.getName(), "probe de " + owner.getName()
-                    + " rechazado: clase cargada por un PluginClassLoader ajeno;"
-                    + " solo clases de la API del server/JDK");
+            warnOnce("loader:" + owner.getName(), "probe of " + owner.getName()
+                    + " rejected: class loaded by a foreign PluginClassLoader;"
+                    + " only server API/JDK classes are allowed");
             return null;
         }
         StringBuilder sig = new StringBuilder(owner.getName()).append('#').append(name).append('(');
@@ -81,7 +81,7 @@ public final class SnCompat {
             return method;
         } catch (NoSuchMethodException e) {
             MISSING.add(key);
-            warnOnce(key, name + " requiere MC mas nueva; degradando");
+            warnOnce(key, name + " requires a newer MC; degrading");
             return null;
         }
     }
@@ -94,9 +94,9 @@ public final class SnCompat {
         if (SnVersion.supports(minor)) {
             return modern.get();
         }
-        warnOnce("since:" + callSiteTag(), "API de 1." + minor + "+ no disponible en "
+        warnOnce("since:" + callSiteTag(), "1." + minor + "+ API not available on "
                 + SnVersion.MAJOR + "." + SnVersion.MINOR + "." + SnVersion.PATCH
-                + "; usando fallback");
+                + "; using fallback");
         return fallback.get();
     }
 

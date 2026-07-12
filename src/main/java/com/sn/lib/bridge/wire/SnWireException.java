@@ -6,7 +6,7 @@ package com.sn.lib.bridge.wire;
  *
  * <p>Unchecked on purpose: wire failures are not recoverable by the caller beyond
  * "drop the message and count it", which is exactly what the transport layers do. The
- * message text is operator-facing (Spanish, house style).</p>
+ * message text is operator-facing.</p>
  */
 public class SnWireException extends RuntimeException {
 

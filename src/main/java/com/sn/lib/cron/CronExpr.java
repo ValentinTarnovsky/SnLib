@@ -41,10 +41,10 @@ public final class CronExpr {
     private CronExpr(String source, String minute, String hour, String dayOfMonth,
             String month, String dayOfWeek) {
         this.source = source;
-        fill(minutes, minute, 0, 59, "minuto");
-        fill(hours, hour, 0, 23, "hora");
-        fill(daysOfMonth, dayOfMonth, 1, 31, "dia del mes");
-        fill(months, month, 1, 12, "mes");
+        fill(minutes, minute, 0, 59, "minute");
+        fill(hours, hour, 0, 23, "hour");
+        fill(daysOfMonth, dayOfMonth, 1, 31, "day of month");
+        fill(months, month, 1, 12, "month");
         fillDayOfWeek(dayOfWeek);
         this.anyDayOfMonth = "*".equals(dayOfMonth);
         this.anyDayOfWeek = "*".equals(dayOfWeek);
@@ -59,7 +59,7 @@ public final class CronExpr {
      */
     public static CronExpr parse(String expr) {
         if (expr == null || expr.trim().isEmpty()) {
-            throw new IllegalArgumentException("Expresion cron vacia");
+            throw new IllegalArgumentException("Empty cron expression");
         }
         String trimmed = expr.trim();
         String lower = trimmed.toLowerCase(Locale.ROOT);
@@ -74,8 +74,8 @@ public final class CronExpr {
         }
         String[] fields = trimmed.split("\\s+");
         if (fields.length != 5) {
-            throw new IllegalArgumentException("Expresion cron '" + trimmed
-                    + "': se esperaban 5 campos (minuto hora dia mes dia-semana), hay "
+            throw new IllegalArgumentException("Cron expression '" + trimmed
+                    + "': expected 5 fields (minute hour day month day-of-week), got "
                     + fields.length);
         }
         return new CronExpr(trimmed, fields[0], fields[1], fields[2], fields[3], fields[4]);
@@ -110,7 +110,7 @@ public final class CronExpr {
             return next;
         }
         throw new IllegalStateException(
-                "Expresion cron '" + source + "' sin proxima ejecucion alcanzable");
+                "Cron expression '" + source + "' has no reachable next run");
     }
 
     /** Original expression text this instance was parsed from. */
@@ -145,7 +145,7 @@ public final class CronExpr {
                 step = parseInt(atom.substring(slash + 1), name, atom);
                 if (step < 1) {
                     throw new IllegalArgumentException(
-                            "Campo " + name + " '" + atom + "': paso invalido " + step);
+                            "Field " + name + " '" + atom + "': invalid step " + step);
                 }
             }
             int lo;
@@ -164,8 +164,8 @@ public final class CronExpr {
                 }
             }
             if (lo < min || hi > max || lo > hi) {
-                throw new IllegalArgumentException("Campo " + name + " '" + atom
-                        + "': fuera de rango " + min + "-" + max);
+                throw new IllegalArgumentException("Field " + name + " '" + atom
+                        + "': out of range " + min + "-" + max);
             }
             for (int value = lo; value <= hi; value += step) {
                 field[value] = true;
@@ -176,7 +176,7 @@ public final class CronExpr {
     /** Day-of-week field over 0-7 collapsing 7 onto Sunday (0). */
     private void fillDayOfWeek(String spec) {
         boolean[] raw = new boolean[8];
-        fill(raw, spec, 0, 7, "dia de semana");
+        fill(raw, spec, 0, 7, "day of week");
         for (int value = 0; value <= 7; value++) {
             if (raw[value]) {
                 daysOfWeek[value % 7] = true;
@@ -192,13 +192,13 @@ public final class CronExpr {
         int colon = time.indexOf(':');
         if (colon < 1) {
             throw new IllegalArgumentException(
-                    "Atajo daily '" + expr + "': se esperaba una hora HH:mm");
+                    "Daily shortcut '" + expr + "': expected an HH:mm time");
         }
-        int hour = parseInt(time.substring(0, colon), "hora", expr);
-        int minute = parseInt(time.substring(colon + 1), "minuto", expr);
+        int hour = parseInt(time.substring(0, colon), "hour", expr);
+        int minute = parseInt(time.substring(colon + 1), "minute", expr);
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
             throw new IllegalArgumentException(
-                    "Atajo daily '" + expr + "': hora fuera de rango");
+                    "Daily shortcut '" + expr + "': time out of range");
         }
         return new int[] {hour, minute};
     }
@@ -209,10 +209,10 @@ public final class CronExpr {
         if (digits.isEmpty()) {
             return 0;
         }
-        int minute = parseInt(digits, "minuto", expr);
+        int minute = parseInt(digits, "minute", expr);
         if (minute < 0 || minute > 59) {
             throw new IllegalArgumentException(
-                    "Atajo hourly '" + expr + "': minuto fuera de rango");
+                    "Hourly shortcut '" + expr + "': minute out of range");
         }
         return minute;
     }
@@ -222,7 +222,7 @@ public final class CronExpr {
             return Integer.parseInt(raw.trim());
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(
-                    "Campo " + name + " '" + atom + "': '" + raw + "' no es un numero");
+                    "Field " + name + " '" + atom + "': '" + raw + "' is not a number");
         }
     }
 }

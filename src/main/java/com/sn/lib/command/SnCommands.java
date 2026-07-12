@@ -52,7 +52,7 @@ public final class SnCommands {
     public RootBuilder root(String name) {
         Objects.requireNonNull(name, "name");
         if (name.isBlank()) {
-            throw new IllegalArgumentException("Nombre de comando vacio");
+            throw new IllegalArgumentException("Empty command name");
         }
         return new RootBuilder(name);
     }
@@ -115,7 +115,7 @@ public final class SnCommands {
         public SubCommandBuilder sub(String name) {
             Objects.requireNonNull(name, "name");
             if (name.isBlank()) {
-                throw new IllegalArgumentException("Nombre de subcomando vacio");
+                throw new IllegalArgumentException("Empty subcommand name");
             }
             SubCommandBuilder sub = new SubCommandBuilder(this, name);
             subs.add(sub);

@@ -124,12 +124,12 @@ public final class LeaderboardCache {
             future = board.query.get();
         } catch (Throwable t) {
             ctx.plugin().getLogger().warning(
-                    "Query del leaderboard '" + board.id + "' lanzo un error: " + t);
+                    "Leaderboard query '" + board.id + "' threw an error: " + t);
             return;
         }
         if (future == null) {
             ctx.plugin().getLogger().warning(
-                    "Query del leaderboard '" + board.id + "' devolvio null; refresh omitido");
+                    "Leaderboard query '" + board.id + "' returned null; refresh skipped");
             return;
         }
         future.thenSync(entries -> {

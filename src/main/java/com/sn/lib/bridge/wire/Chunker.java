@@ -23,13 +23,13 @@ public final class Chunker {
     public static List<byte[]> split(byte[] fullBody, boolean toProxy, boolean response,
             int msgId, HmacSigner signer, long sessionNonce) {
         if (fullBody == null || fullBody.length == 0) {
-            throw new SnWireException("Body vacio: no hay nada que fragmentar");
+            throw new SnWireException("Empty body: nothing to chunk");
         }
         int maxChunk = WireProtocol.maxChunkBody(toProxy);
         long count = ((long) fullBody.length + maxChunk - 1) / maxChunk;
         if (count > 0xFFFF) {
-            throw new SnWireException("Body de " + fullBody.length + " bytes necesita " + count
-                    + " chunks (max 65535): payload absurdo, revisar el emisor");
+            throw new SnWireException("Body of " + fullBody.length + " bytes needs " + count
+                    + " chunks (max 65535): absurd payload, check the emitter");
         }
         int chunkCount = (int) count;
         List<byte[]> frames = new ArrayList<>(chunkCount);

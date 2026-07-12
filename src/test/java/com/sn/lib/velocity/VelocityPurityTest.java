@@ -26,7 +26,7 @@ class VelocityPurityTest {
         Path classesDir = Path.of(SnLibVelocity.class.getProtectionDomain()
                 .getCodeSource().getLocation().toURI());
         Path velocityDir = classesDir.resolve("com/sn/lib/velocity");
-        assertTrue(Files.isDirectory(velocityDir), "no existe " + velocityDir);
+        assertTrue(Files.isDirectory(velocityDir), "does not exist: " + velocityDir);
 
         List<String> offenders = new ArrayList<>();
         try (var stream = Files.walk(velocityDir)) {
@@ -34,12 +34,12 @@ class VelocityPurityTest {
                 String pool = new String(Files.readAllBytes(clazz), StandardCharsets.ISO_8859_1);
                 for (String bad : FORBIDDEN) {
                     if (pool.contains(bad)) {
-                        offenders.add(clazz.getFileName() + " referencia " + bad);
+                        offenders.add(clazz.getFileName() + " references " + bad);
                     }
                 }
             }
         }
         assertTrue(offenders.isEmpty(),
-                "com.sn.lib.velocity debe ser 100% libre de Bukkit, pero: " + offenders);
+                "com.sn.lib.velocity must be 100% Bukkit-free, but: " + offenders);
     }
 }

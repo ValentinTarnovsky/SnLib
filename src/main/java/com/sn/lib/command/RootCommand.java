@@ -179,7 +179,7 @@ public final class RootCommand extends Command implements Registrable {
             sub.executor.accept(new CommandContext(sender, values, subArgs));
         } catch (Throwable t) {
             ctx.plugin().getLogger().log(Level.SEVERE,
-                    "El subcomando '/" + getName() + " " + sub.name + "' fallo", t);
+                    "Subcommand '/" + getName() + " " + sub.name + "' failed", t);
         }
         return true;
     }
@@ -329,7 +329,7 @@ public final class RootCommand extends Command implements Registrable {
             }
             i++;
         }
-        throw new IllegalStateException("Indice de argumento fuera de rango: " + index);
+        throw new IllegalStateException("Argument index out of range: " + index);
     }
 
     private static boolean hasSub(List<Sub> subs, String name) {

@@ -334,7 +334,7 @@ public final class SnYml {
                 hook.run();
             } catch (Throwable t) {
                 ctx.plugin().getLogger().warning(
-                        "Hook de reload fallo para " + file.getName() + ": " + t);
+                        "Reload hook failed for " + file.getName() + ": " + t);
             }
         }
     }
@@ -348,15 +348,15 @@ public final class SnYml {
             String raw = YamlPreprocessor.read(file.toPath());
             YamlPreprocessor.Result result = YamlPreprocessor.preprocess(raw);
             if (!result.fixedLines().isEmpty()) {
-                ctx.plugin().getLogger().warning("Tabs de indentacion corregidos en "
-                        + file.getName() + " (lineas " + result.fixedLines() + ")");
+                ctx.plugin().getLogger().warning("Indentation tabs fixed in "
+                        + file.getName() + " (lines " + result.fixedLines() + ")");
             }
             YamlConfiguration loaded = new YamlConfiguration();
             loaded.loadFromString(result.cleanText());
             this.yaml = loaded;
         } catch (IOException | InvalidConfigurationException e) {
-            ctx.plugin().getLogger().warning("No se pudo leer " + file.getName() + ": "
-                    + e.getMessage() + "; se mantiene el contenido anterior");
+            ctx.plugin().getLogger().warning("Could not read " + file.getName() + ": "
+                    + e.getMessage() + "; keeping the previous content");
         }
     }
 
@@ -376,8 +376,8 @@ public final class SnYml {
                 SnDebug debug = ctx.debug();
                 if (debug != null) {
                     String skipped = out;
-                    debug.log(() -> "PAPI omitido fuera del main thread en " + file.getName()
-                            + "; tokens intactos: " + skipped);
+                    debug.log(() -> "PAPI skipped off the main thread in " + file.getName()
+                            + "; tokens untouched: " + skipped);
                 }
             }
         }
@@ -417,8 +417,8 @@ public final class SnYml {
 
     private void writeToDisk(String content, long seq) {
         synchronized (ioLock) {
-            // Un snapshot mas viejo que uno ya intentado JAMAS pisa el estado nuevo
-            // (carrera drain async vs save sincrono de teardown).
+            // A snapshot older than an already attempted one NEVER overwrites the new
+            // state (async drain vs synchronous teardown save race).
             if (seq <= lastAttemptedSeq) {
                 return;
             }
@@ -431,13 +431,13 @@ public final class SnYml {
                 Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
             } catch (IOException e) {
                 ctx.plugin().getLogger().warning(
-                        "No se pudo guardar " + file.getName() + ": " + e.getMessage());
+                        "Could not save " + file.getName() + ": " + e.getMessage());
             }
         }
     }
 
     private void warnInvalid(String key, Object value, Object def) {
-        ctx.plugin().getLogger().warning("Valor invalido en " + file.getName() + " -> '" + key
-                + "': se recibio '" + value + "', usando default '" + def + "'");
+        ctx.plugin().getLogger().warning("Invalid value in " + file.getName() + " -> '" + key
+                + "': received '" + value + "', using default '" + def + "'");
     }
 }

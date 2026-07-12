@@ -207,8 +207,8 @@ public final class SnDb {
         }
         if (!terminated) {
             executor.shutdownNow();
-            ctx.plugin().getLogger().warning("Pool " + poolName + " no termino en "
-                    + SHUTDOWN_JOIN_SECONDS + "s; shutdownNow() forzado");
+            ctx.plugin().getLogger().warning("Pool " + poolName + " did not finish within "
+                    + SHUTDOWN_JOIN_SECONDS + "s; forced shutdownNow()");
             for (Thread worker : workers) {
                 worker.setContextClassLoader(SnDb.class.getClassLoader());
             }

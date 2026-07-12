@@ -72,8 +72,8 @@ public final class SoundUtil {
         String[] parts = trimmed.split("\\s+");
         Sound sound = resolve(parts[0]);
         if (sound == null) {
-            warnOnce("id:" + parts[0], "Sonido invalido '" + parts[0]
-                    + "': no se resolvio por enum ni por Registry.SOUNDS; se ignora");
+            warnOnce("id:" + parts[0], "Invalid sound '" + parts[0]
+                    + "': not resolved by enum nor by Registry.SOUNDS; ignored");
             return null;
         }
         float volume = parts.length > 1 ? parseFloat(parts[1], trimmed) : 1.0f;
@@ -99,7 +99,7 @@ public final class SoundUtil {
         try {
             return Float.parseFloat(token);
         } catch (NumberFormatException ex) {
-            warnOnce("num:" + spec, "Volumen/pitch invalido en '" + spec + "'; usando 1.0");
+            warnOnce("num:" + spec, "Invalid volume/pitch in '" + spec + "'; using 1.0");
             return 1.0f;
         }
     }

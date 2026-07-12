@@ -27,21 +27,21 @@ final class SecretResolver {
     static byte @Nullable [] resolve(SnYml config, Logger logger) {
         String dedicated = config.getString("bridge.hmac-secret", "");
         if (dedicated != null && !dedicated.isBlank()) {
-            logger.info("SnBridge: usando secreto HMAC dedicado de plugins/SnLib/config.yml");
+            logger.info("SnBridge: using dedicated HMAC secret from plugins/SnLib/config.yml");
             return dedicated.getBytes(StandardCharsets.UTF_8);
         }
         File paperGlobal = new File("config", "paper-global.yml");
         if (!paperGlobal.isFile()) {
-            logger.severe("SnBridge desactivado: no existe config/paper-global.yml y no hay"
-                    + " bridge.hmac-secret dedicado en plugins/SnLib/config.yml");
+            logger.severe("SnBridge disabled: config/paper-global.yml does not exist and no"
+                    + " dedicated bridge.hmac-secret is set in plugins/SnLib/config.yml");
             return null;
         }
         String secret = YamlConfiguration.loadConfiguration(paperGlobal)
                 .getString("proxies.velocity.secret", "");
         if (secret == null || secret.isBlank()) {
-            logger.severe("SnBridge desactivado: proxies.velocity.secret vacio en"
-                    + " config/paper-global.yml (configurar forwarding moderno o un"
-                    + " bridge.hmac-secret dedicado)");
+            logger.severe("SnBridge disabled: proxies.velocity.secret is empty in"
+                    + " config/paper-global.yml (configure modern forwarding or a"
+                    + " dedicated bridge.hmac-secret)");
             return null;
         }
         return secret.getBytes(StandardCharsets.UTF_8);

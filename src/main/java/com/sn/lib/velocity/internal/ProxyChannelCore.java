@@ -139,7 +139,7 @@ public final class ProxyChannelCore {
         RespondEntry previous = responders.putIfAbsent(requestWireId,
                 new RespondEntry(responseType, responder));
         if (previous != null) {
-            throw new SnWireException("respond duplicado para '" + requestWireId + "'");
+            throw new SnWireException("duplicate respond for '" + requestWireId + "'");
         }
     }
 
@@ -194,12 +194,12 @@ public final class ProxyChannelCore {
             SnWireType<T> type, T message, long ttlMillis) {
         CompletableFuture<SnDelivery> future = new CompletableFuture<>();
         if (closed) {
-            future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "canal liberado (shutdown)"));
+            future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "channel released (shutdown)"));
             return future;
         }
         if (signer == null) {
             future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                    "bridge sin secreto HMAC configurado"));
+                    "bridge has no HMAC secret configured"));
             return future;
         }
         byte[] body = type.encodeMessage(message);
@@ -254,7 +254,7 @@ public final class ProxyChannelCore {
         FrameHeader header = tryDecode(frame, WireProtocol.HANDSHAKE_NONCE);
         if (header == null) {
             counters.hmacDrops++;
-            log.debug(() -> "[" + namespace + "] frame rechazado de " + serverName
+            log.debug(() -> "[" + namespace + "] frame rejected from " + serverName
                     + " via " + carrier);
             return null;
         }
@@ -297,7 +297,7 @@ public final class ProxyChannelCore {
         if (expired != null) {
             for (QueuedSend entry : expired) {
                 entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                        "expiro en cola: sin sesion en '" + entry.serverName + "' ("
+                        "expired in queue: no session on '" + entry.serverName + "' ("
                                 + entry.wireId + ")"));
             }
         }
@@ -331,7 +331,7 @@ public final class ProxyChannelCore {
             handshakeReassemblers.clear();
         }
         for (QueuedSend entry : drained) {
-            entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "shutdown del canal"));
+            entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL, "channel shutdown"));
         }
     }
 
@@ -353,7 +353,7 @@ public final class ProxyChannelCore {
             return reassembler.accept(header, FrameCodec.body(frame));
         } catch (SnWireException e) {
             counters.malformed++;
-            log.warn("[" + namespace + "] chunking invalido: " + e.getMessage());
+            log.warn("[" + namespace + "] invalid chunking: " + e.getMessage());
             return null;
         }
     }
@@ -375,17 +375,17 @@ public final class ProxyChannelCore {
         int floor = Math.max(WireProtocol.FRAME_VERSION_MIN, hello.frameVersionMin());
         if (negotiated < floor) {
             counters.malformed++;
-            log.warn("[" + namespace + "] HELLO de '" + serverName + "' con frames ["
+            log.warn("[" + namespace + "] HELLO from '" + serverName + "' with frames ["
                     + hello.frameVersionMin() + "," + hello.frameVersionMax()
-                    + "] sin interseccion con [" + WireProtocol.FRAME_VERSION_MIN + ","
-                    + WireProtocol.FRAME_VERSION + "]: actualizar SnLib de un lado");
+                    + "] has no intersection with [" + WireProtocol.FRAME_VERSION_MIN + ","
+                    + WireProtocol.FRAME_VERSION + "]: update SnLib on one side");
             return;
         }
         long proxyNonce = RANDOM.nextLong();
         HelloAckMsg ack = new HelloAckMsg(negotiated, msgset, libVersion, proxyNonce, Map.of());
         if (!deliverFrames(carrier, serverName, HelloAckMsg.TYPE.encodeMessage(ack),
                 msgIds.getAsInt(), WireProtocol.HANDSHAKE_NONCE, false)) {
-            log.debug(() -> "[" + namespace + "] HELLO_ACK no entregable via " + carrier);
+            log.debug(() -> "[" + namespace + "] HELLO_ACK not deliverable via " + carrier);
             return;
         }
         Session session = new Session(serverName, hello.nonce() ^ proxyNonce,
@@ -393,11 +393,11 @@ public final class ProxyChannelCore {
                 new ChunkReassembler(maxMessageBytes, maxPendingPerConnection, true));
         sessions.put(carrier, session);
         counters.handshakes++;
-        log.debug(() -> "[" + namespace + "] handshake con '" + serverName + "' via " + carrier
+        log.debug(() -> "[" + namespace + "] handshake with '" + serverName + "' via " + carrier
                 + " (backend msgset " + hello.msgsetVersion() + ", SnLib " + hello.libVersion() + ")");
         if (hello.msgsetVersion() != msgset) {
-            log.warn("[" + namespace + "] msgset local " + msgset + " vs backend '" + serverName
-                    + "' " + hello.msgsetVersion() + ": flota mixta, campos aditivos cubren");
+            log.warn("[" + namespace + "] local msgset " + msgset + " vs backend '" + serverName
+                    + "' " + hello.msgsetVersion() + ": mixed fleet, additive fields cover it");
         }
         flushQueue(serverName, carrier, post);
     }
@@ -410,7 +410,7 @@ public final class ProxyChannelCore {
         } catch (UnknownWireIdException e) {
             counters.malformed++;
             sendNack(carrier, session, msgId, e.wireId(), NackReason.UNKNOWN_WIRE_ID,
-                    "tipo no registrado en el proxy");
+                    "type not registered on the proxy");
             return;
         } catch (SnWireException e) {
             counters.malformed++;
@@ -420,12 +420,12 @@ public final class ProxyChannelCore {
         Object message = decoded.message();
         if (message instanceof HelloMsg) {
             counters.malformed++;
-            return; // un HELLO firmado con nonce de sesion no existe en el protocolo
+            return; // a HELLO signed with a session nonce does not exist in the protocol
         }
         if (message instanceof NackMsg nack) {
             counters.nacksReceived++;
-            log.warn("[" + namespace + "] NACK " + nack.reason() + " de '" + session.serverName
-                    + "' para '" + nack.refWireId() + "': " + nack.detail());
+            log.warn("[" + namespace + "] NACK " + nack.reason() + " from '" + session.serverName
+                    + "' for '" + nack.refWireId() + "': " + nack.detail());
             return;
         }
         if (message instanceof HeartbeatMsg heartbeat) {
@@ -437,13 +437,13 @@ public final class ProxyChannelCore {
         if (responderEntry != null) {
             String serverName = session.serverName;
             String requestWireId = decoded.type().wireId();
-            // El responder es codigo del consumer: corre FUERA del monitor
+            // The responder is consumer code: it runs OUTSIDE the monitor
             post.add(() -> {
                 Object response;
                 try {
                     response = responderEntry.responder.respond(carrier, serverName, message);
                 } catch (Throwable t) {
-                    log.warn("[" + namespace + "] responder de " + requestWireId + " lanzo " + t);
+                    log.warn("[" + namespace + "] responder of " + requestWireId + " threw " + t);
                     nackResponderFailure(carrier, msgId, requestWireId, t);
                     return;
                 }
@@ -453,7 +453,7 @@ public final class ProxyChannelCore {
         }
         SnWireType<?> type = decoded.type();
         String serverName = session.serverName;
-        // El handler es codigo del consumer: corre FUERA del monitor
+        // The handler is consumer code: it runs OUTSIDE the monitor
         post.add(() -> dispatcher.dispatch(type, carrier, serverName, message));
     }
 
@@ -462,10 +462,10 @@ public final class ProxyChannelCore {
             SnWireType<?> responseType, Object response) {
         Session session = sessions.get(carrier);
         if (session == null || closed) {
-            return; // el backend ya no esta: el request morira por timeout alla
+            return; // the backend is gone: the request will die by timeout over there
         }
         byte[] responseBody = encodeResponse(responseType, response);
-        // La respuesta viaja con el MISMO msgId + flag response: asi correla el backend
+        // The response travels with the SAME msgId + response flag: how the backend correlates
         if (deliverFrames(carrier, session.serverName, responseBody, msgId,
                 session.sessionNonce, true)) {
             counters.sent++;
@@ -502,7 +502,7 @@ public final class ProxyChannelCore {
             } else {
                 counters.expired++;
                 delivery = SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                        "carrier desconectado durante el flush");
+                        "carrier disconnected during the flush");
             }
             SnDelivery result = delivery;
             CompletableFuture<SnDelivery> future = entry.future;
@@ -521,7 +521,7 @@ public final class ProxyChannelCore {
         } else {
             counters.expired++;
             future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                    "conexion al backend perdida durante el envio (" + wireId + ")"));
+                    "backend connection lost during the send (" + wireId + ")"));
         }
     }
 
@@ -553,13 +553,13 @@ public final class ProxyChannelCore {
         if (entry.expiresAt <= clock.getAsLong()) {
             counters.expired++;
             entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                    "TTL cero y sin sesion en '" + entry.serverName + "'"));
+                    "zero TTL and no session on '" + entry.serverName + "'"));
             return;
         }
         if (queue.size() >= queueCap) {
             counters.queueOverflow++;
             entry.future.complete(SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
-                    "cola llena (" + queueCap + ") para '" + entry.wireId + "'"));
+                    "queue full (" + queueCap + ") for '" + entry.wireId + "'"));
             return;
         }
         queue.addLast(entry);

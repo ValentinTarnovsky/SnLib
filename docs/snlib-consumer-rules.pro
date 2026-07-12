@@ -1,19 +1,19 @@
 # snlib-consumer-rules.pro
-# Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan (sn-obfuscate).
+# ProGuard rules for Sn plugins that consume SnLib and get obfuscated (sn-obfuscate).
 #
-# SnLib.jar es una LIBRERIA en runtime (plugin standalone en plugins/):
-# NUNCA se ofusca ni se shadea en el consumer. Se declara como -libraryjars
-# igual que paper-api. Ajustar la ruta al .m2 local o al jar del release.
+# SnLib.jar is a LIBRARY at runtime (standalone plugin in plugins/):
+# it is NEVER obfuscated nor shaded into the consumer. Declare it as -libraryjars
+# just like paper-api. Adjust the path to the local .m2 or to the release jar.
 
 -libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar
 
-# SnLib no viaja dentro del jar del consumer: silenciar cualquier warning
-# de referencias a clases de la lib.
+# SnLib does not travel inside the consumer jar: silence any warning
+# about references to classes of the lib.
 -dontwarn com.sn.lib.**
 
-# Entrypoint del consumer: la clase que extiende com.sn.lib.SnPlugin la
-# instancia Bukkit por reflexion (main de plugin.yml) y SnLib invoca su
-# handshake requiredApiLevel(). Mantener nombre, constructor y hooks.
+# Consumer entrypoint: the class extending com.sn.lib.SnPlugin is
+# instantiated by Bukkit via reflection (main of plugin.yml) and SnLib invokes
+# its requiredApiLevel() handshake. Keep name, constructor and hooks.
 -keep public class * extends com.sn.lib.SnPlugin {
     public <init>();
     protected int requiredApiLevel();
@@ -22,15 +22,15 @@
     protected void onInnerDisable();
 }
 
-# Clases concretas registradas por reflexion o por el framework de Bukkit:
-# listeners, ejecutores de comandos y expansiones PAPI del consumer.
+# Concrete classes registered via reflection or by the Bukkit framework:
+# listeners, command executors and PAPI expansions of the consumer.
 -keep class * implements org.bukkit.event.Listener { *; }
 -keep class * implements org.bukkit.command.CommandExecutor { *; }
 -keep class * implements org.bukkit.command.TabCompleter { *; }
 -keep class * extends me.clip.placeholderapi.expansion.PlaceholderExpansion { *; }
 
-# Metodos @EventHandler dentro de cualquier clase (por si un listener no
-# implementa Listener directamente sino via clase intermedia).
+# @EventHandler methods inside any class (in case a listener does not
+# implement Listener directly but through an intermediate class).
 -keepclassmembers class * {
     @org.bukkit.event.EventHandler <methods>;
 }

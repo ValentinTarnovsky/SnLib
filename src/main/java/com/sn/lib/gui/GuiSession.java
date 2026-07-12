@@ -215,20 +215,20 @@ public final class GuiSession implements PageTarget {
                               BiConsumer<T, PhCollector> mapper) {
         Objects.requireNonNull(mapper, "mapper");
         if (!def.pagination()) {
-            ctx.guis().warnOnce("bind-paged:" + def.id(), "bindPaged en gui '" + def.id()
-                    + "' ignorado: pagination false (opt-in por menu)");
+            ctx.guis().warnOnce("bind-paged:" + def.id(), "bindPaged on gui '" + def.id()
+                    + "' ignored: pagination false (opt-in per menu)");
             return;
         }
         GuiTemplate template = def.template(templateId);
         if (template == null) {
             ctx.guis().warnOnce("bind-paged-template:" + def.id() + ":" + templateId,
-                    "bindPaged en gui '" + def.id() + "' ignorado: template '" + templateId
-                            + "' no existe");
+                    "bindPaged on gui '" + def.id() + "' ignored: template '" + templateId
+                            + "' does not exist");
             return;
         }
         if (slots == null || slots.length == 0) {
             ctx.guis().warnOnce("bind-paged-slots:" + def.id(),
-                    "bindPaged en gui '" + def.id() + "' ignorado: sin slots destino");
+                    "bindPaged on gui '" + def.id() + "' ignored: no target slots");
             return;
         }
         int[] target = slots.clone();
@@ -253,8 +253,8 @@ public final class GuiSession implements PageTarget {
     public <T> void bindPaged(String templateId, List<T> data, BiConsumer<T, PhCollector> mapper) {
         int[] target = def.pagedSlots();
         if (target.length == 0) {
-            ctx.guis().warnOnce("bind-paged-key:" + def.id(), "bindPaged en gui '" + def.id()
-                    + "' ignorado: el menu no declara paged-key en layout");
+            ctx.guis().warnOnce("bind-paged-key:" + def.id(), "bindPaged on gui '" + def.id()
+                    + "' ignored: the menu declares no paged-key in layout");
             return;
         }
         bindPaged(templateId, data, target, mapper);
@@ -461,7 +461,7 @@ public final class GuiSession implements PageTarget {
     private void runClick(GuiItemDef item, Ph[] phs, ClickType click) {
         if (def.strictClicks() && !GuiItemDef.basicClick(click) && !item.specificActionsFor(click)) {
             ctx.debug().log(() -> "GUI '" + def.id() + "': click " + click
-                    + " descartado por strict-clicks (sin lista especifica)");
+                    + " discarded by strict-clicks (no specific list)");
             return;
         }
         ActionContext context = new ActionContext(viewer, ctx, this, click, phs);
@@ -480,7 +480,7 @@ public final class GuiSession implements PageTarget {
             return false;
         }
         ctx.debug().log(() -> "GUI '" + def.id() + "': " + operation
-                + " ignorado, pagination false (opt-in por menu)");
+                + " ignored, pagination false (opt-in per menu)");
         return true;
     }
 
@@ -542,7 +542,7 @@ public final class GuiSession implements PageTarget {
                 if (!typeWarned) {
                     typeWarned = true;
                     ctx.plugin().getLogger().warning("[gui " + def.id() + "] inventory-type "
-                            + def.inventoryType() + " no se pudo crear (" + t + "); usando CHEST");
+                            + def.inventoryType() + " could not be created (" + t + "); using CHEST");
                 }
             }
         }
@@ -580,8 +580,8 @@ public final class GuiSession implements PageTarget {
         if (!navUnknownNoted && def.pagination() && item.navKind() == GuiItemDef.NavKind.NEXT
                 && knownTotalPages() == 0) {
             navUnknownNoted = true;
-            ctx.debug().log(() -> "GUI '" + def.id() + "': nav next con total de paginas"
-                    + " desconocido; next nunca se deshabilita (usa bindPaged o setTotalPages)");
+            ctx.debug().log(() -> "GUI '" + def.id() + "': nav next with an unknown total"
+                    + " of pages; next is never disabled (use bindPaged or setTotalPages)");
         }
         GuiItemDef effective = item;
         if (navDisabledNow(item) && item.navDisabled() != null) {
@@ -693,8 +693,8 @@ public final class GuiSession implements PageTarget {
                         new ActionContext(viewer, ctx, this, null, new Ph[0]));
             });
         } catch (IllegalPluginAccessException e) {
-            ctx.debug().log(() -> "close-actions de '" + def.id()
-                    + "' descartadas: owner deshabilitado");
+            ctx.debug().log(() -> "close-actions of '" + def.id()
+                    + "' discarded: owner disabled");
         }
     }
 

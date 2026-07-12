@@ -102,7 +102,7 @@ public final class ReloadManager {
                 reloadable.reload();
             } catch (Throwable t) {
                 ctx.plugin().getLogger().log(Level.SEVERE,
-                        "Un Reloadable registrado fallo durante el reload", t);
+                        "A registered Reloadable failed during the reload", t);
             }
         }
         // 6. Recipe cycle on the main thread: unregister every recipe key of this owner

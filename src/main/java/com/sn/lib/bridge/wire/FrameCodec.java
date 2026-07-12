@@ -22,10 +22,10 @@ public final class FrameCodec {
             boolean response, byte[] chunkBody, int bodyOff, int bodyLen, HmacSigner signer,
             long sessionNonce) {
         if (chunkCount < 1 || chunkCount > 0xFFFF) {
-            throw new SnWireException("chunkCount fuera de rango: " + chunkCount);
+            throw new SnWireException("chunkCount out of range: " + chunkCount);
         }
         if (chunkIndex < 0 || chunkIndex >= chunkCount) {
-            throw new SnWireException("chunkIndex " + chunkIndex + " fuera de rango para chunkCount " + chunkCount);
+            throw new SnWireException("chunkIndex " + chunkIndex + " out of range for chunkCount " + chunkCount);
         }
         byte[] frame = new byte[WireProtocol.HEADER_LENGTH + bodyLen];
         frame[0] = (byte) WireProtocol.MAGIC;
@@ -61,16 +61,16 @@ public final class FrameCodec {
     public static FrameHeader decode(byte[] frame, HmacSigner signer, long sessionNonce,
             boolean expectToProxy) {
         if (frame == null || frame.length < WireProtocol.HEADER_LENGTH) {
-            throw new SnWireException("Frame truncado: " + (frame == null ? "null" : frame.length + " bytes"));
+            throw new SnWireException("Truncated frame: " + (frame == null ? "null" : frame.length + " bytes"));
         }
         int magic = frame[0] & 0xFF;
         if (magic != WireProtocol.MAGIC) {
-            throw new SnWireException("Magic invalido: 0x" + Integer.toHexString(magic)
-                    + " (no es un frame SnBridge)");
+            throw new SnWireException("Invalid magic: 0x" + Integer.toHexString(magic)
+                    + " (not an SnBridge frame)");
         }
         int frameVersion = frame[1] & 0xFF;
         if (frameVersion < WireProtocol.FRAME_VERSION_MIN || frameVersion > WireProtocol.FRAME_VERSION) {
-            throw new SnWireException("frameVersion " + frameVersion + " fuera del rango soportado ["
+            throw new SnWireException("frameVersion " + frameVersion + " outside the supported range ["
                     + WireProtocol.FRAME_VERSION_MIN + ", " + WireProtocol.FRAME_VERSION + "]");
         }
         int flags = frame[2] & 0xFF;
@@ -79,19 +79,19 @@ public final class FrameCodec {
         int chunkIndex = ((frame[7] & 0xFF) << 8) | (frame[8] & 0xFF);
         int chunkCount = ((frame[9] & 0xFF) << 8) | (frame[10] & 0xFF);
         if (chunkCount < 1 || chunkIndex >= chunkCount) {
-            throw new SnWireException("Chunking invalido en header: index " + chunkIndex + ", count " + chunkCount);
+            throw new SnWireException("Invalid chunking in header: index " + chunkIndex + ", count " + chunkCount);
         }
         byte[] receivedTag = new byte[WireProtocol.HMAC_TAG_LENGTH];
         System.arraycopy(frame, 11, receivedTag, 0, WireProtocol.HMAC_TAG_LENGTH);
         byte[] expected = signer.tag(frame, sessionNonce,
                 frame, WireProtocol.HEADER_LENGTH, frame.length - WireProtocol.HEADER_LENGTH);
         if (!HmacSigner.tagsEqual(expected, receivedTag)) {
-            throw new SnWireException("HMAC invalido (frame descartado: spoofing, secreto distinto o nonce de otra sesion)");
+            throw new SnWireException("Invalid HMAC (frame discarded: spoofing, different secret or a nonce from another session)");
         }
         boolean toProxy = (flags & WireProtocol.FLAG_TO_PROXY) != 0;
         if (toProxy != expectToProxy) {
-            throw new SnWireException("Frame reflejado: direccion " + (toProxy ? "hacia-proxy" : "hacia-backend")
-                    + " en un receptor que espera la contraria; descartado");
+            throw new SnWireException("Reflected frame: direction " + (toProxy ? "to-proxy" : "to-backend")
+                    + " on a receiver expecting the opposite; discarded as reflected");
         }
         return new FrameHeader(frameVersion, flags, msgId, chunkIndex, chunkCount, receivedTag);
     }

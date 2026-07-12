@@ -25,7 +25,7 @@ class HelloProtocolTest {
     @Test
     void nackSelfTest() {
         NackMsg.TYPE.selfTest(new NackMsg(77, "sncredits:open_confirm",
-                NackReason.DENIED_BY_ALLOWLIST, "patron no coincide"));
+                NackReason.DENIED_BY_ALLOWLIST, "pattern mismatch"));
         NackMsg.TYPE.selfTest(new NackMsg(0, "", NackReason.MALFORMED, ""));
     }
 
@@ -52,11 +52,11 @@ class HelloProtocolTest {
 
     @Test
     void capabilitiesEncodeSortedForDeterminism() {
-        Map<String, Integer> unordered = Map.of("zeta", 1, "alfa", 2, "media", 3);
+        Map<String, Integer> unordered = Map.of("zulu", 1, "alpha", 2, "mike", 3);
         byte[] a = HelloMsg.TYPE.encodeMessage(new HelloMsg(1, 1, 1, "v", 0L, unordered));
         byte[] b = HelloMsg.TYPE.encodeMessage(new HelloMsg(1, 1, 1, "v",
-                0L, new java.util.LinkedHashMap<>(Map.of("media", 3, "zeta", 1, "alfa", 2))));
-        assertTrue(java.util.Arrays.equals(a, b), "el orden del map de origen no debe afectar los bytes");
+                0L, new java.util.LinkedHashMap<>(Map.of("mike", 3, "zulu", 1, "alpha", 2))));
+        assertTrue(java.util.Arrays.equals(a, b), "the source map order must not affect the bytes");
     }
 
     @Test

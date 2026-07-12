@@ -60,9 +60,9 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- SnBridge lado proxy: el MISMO jar es plugin de Velocity (velocity-plugin.json).
-             Solo lo tocan com.sn.lib.velocity.* y bridge.wire (neutral); en Paper esas
-             clases jamas se cargan y viceversa (carga lazy por plataforma). -->
+        <!-- SnBridge proxy side: the SAME jar is also a Velocity plugin (velocity-plugin.json).
+             Only com.sn.lib.velocity.* and bridge.wire (neutral) touch it; on Paper those
+             classes are never loaded and vice versa (lazy per-platform class loading). -->
         <dependency>
             <groupId>com.velocitypowered</groupId>
             <artifactId>velocity-api</artifactId>
@@ -245,7 +245,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Additive-only public API gate ACTIVO: baseline com.sn:snlib:1.0.0 instalada en el .m2 local -->
+            <!-- Additive-only public API gate ACTIVE: baseline com.sn:snlib:1.0.0 installed in the local .m2 -->
             <plugin>
                 <groupId>com.github.siom79.japicmp</groupId>
                 <artifactId>japicmp-maven-plugin</artifactId>
@@ -261,19 +261,19 @@
                     </oldVersion>
                     <parameter>
                         <ignoreMissingOldVersion>false</ignoreMissingOldVersion>
-                        <!-- ignoreMissingClasses: el jar shadeado incluye mysql-connector-j
-                             sin relocar, cuyas clases X DevAPI referencian protobuf (excluido
-                             del shade adrede); japicmp no debe exigir ese classpath. -->
+                        <!-- ignoreMissingClasses: the shaded jar bundles mysql-connector-j
+                             unrelocated, whose X DevAPI classes reference protobuf (excluded
+                             from the shade on purpose); japicmp must not demand that classpath. -->
                         <ignoreMissingClasses>true</ignoreMissingClasses>
                         <excludes>
                             <exclude>com.sn.lib.**.internal.**</exclude>
                             <exclude>com.sn.lib.libs.**</exclude>
-                            <!-- SnBridge @SnExperimental: fuera del gate hasta migrar SnCredits
-                                 (ver docs/SNBRIDGE-SPEC.md seccion 3); al congelar se quitan
-                                 estos dos excludes y sube SnApi.LEVEL. -->
+                            <!-- SnBridge @SnExperimental: outside the gate until the SnCredits
+                                 migration (see docs/SNBRIDGE-SPEC.md section 3); on freeze these
+                                 two excludes go away and SnApi.LEVEL bumps. -->
                             <exclude>com.sn.lib.bridge.**</exclude>
                             <exclude>com.sn.lib.velocity.**</exclude>
-                            <!-- Shadeadas SIN relocar (JNI/driver): no son API de SnLib. -->
+                            <!-- Shaded WITHOUT relocation (JNI/driver): not SnLib API. -->
                             <exclude>com.mysql.**</exclude>
                             <exclude>org.sqlite.**</exclude>
                             <exclude>org.slf4j.**</exclude>

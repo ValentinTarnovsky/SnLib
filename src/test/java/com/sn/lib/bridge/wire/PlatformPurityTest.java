@@ -28,7 +28,7 @@ class PlatformPurityTest {
         Path classesDir = Path.of(SnBuf.class.getProtectionDomain()
                 .getCodeSource().getLocation().toURI());
         Path wireDir = classesDir.resolve("com/sn/lib/bridge/wire");
-        assertTrue(Files.isDirectory(wireDir), "no existe " + wireDir + " (compilar antes de testear)");
+        assertTrue(Files.isDirectory(wireDir), wireDir + " does not exist (compile before testing)");
 
         List<String> offenders = new ArrayList<>();
         try (var stream = Files.walk(wireDir)) {
@@ -37,12 +37,12 @@ class PlatformPurityTest {
                 String pool = new String(Files.readAllBytes(clazz), StandardCharsets.ISO_8859_1);
                 for (String bad : FORBIDDEN) {
                     if (pool.contains(bad)) {
-                        offenders.add(clazz.getFileName() + " referencia " + bad);
+                        offenders.add(clazz.getFileName() + " references " + bad);
                     }
                 }
             }
         }
         assertTrue(offenders.isEmpty(),
-                "bridge.wire debe ser 100% neutral de plataforma, pero: " + offenders);
+                "bridge.wire must be 100% platform-neutral, but: " + offenders);
     }
 }

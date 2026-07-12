@@ -63,8 +63,8 @@ public final class DbConfig {
             type = Type.MYSQL;
         } else {
             if (!"sqlite".equalsIgnoreCase(rawType)) {
-                plugin.getLogger().warning("[" + plugin.getName() + "] database.type invalido: '"
-                        + rawType + "', usando sqlite");
+                plugin.getLogger().warning("[" + plugin.getName() + "] invalid database.type: '"
+                        + rawType + "', using sqlite");
             }
             type = Type.SQLITE;
         }

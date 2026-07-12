@@ -58,7 +58,7 @@ public final class UpsertBuilder {
     public SnFuture<Integer> run() {
         if (keyColumns.isEmpty()) {
             throw new IllegalStateException(
-                    "upsert(" + table + ") sin keys(): declara al menos una columna clave");
+                    "upsert(" + table + ") without keys(): declare at least one key column");
         }
         String sql = db.config().type() == DbConfig.Type.SQLITE ? sqliteSql() : mysqlSql();
         List<Object> values = new ArrayList<>(keyValues.size() + setValues.size());
@@ -89,7 +89,7 @@ public final class UpsertBuilder {
         sql.append(" ON DUPLICATE KEY UPDATE ");
         StringJoiner assignments = new StringJoiner(", ");
         if (setColumns.isEmpty()) {
-            // MySQL exige al menos una asignacion: refresco no-op de la primera clave.
+            // MySQL requires at least one assignment: no-op refresh of the first key.
             String key = keyColumns.get(0);
             assignments.add(key + "=VALUES(" + key + ")");
         } else {
@@ -114,7 +114,7 @@ public final class UpsertBuilder {
 
     private static String identifier(String name) {
         if (name == null || !IDENTIFIER.matcher(name).matches()) {
-            throw new IllegalArgumentException("Identificador SQL invalido: '" + name + "'");
+            throw new IllegalArgumentException("Invalid SQL identifier: '" + name + "'");
         }
         return name;
     }

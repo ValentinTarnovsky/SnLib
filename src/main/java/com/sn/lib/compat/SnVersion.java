@@ -57,7 +57,7 @@ public final class SnVersion {
         }
         if (assume) {
             Bukkit.getLogger().warning(
-                    "[SnLib] '" + raw + "': version no reconocida, asumiendo compat target");
+                    "[SnLib] '" + raw + "': unrecognized version, assuming compat target");
         }
         MAJOR = major;
         MINOR = minor;

@@ -43,9 +43,9 @@ public final class VaultBackend implements EconomyBridge.Backend {
     }
 
     /**
-     * Resolucion on-use: el provider de Economy puede registrar el servicio DESPUES del
-     * primer acceso (Vault ya enabled, servicio tardio); un miss cacheado se re-resuelve
-     * en el siguiente uso en vez de quedar nulo toda la sesion.
+     * On-use resolution: the Economy provider may register the service AFTER the first
+     * access (Vault already enabled, late service); a cached miss re-resolves on the
+     * next use instead of staying null for the whole session.
      */
     private java.util.Optional<Economy> economy() {
         java.util.Optional<Economy> resolved = vault.get();
@@ -61,7 +61,7 @@ public final class VaultBackend implements EconomyBridge.Backend {
         try {
             return economy().map(economy -> economy.getBalance(player)).orElse(0.0D);
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Vault fallo al leer el balance: " + t);
+            ctx.plugin().getLogger().warning("Vault failed to read the balance: " + t);
             return 0.0D;
         }
     }
@@ -108,7 +108,7 @@ public final class VaultBackend implements EconomyBridge.Backend {
         try {
             return Boolean.TRUE.equals(operation.get());
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Operacion de economia Vault fallo: " + t);
+            ctx.plugin().getLogger().warning("Vault economy operation failed: " + t);
             return false;
         }
     }

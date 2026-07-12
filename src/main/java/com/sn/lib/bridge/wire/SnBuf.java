@@ -60,7 +60,7 @@ public final class SnBuf {
     public void u8(int value) {
         checkWrite();
         if (value < 0 || value > 0xFF) {
-            throw new SnWireException("u8 fuera de rango: " + value);
+            throw new SnWireException("u8 out of range: " + value);
         }
         ensure(1);
         data[size++] = (byte) value;
@@ -69,7 +69,7 @@ public final class SnBuf {
     public void u16(int value) {
         checkWrite();
         if (value < 0 || value > 0xFFFF) {
-            throw new SnWireException("u16 fuera de rango: " + value);
+            throw new SnWireException("u16 out of range: " + value);
         }
         ensure(2);
         data[size++] = (byte) (value >>> 8);
@@ -112,11 +112,11 @@ public final class SnBuf {
     public void str(String value) {
         checkWrite();
         if (value == null) {
-            throw new SnWireException("str null: los campos de wire no admiten null (usar \"\" o un bool de presencia)");
+            throw new SnWireException("null str: wire fields do not allow null (use \"\" or a presence bool)");
         }
         byte[] utf = value.getBytes(StandardCharsets.UTF_8);
         if (utf.length > MAX_FIELD_BYTES) {
-            throw new SnWireException("str de " + utf.length + " bytes supera el cap de campo de " + MAX_FIELD_BYTES);
+            throw new SnWireException("str of " + utf.length + " bytes exceeds the field cap of " + MAX_FIELD_BYTES);
         }
         i32(utf.length);
         raw(utf, 0, utf.length);
@@ -126,10 +126,10 @@ public final class SnBuf {
     public void bytes(byte[] value) {
         checkWrite();
         if (value == null) {
-            throw new SnWireException("bytes null: los campos de wire no admiten null");
+            throw new SnWireException("null bytes: wire fields do not allow null");
         }
         if (value.length > MAX_FIELD_BYTES) {
-            throw new SnWireException("bytes de " + value.length + " supera el cap de campo de " + MAX_FIELD_BYTES);
+            throw new SnWireException("bytes of " + value.length + " exceeds the field cap of " + MAX_FIELD_BYTES);
         }
         i32(value.length);
         raw(value, 0, value.length);
@@ -138,7 +138,7 @@ public final class SnBuf {
     public void uuid(UUID value) {
         checkWrite();
         if (value == null) {
-            throw new SnWireException("uuid null: los campos de wire no admiten null");
+            throw new SnWireException("null uuid: wire fields do not allow null");
         }
         i64(value.getMostSignificantBits());
         i64(value.getLeastSignificantBits());
@@ -167,7 +167,7 @@ public final class SnBuf {
     public void patchI32(int at, int value) {
         checkWrite();
         if (at < 0 || at + 4 > size) {
-            throw new SnWireException("patchI32 fuera del buffer: offset " + at + ", size " + size);
+            throw new SnWireException("patchI32 outside the buffer: offset " + at + ", size " + size);
         }
         putI32(at, value);
     }
@@ -235,7 +235,7 @@ public final class SnBuf {
     public String str() {
         int len = i32();
         if (len < 0 || len > MAX_FIELD_BYTES) {
-            throw new SnWireException("str con longitud invalida en el wire: " + len);
+            throw new SnWireException("str with invalid length on the wire: " + len);
         }
         require(len);
         String s = new String(data, pos, len, StandardCharsets.UTF_8);
@@ -246,7 +246,7 @@ public final class SnBuf {
     public byte[] bytes() {
         int len = i32();
         if (len < 0 || len > MAX_FIELD_BYTES) {
-            throw new SnWireException("bytes con longitud invalida en el wire: " + len);
+            throw new SnWireException("bytes with invalid length on the wire: " + len);
         }
         require(len);
         byte[] out = new byte[len];
@@ -266,7 +266,7 @@ public final class SnBuf {
      */
     public SnBuf readSlice(int len) {
         if (len < 0) {
-            throw new SnWireException("readSlice con longitud negativa: " + len);
+            throw new SnWireException("readSlice with negative length: " + len);
         }
         require(len);
         SnBuf slice = new SnBuf(data, pos + len, pos, pos + len, true);
@@ -306,19 +306,19 @@ public final class SnBuf {
         // Overflow-safe: pos <= limit always holds in read mode, so limit - pos >= 0 and a
         // wire-derived n near Integer.MAX_VALUE cannot wrap the comparison
         if (n < 0 || n > limit - pos) {
-            throw new SnWireException("Payload truncado: se esperaban " + n + " bytes y quedan " + (limit - pos));
+            throw new SnWireException("Truncated payload: expected " + n + " bytes but " + (limit - pos) + " remain");
         }
     }
 
     private void checkWrite() {
         if (readable) {
-            throw new SnWireException("Operacion de escritura sobre un SnBuf de lectura");
+            throw new SnWireException("Write operation on a read-mode SnBuf");
         }
     }
 
     private void checkRead() {
         if (!readable) {
-            throw new SnWireException("Operacion de lectura sobre un SnBuf de escritura");
+            throw new SnWireException("Read operation on a write-mode SnBuf");
         }
     }
 }

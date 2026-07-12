@@ -32,10 +32,10 @@ class GoldenFixturesTest {
             0x0102030405060708L, Map.of("console", 1));
 
     private static final String NACK_V1 =
-            "0000000a736e6c69623a6e61636b0001000000290000004d00000016736e637265646974733a"
-            + "6f70656e5f636f6e6669726d0300000006706174726f6e";
+            "0000000a736e6c69623a6e61636b00010000002a0000004d00000016736e637265646974733a"
+            + "6f70656e5f636f6e6669726d03000000077061747465726e";
     private static final NackMsg NACK_MSG = new NackMsg(77, "sncredits:open_confirm",
-            NackReason.DENIED_BY_ALLOWLIST, "patron");
+            NackReason.DENIED_BY_ALLOWLIST, "pattern");
 
     private static final String HEARTBEAT_V1 =
             "0000000f736e6c69623a68656172746265617400010000000800000000075bcd15";

@@ -121,8 +121,8 @@ public final class SelectionManager {
             try {
                 onCancel.accept(playerId);
             } catch (Throwable t) {
-                ctx.plugin().getLogger().warning("Callback onCancel del spec de seleccion '"
-                        + session.spec().id() + "' fallo: " + t);
+                ctx.plugin().getLogger().warning("onCancel callback of selection spec '"
+                        + session.spec().id() + "' failed: " + t);
             }
         }
     }
@@ -227,8 +227,8 @@ public final class SelectionManager {
     public void handleWandClick(Player player, String specId, boolean first, Location clicked) {
         SelectionSpec spec = specId == null ? null : specs.get(specId);
         if (spec == null) {
-            ctx.debug().log(() -> "Click de wand ignorado: spec de seleccion '" + specId
-                    + "' no registrado por " + ctx.plugin().getName());
+            ctx.debug().log(() -> "Wand click ignored: selection spec '" + specId
+                    + "' not registered by " + ctx.plugin().getName());
             return;
         }
         if (spec.permission() != null && !player.hasPermission(spec.permission())) {
@@ -276,8 +276,8 @@ public final class SelectionManager {
             try {
                 onUpdate.accept(session);
             } catch (Throwable t) {
-                ctx.plugin().getLogger().warning("Callback onUpdate del spec de seleccion '"
-                        + spec.id() + "' fallo: " + t);
+                ctx.plugin().getLogger().warning("onUpdate callback of selection spec '"
+                        + spec.id() + "' failed: " + t);
             }
         }
         if (player == null || !session.hasBothPositions()) {
@@ -300,8 +300,8 @@ public final class SelectionManager {
             try {
                 onSelect.accept(cuboid);
             } catch (Throwable t) {
-                ctx.plugin().getLogger().warning("Callback onSelect del spec de seleccion '"
-                        + spec.id() + "' fallo: " + t);
+                ctx.plugin().getLogger().warning("onSelect callback of selection spec '"
+                        + spec.id() + "' failed: " + t);
             }
         }
         if (spec.completeEnds()) {
@@ -406,7 +406,7 @@ public final class SelectionManager {
             manager.shutdown();
         } catch (Throwable t) {
             manager.ctx.plugin().getLogger()
-                    .warning("Shutdown del modulo de seleccion fallo: " + t);
+                    .warning("Selection module shutdown failed: " + t);
         }
     }
 }

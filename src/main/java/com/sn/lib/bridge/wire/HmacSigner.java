@@ -32,7 +32,7 @@ public final class HmacSigner {
      */
     public HmacSigner(byte[] secret) {
         if (secret == null || secret.length == 0) {
-            throw new SnWireException("Secreto HMAC vacio: configurar el forwarding secret o un secreto dedicado");
+            throw new SnWireException("Empty HMAC secret: configure the forwarding secret or a dedicated secret");
         }
         this.key = new SecretKeySpec(secret, ALGORITHM);
     }
@@ -73,7 +73,7 @@ public final class HmacSigner {
             return mac;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             // HmacSHA256 is mandatory in every JRE; init only fails on an empty key, rejected in the constructor
-            throw new SnWireException("No se pudo inicializar HmacSHA256", e);
+            throw new SnWireException("Could not initialize HmacSHA256", e);
         }
     }
 }

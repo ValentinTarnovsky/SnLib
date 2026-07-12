@@ -105,12 +105,12 @@ class ProxyChannelCoreTest {
                 backendNonce, Map.of("bossbar", 1));
         int before = deliveries.size();
         feed(serverName, HelloMsg.TYPE.encodeMessage(hello), 600, WireProtocol.HANDSHAKE_NONCE);
-        // Solo la PRIMERA entrega es el ACK (firmado con handshake nonce); lo que el
-        // flush de cola mande despues ya viaja con el nonce de sesion
+        // Only the FIRST delivery is the ACK (signed with the handshake nonce); whatever
+        // the queue flush sends afterwards already travels with the session nonce
         HelloAckMsg ack = (HelloAckMsg) decodeRange(before, before + 1,
                 WireProtocol.HANDSHAKE_NONCE).get(0).message();
         sessionNonce = backendNonce ^ ack.nonce();
-        assertEquals(3, ack.msgsetVersion(), "el ACK lleva el msgset del proxy");
+        assertEquals(3, ack.msgsetVersion(), "the ACK carries the proxy's msgset");
     }
 
     private void feed(String serverName, byte[] body, int msgId, long nonce) {
@@ -167,26 +167,26 @@ class ProxyChannelCoreTest {
     @Test
     void respondCorrelatesWithTheRequestMsgId() {
         core.respond(ReqConfig.TYPE.wireId(), SyncConfig.TYPE,
-                (carrier, server, request) -> new SyncConfig("blob-para-" + server));
+                (carrier, server, request) -> new SyncConfig("blob-for-" + server));
         backendHandshake("work");
         int before = deliveries.size();
-        feed("work", ReqConfig.TYPE.encodeMessage(new ReqConfig("dame")), 777, sessionNonce);
+        feed("work", ReqConfig.TYPE.encodeMessage(new ReqConfig("gimme")), 777, sessionNonce);
         List<BackendView> answers = decodeDelivered(before, sessionNonce);
         assertEquals(1, answers.size());
-        assertEquals(777, answers.get(0).msgId(), "la respuesta viaja con el MISMO msgId");
-        assertEquals(new SyncConfig("blob-para-work"), answers.get(0).message());
-        assertTrue(dispatched.isEmpty(), "un request servido no pasa por on()");
+        assertEquals(777, answers.get(0).msgId(), "the response travels with the SAME msgId");
+        assertEquals(new SyncConfig("blob-for-work"), answers.get(0).message());
+        assertTrue(dispatched.isEmpty(), "a served request never goes through on()");
     }
 
     @Test
     void throwingResponderAnswersInternalErrorNack() {
         core.respond(ReqConfig.TYPE.wireId(), SyncConfig.TYPE,
                 (carrier, server, request) -> {
-                    throw new IllegalStateException("db caida");
+                    throw new IllegalStateException("db down");
                 });
         backendHandshake("gens");
         int before = deliveries.size();
-        feed("gens", ReqConfig.TYPE.encodeMessage(new ReqConfig("dame")), 778, sessionNonce);
+        feed("gens", ReqConfig.TYPE.encodeMessage(new ReqConfig("gimme")), 778, sessionNonce);
         NackMsg nack = (NackMsg) decodeDelivered(before, sessionNonce).get(0).message();
         assertEquals(NackReason.INTERNAL_ERROR, nack.reason());
         assertEquals(778, nack.refMsgId());
@@ -203,7 +203,7 @@ class ProxyChannelCoreTest {
     @Test
     void sendQueuesUntilTheServerHasASessionThenFlushes() {
         CompletableFuture<SnDelivery> future = core.sendToServer("gens",
-                ShopClick.TYPE, new ShopClick(CARRIER, "abrir"), -1L);
+                ShopClick.TYPE, new ShopClick(CARRIER, "open"), -1L);
         assertFalse(future.isDone());
         assertEquals(1, core.pending());
         backendHandshake("gens");
@@ -216,7 +216,7 @@ class ProxyChannelCoreTest {
         CompletableFuture<SnDelivery> forWork = core.sendToServer("work",
                 ShopClick.TYPE, new ShopClick(CARRIER, "x"), -1L);
         backendHandshake("gens");
-        assertFalse(forWork.isDone(), "una sesion de gens no despacha cola de work");
+        assertFalse(forWork.isDone(), "a gens session does not flush work's queue");
         clock.addAndGet(30_001L);
         core.sweep();
         assertEquals(SnDeliveryResult.EXPIRED_TTL, forWork.join().result());
@@ -225,15 +225,15 @@ class ProxyChannelCoreTest {
     @Test
     void wrongNonceFrameIsDroppedAndCounted() {
         backendHandshake("gens");
-        // Nonce totalmente ajeno (ni sesion ni handshake): muere como hmacDrop
+        // Completely foreign nonce (neither session nor handshake): dies as an hmacDrop
         feed("gens", ShopClick.TYPE.encodeMessage(new ShopClick(CARRIER, "spoof")), 780, 424242L);
         assertTrue(core.counters().hmacDrops() > 0);
-        // Nonce de handshake con algo que NO es HELLO: muere como malformed
+        // Handshake nonce carrying something that is NOT a HELLO: dies as malformed
         long malformedBefore = core.counters().malformed;
         feed("gens", ShopClick.TYPE.encodeMessage(new ShopClick(CARRIER, "spoof2")),
                 781, WireProtocol.HANDSHAKE_NONCE);
         assertTrue(core.counters().malformed > malformedBefore);
-        assertTrue(dispatched.isEmpty(), "nada spoofeado llega al dispatcher");
+        assertTrue(dispatched.isEmpty(), "nothing spoofed reaches the dispatcher");
     }
 
     @Test
@@ -247,7 +247,7 @@ class ProxyChannelCoreTest {
     @Test
     void newHelloAfterServerSwitchReplacesTheSession() {
         backendHandshake("gens");
-        // El jugador cambio de server: llega un HELLO nuevo desde work por el mismo carrier
+        // The player switched servers: a new HELLO arrives from work over the same carrier
         backendHandshake("work");
         assertEquals(0, core.readySessionsOn("gens"));
         assertEquals(1, core.readySessionsOn("work"));
@@ -255,8 +255,8 @@ class ProxyChannelCoreTest {
 
     @Test
     void switchToNonClaimingServerDropsTheStaleSession() {
-        // El jugador paso de gens a lobby y lobby NUNCA manda HELLO (no reclama el
-        // namespace): sin la limpieza condicional la sesion de gens queda zombie
+        // The player moved from gens to lobby and lobby NEVER sends HELLO (it does not
+        // claim the namespace): absent the conditional cleanup the gens session stays zombie
         backendHandshake("gens");
         core.closeCarrierIfNotOn(CARRIER, "lobby");
         assertEquals(0, core.readySessionsOn("gens"));
@@ -266,8 +266,8 @@ class ProxyChannelCoreTest {
 
     @Test
     void conditionalCloseNeverWipesAFreshSessionOnTheSameServer() {
-        // Race: el HELLO del backend nuevo llego ANTES del ServerConnectedEvent; la
-        // limpieza condicional debe preservar esa sesion fresca
+        // Race: the new backend's HELLO landed BEFORE the ServerConnectedEvent; the
+        // conditional cleanup must preserve that fresh session
         backendHandshake("work");
         core.closeCarrierIfNotOn(CARRIER, "work");
         assertEquals(1, core.readySessionsOn("work"));
@@ -280,7 +280,7 @@ class ProxyChannelCoreTest {
         core.teardown();
         assertEquals(SnDeliveryResult.EXPIRED_TTL, queued.join().result());
         CompletableFuture<SnDelivery> late = core.sendToServer("gens",
-                ShopClick.TYPE, new ShopClick(CARRIER, "tarde"), -1L);
+                ShopClick.TYPE, new ShopClick(CARRIER, "late"), -1L);
         assertEquals(SnDeliveryResult.EXPIRED_TTL, late.join().result());
     }
 }

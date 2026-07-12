@@ -76,8 +76,8 @@ public final class SelectionSpec {
         this.dustSize = Math.max(0.1F, Math.min(4.0F, builder.dustSize));
         this.step = Math.max(0.1D, builder.step);
         this.refreshIntervalTicks = Math.max(1L, builder.refreshIntervalTicks);
-        // Minimos duros: un budget/distancia/volumen <= 0 (yml roto) degradaria el paso
-        // efectivo del renderer a negativo y colgaria el main thread en drawEdges.
+        // Hard minimums: a budget/distance/volume <= 0 (broken yml) would degrade the
+        // renderer's effective step to negative and hang the main thread in drawEdges.
         this.renderDistance = Math.max(1, builder.renderDistance);
         this.visibility = builder.visibility;
         this.particleBudget = Math.max(1, builder.particleBudget);
@@ -128,8 +128,8 @@ public final class SelectionSpec {
             builder.visibility(Visibility.valueOf(rawVisibility.trim().toUpperCase(Locale.ROOT)));
         } catch (IllegalArgumentException invalid) {
             if (WARNED.add("visibility:" + rawVisibility)) {
-                ctx.plugin().getLogger().warning("Visibility de seleccion invalida '"
-                        + rawVisibility + "' (opciones: OWNER_ONLY, WORLD); usando OWNER_ONLY");
+                ctx.plugin().getLogger().warning("Invalid selection visibility '"
+                        + rawVisibility + "' (options: OWNER_ONLY, WORLD); using OWNER_ONLY");
             }
         }
         builder.particleBudget(yml.getInt(p + "particle-budget", 2000));
@@ -395,8 +395,8 @@ public final class SelectionSpec {
                     }
                 }
             }
-            warnOnce("dust-color:" + raw, "Color de seleccion invalido '" + raw
-                    + "' (formatos: \"R, G, B\" o \"#RRGGBB\"); se conserva el default");
+            warnOnce("dust-color:" + raw, "Invalid selection color '" + raw
+                    + "' (formats: \"R, G, B\" or \"#RRGGBB\"); keeping the default");
             return this;
         }
 

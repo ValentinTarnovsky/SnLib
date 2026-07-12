@@ -91,8 +91,8 @@ public final class SnFuture<T> {
      */
     public T join() {
         if (mainThreadCompleted && !delegate.isDone() && Bukkit.isPrimaryThread()) {
-            throw new IllegalStateException("Este future completa EN el main thread (frames/"
-                    + "sweep del bridge): join() en el main thread nunca retornaria; usar"
+            throw new IllegalStateException("This future completes ON the main thread (bridge"
+                    + " frames/sweep): join() on the main thread would never return; use"
                     + " thenSync/exceptionally");
         }
         warnIfMainThreadJoin();
@@ -109,7 +109,7 @@ public final class SnFuture<T> {
                 return;
             }
             JavaPlugin plugin = ctx.plugin();
-            plugin.getLogger().severe("Operacion critica de base de datos fallo; deshabilitando "
+            plugin.getLogger().severe("Critical database operation failed; disabling "
                     + plugin.getName() + ": " + unwrap(error));
             if (Bukkit.isPrimaryThread()) {
                 Bukkit.getPluginManager().disablePlugin(plugin);
@@ -119,7 +119,7 @@ public final class SnFuture<T> {
                 ctx.scheduler().sync(() -> Bukkit.getPluginManager().disablePlugin(plugin));
             } catch (IllegalPluginAccessException e) {
                 plugin.getLogger().warning(
-                        "Disable diferido descartado: plugin ya deshabilitado durante el scheduling");
+                        "Deferred disable discarded: plugin already disabled during scheduling");
             }
         });
         return this;
@@ -132,7 +132,7 @@ public final class SnFuture<T> {
         }
         StackTraceElement[] stack = Thread.currentThread().getStackTrace();
         StringBuilder message = new StringBuilder(
-                "SnFuture.join() en el main thread fuera de shutdown/bootstrap:");
+                "SnFuture.join() on the main thread outside shutdown/bootstrap:");
         int shown = 0;
         for (int i = 3; i < stack.length && shown < JOIN_WARN_FRAMES; i++, shown++) {
             message.append("\n  at ").append(stack[i]);

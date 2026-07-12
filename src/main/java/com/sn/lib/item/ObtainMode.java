@@ -33,7 +33,7 @@ public enum ObtainMode {
             return valueOf(name);
         } catch (IllegalArgumentException unknown) {
             if (warn != null) {
-                warn.accept("obtain-via invalido '" + raw + "'; se usa UNRESTRICTED");
+                warn.accept("Invalid obtain-via '" + raw + "'; using UNRESTRICTED");
             }
             return UNRESTRICTED;
         }

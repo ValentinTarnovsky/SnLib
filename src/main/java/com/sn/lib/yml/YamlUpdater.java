@@ -110,8 +110,8 @@ public final class YamlUpdater {
                        @Nullable File gateFile, boolean gateExempt) {
         List<String> resourceLines = readResource(plugin, resourcePath);
         if (resourceLines == null) {
-            plugin.getLogger().warning("[update-configs] Recurso " + resourcePath
-                    + " ausente del jar; " + diskFile.getName() + " no se puede actualizar");
+            plugin.getLogger().warning("[update-configs] Resource " + resourcePath
+                    + " absent from the jar; " + diskFile.getName() + " cannot be updated");
             return;
         }
         try {
@@ -124,8 +124,8 @@ public final class YamlUpdater {
                 File backup = backupCorrupt(diskFile);
                 seed(diskFile, resourceLines);
                 plugin.getLogger().warning("[update-configs] " + diskFile.getName()
-                        + " no parsea como YAML: respaldado en " + backup.getName()
-                        + " y regenerado desde el jar");
+                        + " does not parse as YAML: backed up to " + backup.getName()
+                        + " and regenerated from the jar");
                 return;
             }
             List<String> diskLines = new ArrayList<>(
@@ -141,22 +141,22 @@ public final class YamlUpdater {
             }
             if (!gateExempt && !readUpdateConfigsGate(gateFile)) {
                 if (insertions.isEmpty()) {
-                    plugin.getLogger().warning("[update-configs] update-configs esta en false: "
-                            + "prune pendiente en " + diskFile.getName());
+                    plugin.getLogger().warning("[update-configs] update-configs is false: "
+                            + "prune pending in " + diskFile.getName());
                 } else {
-                    plugin.getLogger().warning("[update-configs] update-configs esta en false: "
-                            + "faltan " + insertions.size() + " keys en " + diskFile.getName());
+                    plugin.getLogger().warning("[update-configs] update-configs is false: "
+                            + insertions.size() + " keys missing in " + diskFile.getName());
                 }
                 return;
             }
             backupBeforeMerge(diskFile);
             Files.write(diskFile.toPath(), result, StandardCharsets.UTF_8);
         } catch (IOException ex) {
-            plugin.getLogger().severe("[update-configs] Fallo actualizando "
+            plugin.getLogger().severe("[update-configs] Failed updating "
                     + diskFile.getName() + ": " + ex.getMessage());
         } catch (RuntimeException ex) {
-            plugin.getLogger().severe("[update-configs] Error de parseo mergeando "
-                    + resourcePath + " en " + diskFile.getName() + ": " + ex.getMessage());
+            plugin.getLogger().severe("[update-configs] Parse error merging "
+                    + resourcePath + " into " + diskFile.getName() + ": " + ex.getMessage());
         }
     }
 
@@ -181,8 +181,8 @@ public final class YamlUpdater {
                 File backup = backupCorrupt(diskFile);
                 seed(diskFile, referenceLines);
                 plugin.getLogger().warning("[update-configs] " + diskFile.getName()
-                        + " no parsea como YAML: respaldado en " + backup.getName()
-                        + " y regenerado desde la referencia");
+                        + " does not parse as YAML: backed up to " + backup.getName()
+                        + " and regenerated from the reference");
                 return true;
             }
             List<String> diskLines = new ArrayList<>(
@@ -192,8 +192,8 @@ public final class YamlUpdater {
                 return false;
             }
             if (gateFile != null && !readUpdateConfigsGate(gateFile)) {
-                plugin.getLogger().warning("[update-configs] update-configs esta en false: "
-                        + "faltan " + insertions.size() + " keys en " + diskFile.getName());
+                plugin.getLogger().warning("[update-configs] update-configs is false: "
+                        + insertions.size() + " keys missing in " + diskFile.getName());
                 return false;
             }
             List<String> result = new ArrayList<>(diskLines);
@@ -205,11 +205,11 @@ public final class YamlUpdater {
             Files.write(diskFile.toPath(), result, StandardCharsets.UTF_8);
             return true;
         } catch (IOException ex) {
-            plugin.getLogger().severe("[update-configs] Fallo actualizando "
+            plugin.getLogger().severe("[update-configs] Failed updating "
                     + diskFile.getName() + ": " + ex.getMessage());
             return false;
         } catch (RuntimeException ex) {
-            plugin.getLogger().severe("[update-configs] Error de parseo mergeando referencia en "
+            plugin.getLogger().severe("[update-configs] Parse error merging reference into "
                     + diskFile.getName() + ": " + ex.getMessage());
             return false;
         }
@@ -222,14 +222,14 @@ public final class YamlUpdater {
         }
         List<String> resourceLines = readResource(plugin, resourcePath);
         if (resourceLines == null) {
-            plugin.getLogger().warning("[update-configs] Recurso " + resourcePath
-                    + " ausente del jar; " + diskFile.getName() + " no se puede seedear");
+            plugin.getLogger().warning("[update-configs] Resource " + resourcePath
+                    + " absent from the jar; " + diskFile.getName() + " cannot be seeded");
             return;
         }
         try {
             seed(diskFile, resourceLines);
         } catch (IOException ex) {
-            plugin.getLogger().severe("[update-configs] Fallo seedeando "
+            plugin.getLogger().severe("[update-configs] Failed seeding "
                     + diskFile.getName() + ": " + ex.getMessage());
         }
     }
@@ -380,8 +380,8 @@ public final class YamlUpdater {
     }
 
     private static void pruneOldBackups(File dir, String prefix) {
-        // Match exacto old-<base>-<yyyyMMdd-HHmmss>.yml: un prefijo suelto mezclaria los
-        // backups de otro archivo cuyo nombre extiende la base (config vs config-extra).
+        // Exact match old-<base>-<yyyyMMdd-HHmmss>.yml: a loose prefix would mix in the
+        // backups of another file whose name extends the base (config vs config-extra).
         java.util.regex.Pattern stamped = java.util.regex.Pattern.compile(
                 java.util.regex.Pattern.quote(prefix) + "\\d{8}-\\d{6}\\.yml");
         File[] backups = dir.listFiles((d, name) -> stamped.matcher(name).matches());
@@ -538,7 +538,7 @@ public final class YamlUpdater {
             }
             return lines;
         } catch (IOException ex) {
-            plugin.getLogger().severe("[update-configs] Fallo leyendo el recurso "
+            plugin.getLogger().severe("[update-configs] Failed reading resource "
                     + resourcePath + ": " + ex.getMessage());
             return null;
         }

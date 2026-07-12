@@ -276,9 +276,9 @@ public final class LockedItemListener implements Listener {
     }
 
     /**
-     * COMMAND_ONLY implica no-equip-manual: solo {@link ItemRegistry#apply} puede
-     * equiparla. PlayerArmorChangeEvent llega post-hecho (no vinculante), asi que la
-     * negativa tiene que ocurrir en los vectores de click/drag/interact.
+     * COMMAND_ONLY implies no-manual-equip: only {@link ItemRegistry#apply} can equip
+     * the piece. PlayerArmorChangeEvent arrives after the fact (non-binding), so the
+     * refusal has to happen in the click/drag/interact vectors.
      */
     private static boolean manualEquipDenied(ItemDef def) {
         return def.noManualEquip() || def.obtainVia() == ObtainMode.COMMAND_ONLY;

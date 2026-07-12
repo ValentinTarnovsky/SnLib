@@ -144,7 +144,7 @@ public final class PlayerLookup {
                 .whenComplete((response, error) -> {
                     if (error != null) {
                         future.completeExceptionally(
-                                new IOException("Mojang lookup fallo: " + error, error));
+                                new IOException("Mojang lookup failed: " + error, error));
                         return;
                     }
                     int status = response.statusCode();
@@ -152,7 +152,7 @@ public final class PlayerLookup {
                         UUID uuid = parseUuid(response.body());
                         if (uuid == null) {
                             future.completeExceptionally(new IOException(
-                                    "Mojang lookup fallo: respuesta 200 sin id parseable"));
+                                    "Mojang lookup failed: 200 response without a parseable id"));
                             return;
                         }
                         Optional<UUID> hit = Optional.of(uuid);
@@ -167,7 +167,7 @@ public final class PlayerLookup {
                         return;
                     }
                     future.completeExceptionally(
-                            new IOException("Mojang lookup fallo: HTTP " + status));
+                            new IOException("Mojang lookup failed: HTTP " + status));
                 });
         return future;
     }

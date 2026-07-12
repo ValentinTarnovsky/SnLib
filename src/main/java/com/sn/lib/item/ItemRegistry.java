@@ -169,7 +169,7 @@ public final class ItemRegistry {
     public @Nullable ItemStack create(String id, @Nullable Player viewer, Ph... phs) {
         ItemDef def = def(id);
         if (def == null) {
-            plugin.getLogger().warning("Item desconocido '" + id + "': no esta registrado");
+            plugin.getLogger().warning("Unknown item '" + id + "': not registered");
             return null;
         }
         ItemStack stack = def.buildStack(viewer, phs);
@@ -195,8 +195,8 @@ public final class ItemRegistry {
         }
         ItemDef def = def(id);
         if (def == null) {
-            plugin.getLogger().warning("apply de item desconocido '" + id
-                    + "': no esta registrado");
+            plugin.getLogger().warning("apply of unknown item '" + id
+                    + "': not registered");
             return false;
         }
         ItemStack stack = create(id, player);

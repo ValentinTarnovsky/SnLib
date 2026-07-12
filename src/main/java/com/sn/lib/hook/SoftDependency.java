@@ -162,8 +162,8 @@ public final class SoftDependency<T> {
         if (SemverComparator.compareVersions(installed, required) >= 0) {
             return true;
         }
-        owner.getLogger().warning("Hook '" + pluginName + "' requiere version >= " + required
-                + " (instalada: " + installed + "); hook deshabilitado");
+        owner.getLogger().warning("Hook '" + pluginName + "' requires version >= " + required
+                + " (installed: " + installed + "); hook disabled");
         return false;
     }
 
@@ -176,8 +176,8 @@ public final class SoftDependency<T> {
             Class.forName(required, false, target.getClass().getClassLoader());
             return true;
         } catch (ClassNotFoundException | LinkageError e) {
-            owner.getLogger().warning("Hook '" + pluginName + "': clase requerida " + required
-                    + " no encontrada; hook deshabilitado");
+            owner.getLogger().warning("Hook '" + pluginName + "': required class " + required
+                    + " not found; hook disabled");
             return false;
         }
     }
@@ -191,7 +191,7 @@ public final class SoftDependency<T> {
         try {
             return factory.get();
         } catch (Throwable t) {
-            owner.getLogger().warning("Hook '" + pluginName + "' fallo al instanciar: " + t);
+            owner.getLogger().warning("Hook '" + pluginName + "' failed to instantiate: " + t);
             return null;
         }
     }

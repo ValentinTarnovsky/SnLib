@@ -115,7 +115,7 @@ public final class RequirementEngine {
             }
             return expr;
         } catch (MalformedLineException e) {
-            warn.accept("Requirement malformado: '" + line + "'; se evalua como true");
+            warn.accept("Malformed requirement: '" + line + "'; evaluates to true");
             return ALWAYS_TRUE;
         }
     }
@@ -365,8 +365,8 @@ public final class RequirementEngine {
                 case EQ, EQ_STRICT -> leftValue.equalsIgnoreCase(rightValue);
                 case NE -> !leftValue.equalsIgnoreCase(rightValue);
                 case GT, LT, GE, LE -> {
-                    warn.accept("Comparacion no numerica con '" + op.symbol + "': '" + leftValue
-                            + "' vs '" + rightValue + "'; se evalua como false");
+                    warn.accept("Non-numeric comparison with '" + op.symbol + "': '" + leftValue
+                            + "' vs '" + rightValue + "'; evaluates to false");
                     yield false;
                 }
             };

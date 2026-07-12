@@ -1,293 +1,300 @@
-# SnBridge - Especificacion de diseño (SnLib v1.2)
+# SnBridge - Design specification (SnLib v1.2)
 
-> Estado: Fase A (wire core, com.sn.lib.bridge.wire) IMPLEMENTADA; el resto planificado.
-> Este documento es la spec de diseño aprobada el 2026-07-11;
-> se ejecuta cuando el owner lo decida. No describe codigo existente (para eso esta SNLIB-DOCS.md).
-> Origen: analisis multi-agente sobre SnCredits, SnKeyAll, SnStaffLink y la arquitectura de SnLib
-> (4 lectores + diseño de opciones + 3 criticas adversariales: versionado, operacion, complejidad).
+> Status: Phase A (wire core, com.sn.lib.bridge.wire) IMPLEMENTED; the rest is planned.
+> This document is the design spec approved on 2026-07-11;
+> it gets executed whenever the owner decides. It does not describe existing code (that is what
+> SNLIB-DOCS.md is for).
+> Origin: multi-agent analysis of SnCredits, SnKeyAll, SnStaffLink and the SnLib architecture
+> (4 readers + option design + 3 adversarial critiques: versioning, operations, complexity).
 
-## 0. Decision y alcance
+## 0. Decision and scope
 
-**Decision tomada**: SnLib pasa a ser un jar universal (el mismo `SnLib-1.2.0.jar` es plugin de Paper
-Y plugin de Velocity) que provee:
+**Decision made**: SnLib becomes a universal jar (the same `SnLib-1.2.0.jar` is a Paper plugin
+AND a Velocity plugin) that provides:
 
-- **Tier 1 - Canales tipados**: framework de mensajeria proxy<->backend que reemplaza el stack
-  duplicado de SnCredits/SnKeyAll (~1840 lineas de codec/listeners/plumbing copy-paste).
-- **Tier 2 - Verbos genericos**: SnLib en el backend ejecuta por si mismo un set acotado de verbos
-  (comandos con allowlist, mensajes/sonidos/titulos, bossbar, actions), de modo que un plugin
-  Velocity-only simple NO necesita jar Paper propio.
+- **Tier 1 - Typed channels**: proxy<->backend messaging framework that replaces the duplicated
+  SnCredits/SnKeyAll stack (~1840 lines of copy-paste codec/listeners/plumbing).
+- **Tier 2 - Generic verbs**: SnLib on the backend executes by itself a bounded set of verbs
+  (allowlisted commands, messages/sounds/titles, bossbar, actions), so that a simple
+  Velocity-only plugin does NOT need its own Paper jar.
 
-**Explicitamente fuera de alcance** (con trigger de revision, ver seccion 13):
-- Verbo de menus remotos (GUI dirigida por el proxy).
-- Redis / transporte alternativo / SnSyncMap / SnAckedQueue.
-- Verbo de query PAPI round-trip.
+**Explicitly out of scope** (with a revisit trigger, see section 13):
+- Remote menus verb (proxy-driven GUI).
+- Redis / alternative transport / SnSyncMap / SnAckedQueue.
+- PAPI round-trip query verb.
 
-**Limites honestos declarados** (no son bugs, son fisica del transporte):
-- Plugin messaging viaja SIEMPRE sobre la conexion de un jugador. Un backend vacio es inalcanzable
-  en ambas direcciones. Flujos pagos (rewards, compras) siguen necesitando persistencia en DB
-  (patron `pending_commands` de SnCredits, que se conserva).
-- "Resync al reconectar" significa "resync al primer join post-restart". El estado WARMING existe
-  para que eso sea visible y manejable, no invisible.
-- Los verbos son at-most-once. Prohibido usarlos para entregas pagas sin persistencia propia.
+**Honest declared limits** (these are not bugs, they are transport physics):
+- Plugin messaging ALWAYS travels over a player's connection. An empty backend is unreachable
+  in both directions. Paid flows (rewards, purchases) still need DB persistence
+  (SnCredits' `pending_commands` pattern, which is kept).
+- "Resync on reconnect" means "resync on the first join post-restart". The WARMING state exists
+  so that this is visible and manageable, not invisible.
+- Verbs are at-most-once. Using them for paid deliveries without own persistence is forbidden.
 
-## 1. Por que (hallazgos del analisis)
+## 1. Why (analysis findings)
 
-Stack actual de cada par proxy+paper (SnCredits ~1400 lineas, SnKeyAll ~440):
+Current stack of each proxy+paper pair (SnCredits ~1400 lines, SnKeyAll ~440):
 
-1. **Wire format por `ordinal()` de enum sin handshake**: agregar un MessageType en el medio corre
-   todos los ordinales; versiones mixtas proxy/backend decodifican MAL en silencio.
-2. **`decode()` devuelve `Map<String,Object>`** con casts sin chequear en cada consumidor.
-3. **Cero correlacion ni timeouts**: si el proxy no responde, la GUI no abre y nadie se entera.
-4. **Caps de tamaño ignorados**: el config JSON de SnCredits viaja proxy -> backend, que es la
-   direccion capeada del protocolo (~32KB serverbound), y `writeUTF` agrega ademas un techo
-   independiente de 64KB. Hoy no hay chunking: crecer el config es una bomba de tiempo.
-5. `EXECUTE_COMMAND` ejecuta consola sin whitelist ni autenticacion de envelope; la seguridad
-   depende solo de que el plugin Velocity haga `ForwardResult.handled()` (y si ese plugin crashea
-   o no carga, Velocity forwardea bytes del cliente directo al backend).
-6. Drops 100% silenciosos; JSON parseado a mano (`JsonHelper` string-scanner) en el lado Paper.
+1. **Wire format via enum `ordinal()` with no handshake**: adding a MessageType in the middle
+   shifts every ordinal; mixed proxy/backend versions decode WRONG silently.
+2. **`decode()` returns `Map<String,Object>`** with unchecked casts in every consumer.
+3. **Zero correlation and no timeouts**: if the proxy does not answer, the GUI never opens and
+   nobody notices.
+4. **Size caps ignored**: SnCredits' JSON config travels proxy -> backend, which is the capped
+   direction of the protocol (~32KB serverbound), and `writeUTF` adds an independent 64KB
+   ceiling on top. There is no chunking today: growing the config is a time bomb.
+5. `EXECUTE_COMMAND` runs console commands with no whitelist and no envelope authentication;
+   security depends solely on the Velocity plugin calling `ForwardResult.handled()` (and if that
+   plugin crashes or fails to load, Velocity forwards client bytes straight to the backend).
+6. 100% silent drops; hand-parsed JSON (`JsonHelper` string-scanner) on the Paper side.
 
-Consumidores inmediatos: SnCredits, SnKeyAll, SnPlayerCount, ActionEngine `[connect]`.
-Futuros naturales: SnStaffLink v2 (hoy polling MySQL), SnGGWave, cualquier plugin Velocity nuevo.
+Immediate consumers: SnCredits, SnKeyAll, SnPlayerCount, ActionEngine `[connect]`.
+Natural future ones: SnStaffLink v2 (MySQL polling today), SnGGWave, any new Velocity plugin.
 
-## 2. Distribucion: un solo jar, dos plataformas
+## 2. Distribution: a single jar, two platforms
 
-El mismo artefacto `com.sn:snlib` contiene:
+The same `com.sn:snlib` artifact contains:
 
-- `plugin.yml` (Bukkit, entry `com.sn.lib.SnLibPlugin`, sin cambios).
+- `plugin.yml` (Bukkit, entry `com.sn.lib.SnLibPlugin`, unchanged).
 - `velocity-plugin.json` (entry `com.sn.lib.velocity.SnLibVelocity`, id `snlib`).
 
-Deploy identico al modelo mental actual: `SnLib.jar` en `plugins/` del proxy igual que en cada
-backend. Los plugins Velocity declaran `"dependencies": [{"id": "snlib"}]` como hoy declaran
-`depend: [SnLib]` en Paper (los classloaders de Velocity delegan entre plugins, mismo modelo).
+Deploy identical to the current mental model: `SnLib.jar` in the proxy's `plugins/` just like on
+each backend. Velocity plugins declare `"dependencies": [{"id": "snlib"}]` the same way they
+declare `depend: [SnLib]` on Paper today (Velocity classloaders delegate between plugins, same
+model).
 
-Reglas de carga:
-- Velocity carga clases lazy: el entry de Velocity NUNCA toca paquetes Bukkit-bound y viceversa.
-- Peso muerto aceptado: el jar lleva drivers sqlite/mysql etc. que el proxy no usa. Inofensivo.
-- Precondiciones verificadas antes de implementar: proxy corre Java 21 (los plugins velocity
-  actuales ya son Java 21); Velocity 3.3+.
-- bstats: en Velocity se omite en v1.2 (el service id actual es bukkit-only). Opcional a futuro.
+Loading rules:
+- Velocity loads classes lazily: the Velocity entry NEVER touches Bukkit-bound packages and vice
+  versa.
+- Accepted dead weight: the jar ships sqlite/mysql drivers etc. that the proxy never uses.
+  Harmless.
+- Preconditions verified before implementing: the proxy runs Java 21 (the current velocity
+  plugins are already Java 21); Velocity 3.3+.
+- bstats: omitted on Velocity in v1.2 (the current service id is bukkit-only). Optional later.
 
-Ventaja clave sobre el diseño alternativo (cliente shaded `snbridge-velocity`): NO hay copia del
-protocolo congelada dentro de cada plugin proxy. Un fix de framing = actualizar SnLib.jar en proxy
-y backends, sin rebuild de los plugins. Y desaparece la trampa de relocacion de classloaders.
+Key advantage over the alternative design (shaded `snbridge-velocity` client): there is NO frozen
+copy of the protocol inside each proxy plugin. A framing fix = updating SnLib.jar on proxy and
+backends, with no rebuild of the plugins. And the classloader relocation trap disappears.
 
-## 3. Layout de paquetes
+## 3. Package layout
 
 ```
-com.sn.lib.bridge.wire       nucleo 100% neutral (CERO imports de Bukkit/Velocity):
+com.sn.lib.bridge.wire       100% neutral core (ZERO Bukkit/Velocity imports):
                              SnBuf, SnWireType<T>, frame, HMAC, chunking, HELLO, codecs.
-                             Compartido literalmente por ambos lados.
-com.sn.lib.bridge            API publica lado Paper: accessor sn.bridge(), SnBridgeChannel,
+                             Literally shared by both sides.
+com.sn.lib.bridge            public Paper-side API: sn.bridge() accessor, SnBridgeChannel,
                              SnDelivery, SnBridgeState. Bukkit-bound.
-com.sn.lib.bridge.internal   transporte plugin-message Paper, cola de carrier, reassembly,
-                             demux por namespace via TenantRegistry, listener unico en
-                             ListenerHub, paso nuevo numerado en Sn.shutdown()
-                             (hoy pasos 0-13; el bridge agrega el 14).
-com.sn.lib.velocity          bootstrap Velocity (SnLibVelocity, @Plugin id=snlib) + API publica
-                             proxy: SnProxy.init(...), SnProxyBridge, verbos cliente.
-com.sn.lib.velocity.internal transporte Velocity, registro de canales, cola por backend,
-                             agregacion de estado de flota.
+com.sn.lib.bridge.internal   Paper plugin-message transport, carrier queue, reassembly,
+                             per-namespace demux via TenantRegistry, single listener in
+                             ListenerHub, new numbered step in Sn.shutdown()
+                             (steps 0-13 today; the bridge adds step 14).
+com.sn.lib.velocity          Velocity bootstrap (SnLibVelocity, @Plugin id=snlib) + public
+                             proxy API: SnProxy.init(...), SnProxyBridge, client verbs.
+com.sn.lib.velocity.internal Velocity transport, channel registration, per-backend queue,
+                             fleet state aggregation.
 ```
 
-- Todo `*.internal` fuera del contrato semver (regla existente).
-- `com.sn.lib.bridge.*` y `com.sn.lib.velocity.*` nacen experimentales: EXCLUIDOS del gate
-  japicmp y de `SnApi.LEVEL` hasta terminar la migracion de SnCredits (asi la API no se congela
-  en el momento de maxima ignorancia). Mecanismo: patrones `<exclude>` por paquete en el pom,
-  el estilo ya usado para `com.sn.lib.**.internal.**` (la exclusion NO es por anotacion).
-  `@SnExperimental` es una anotacion NUEVA puramente documental que marca la ventana.
-  Recien al congelar: quitar los excludes, `SnApi.LEVEL = 3` (hoy es 2) + baseline japicmp.
-- Gate de CI nuevo: test que escanea el bytecode de `bridge.wire` y `velocity.*` y falla si
-  aparece una referencia a `org.bukkit.*` (y en `bridge.wire`, tampoco `com.velocitypowered.*`).
+- Everything `*.internal` stays outside the semver contract (existing rule).
+- `com.sn.lib.bridge.*` and `com.sn.lib.velocity.*` are born experimental: EXCLUDED from the
+  japicmp gate and from `SnApi.LEVEL` until the SnCredits migration is done (so the API does not
+  freeze at the moment of maximum ignorance). Mechanism: per-package `<exclude>` patterns in the
+  pom, the style already used for `com.sn.lib.**.internal.**` (the exclusion is NOT done via
+  annotation). `@SnExperimental` is a NEW purely documentational annotation marking the window.
+  Only when freezing: remove the excludes, `SnApi.LEVEL = 3` (2 today) + japicmp baseline.
+- New CI gate: test that scans the bytecode of `bridge.wire` and `velocity.*` and fails if a
+  reference to `org.bukkit.*` appears (and in `bridge.wire`, `com.velocitypowered.*` neither).
 
-## 4. Canales y namespaces
+## 4. Channels and namespaces
 
-- Un canal por consumidor: `snlib:ext/<namespace>` (NUNCA `snlib:ext:<ns>`: el segundo `:` es
-  ilegal en `NamespacedKey`/`MinecraftChannelIdentifier`).
-- Verbos genericos: canal propio `snlib:bridge`.
-- Registro first-claim-wins en registry compartido keyeado por owner (TenantRegistry): reclamar
-  un namespace ya tomado por otro tenant es hard-error en el `channel()`, no fan-out silencioso.
-- Baja del tenant barre sus suscripciones (patron existente de teardown por owner).
+- One channel per consumer: `snlib:ext/<namespace>` (NEVER `snlib:ext:<ns>`: the second `:` is
+  illegal in `NamespacedKey`/`MinecraftChannelIdentifier`).
+- Generic verbs: dedicated channel `snlib:bridge`.
+- First-claim-wins registration in the shared owner-keyed registry (TenantRegistry): claiming a
+  namespace already taken by another tenant is a hard error in `channel()`, not silent fan-out.
+- Tenant teardown sweeps its subscriptions (existing per-owner teardown pattern).
 
-## 5. Formato de frame (versionado en 2 niveles)
+## 5. Frame format (versioned at 2 levels)
 
 ### Header
 ```
-magic          u8      constante fija (deteccion de basura temprana)
-frameVersion   u8      version del framing (chunking/correlacion/HMAC layout)
-flags          u8      bit0 = direccion (FLAG_TO_PROXY: set = backend->proxy)
-msgId          u32     correlacion y reassembly de chunks
+magic          u8      fixed constant (early garbage detection)
+frameVersion   u8      framing version (chunking/correlation/HMAC layout)
+flags          u8      bit0 = direction (FLAG_TO_PROXY: set = backend->proxy)
+msgId          u32     correlation and chunk reassembly
 chunkIndex     u16
 chunkCount     u16
-hmacTag        16B     HMAC-SHA256 truncado a 16B sobre (header[0..11) + sessionNonce 8B + body)
+hmacTag        16B     HMAC-SHA256 truncated to 16B over (header[0..11) + sessionNonce 8B + body)
 ```
 
-- **Clave HMAC**: el forwarding secret moderno de Velocity, YA presente en ambos lados: en el
-  proxy vive en el archivo `forwarding.secret` (apuntado por `forwarding-secret-file` en
-  `velocity.toml`) y en cada backend en `config/paper-global.yml` (`proxies.velocity.secret`).
-  Cero secretos nuevos que gestionar. Nota de implementacion: ninguna API publica lo expone, asi
-  que SnLib lo lee de disco en ambos lados (resolviendo la indireccion del toml en el proxy).
-  Fallback configurable: secreto dedicado en `plugins/SnLib/config.yml` por si algun dia se
-  quiere desacoplar de la rotacion del forwarding secret.
-- La direccion viaja como bit0 del byte flags DENTRO del header firmado (no hay byte extra en el
-  input del HMAC) y el receptor EXIGE su direccion esperada en `FrameCodec.decode`: el HMAC hace
-  inviolable el flag, el check del receptor es lo que rechaza un frame autentico capturado y
-  reflejado a la otra pierna (con contador propio, distinto de basura).
-- Los 8 bytes de nonce de sesion estan SIEMPRE en el input del HMAC: `HANDSHAKE_NONCE = 0` para
-  HELLO/HELLO_ACK y todo frame pre-handshake; post-handshake `sessionNonce = nonceBackend XOR
-  nonceProxy`, con lo que un frame capturado en otra sesion no verifica (anti-replay).
-- Frames con HMAC invalido o recibidos antes de handshake valido se DESCARTAN con contador
-  visible. Esto cierra a la vez: spoofing por conexion directa al backend, y el agujero de
-  canal-sin-reclamar (si el plugin proxy no cargo, Velocity forwardea bytes del cliente; con
-  HMAC son basura descartada, no comandos ejecutados).
-- Espejo backend->cliente: SnLib en el proxy HUNDE (`ForwardResult.handled()`) todo canal
-  snlib REGISTRADO (cada namespace reclamado + `snlib:bridge` pre-registrado al init + los
-  legacy de detectLegacy), en ambas direcciones, aun con el plugin consumidor crasheado.
-  Limite de plataforma declarado: Velocity NO dispara PluginMessageEvent para canales que
-  nadie registro, asi que el trafico de un canal snlib SIN reclamar se forwardea tal cual;
-  el piso que lo hace inerte en ambos extremos es el HMAC (basura sin la clave), y los
-  nombres de canal se anuncian a los clientes via minecraft:register (no son secreto).
-- Correlacion de respuestas: bit1 de flags (`FLAG_RESPONSE`, firmado) marca el frame que
-  RESPONDE al msgId que lleva; sin el flag un push cuyo msgId colisione con un request en
-  vuelo jamas puede ser tragado como su respuesta.
+- **HMAC key**: Velocity's modern forwarding secret, ALREADY present on both sides: on the
+  proxy it lives in the `forwarding.secret` file (pointed to by `forwarding-secret-file` in
+  `velocity.toml`) and on each backend in `config/paper-global.yml` (`proxies.velocity.secret`).
+  Zero new secrets to manage. Implementation note: no public API exposes it, so SnLib reads it
+  from disk on both sides (resolving the toml indirection on the proxy).
+  Configurable fallback: dedicated secret in `plugins/SnLib/config.yml` in case someday it needs
+  to be decoupled from forwarding secret rotation.
+- The direction travels as bit0 of the flags byte INSIDE the signed header (no extra byte in the
+  HMAC input) and the receiver DEMANDS its expected direction in `FrameCodec.decode`: the HMAC
+  makes the flag tamper-proof, and the receiver check is what rejects an authentic frame captured
+  and reflected to the other leg (with its own counter, distinct from garbage).
+- The 8 session nonce bytes are ALWAYS part of the HMAC input: `HANDSHAKE_NONCE = 0` for
+  HELLO/HELLO_ACK and every pre-handshake frame; post-handshake `sessionNonce = nonceBackend XOR
+  nonceProxy`, so a frame captured in another session does not verify (anti-replay).
+- Frames with an invalid HMAC or received before a valid handshake are DISCARDED with a visible
+  counter. This closes at once: spoofing via a direct connection to the backend, and the
+  unclaimed-channel hole (if the proxy plugin did not load, Velocity forwards client bytes;
+  with HMAC they are discarded garbage, not executed commands).
+- Backend->client mirror: SnLib on the proxy SINKS (`ForwardResult.handled()`) every REGISTERED
+  snlib channel (each claimed namespace + `snlib:bridge` pre-registered at init + the legacy
+  ones from detectLegacy), in both directions, even with the consumer plugin crashed.
+  Declared platform limit: Velocity does NOT fire PluginMessageEvent for channels nobody
+  registered, so the traffic of an UNCLAIMED snlib channel is forwarded as-is;
+  the floor that makes it inert on both ends is the HMAC (garbage without the key), and the
+  channel names are announced to clients via minecraft:register (they are not secret).
+- Response correlation: flags bit1 (`FLAG_RESPONSE`, signed) marks the frame that RESPONDS to
+  the msgId it carries; without the flag, a push whose msgId collides with an in-flight request
+  can never be swallowed as its response.
 
 ### Body
 ```
-wireId         UTF     string estable por tipo de mensaje (ej. "sncredits:open_confirm")
-msgVersion     u16     version del mensaje
-bodyLen        u32     LENGTH-PREFIX del bloque de campos
-campos         ...     escritos por el encoder del SnWireType
+wireId         UTF     stable string per message type (e.g. "sncredits:open_confirm")
+msgVersion     u16     message version
+bodyLen        u32     LENGTH-PREFIX of the field block
+fields         ...     written by the SnWireType encoder
 ```
 
-- El decoder recibe `(SnBuf, int version)`: puede branchear por version, y los bytes sobrantes
-  de un emisor mas nuevo se saltean gracias al length-prefix (evolucion aditiva REAL).
-- Codecs = lambdas posicionales explicitas. NUNCA reflection sobre records: el pipeline
-  sn-obfuscate/ProGuard rompe reflection.
-- Cada `SnWireType` exige `selfTest()` de round-trip que corre en unit tests: el drift de orden
-  de campos entre encoder y decoder falla en CI, no en produccion.
-- wireIds: strings estables, NUNCA derivados de nombres de clase, con ledger de "nunca reusar un
-  ID" en este documento (seccion 12).
+- The decoder receives `(SnBuf, int version)`: it can branch by version, and the leftover bytes
+  from a newer sender are skipped thanks to the length-prefix (REAL additive evolution).
+- Codecs = explicit positional lambdas. NEVER reflection over records: the
+  sn-obfuscate/ProGuard pipeline breaks reflection.
+- Every `SnWireType` requires a round-trip `selfTest()` that runs in unit tests: field order
+  drift between encoder and decoder fails in CI, not in production.
+- wireIds: stable strings, NEVER derived from class names, with a "never reuse an ID" ledger in
+  this document (section 12).
 
-### Chunking (asimetrico, explicito)
-- proxy -> backend: fragmenta a ~24KB (el cap serverbound real es ~32KB; el config de SnCredits
-  viaja en ESTA direccion).
-- backend -> proxy: hasta ~1MB.
-- Buffers de reassembly: capeados por conexion y descartados en disconnect/switch del carrier
-  (correctitud + defensa contra DoS de memoria por cliente spoofeado).
+### Chunking (asymmetric, explicit)
+- proxy -> backend: fragments at ~24KB (the real serverbound cap is ~32KB; SnCredits' config
+  travels in THIS direction).
+- backend -> proxy: up to ~1MB.
+- Reassembly buffers: capped per connection and discarded on carrier disconnect/switch
+  (correctness + defense against memory DoS from a spoofed client).
 
-## 6. Handshake HELLO
+## 6. HELLO handshake
 
-Al primer carrier disponible por `(backend, namespace, sesion de conexion)`:
+On the first available carrier per `(backend, namespace, connection session)`:
 
-1. Companion (backend) manda `HELLO`: rango de frameVersion soportado, msgsetVersion del
-   namespace, version de SnLib, su mitad aleatoria del nonce de sesion (i64), y para
-   `snlib:bridge` el catalogo de verbos con la version de vocabulario de cada uno (ej. version
-   del set de tags de ActionEngine).
-2. Proxy responde `HELLO_ACK` con lo propio, incluida su mitad del nonce. Se negocia el minimo
-   comun y ambos lados firman desde ahi con `sessionNonce = nonceBackend XOR nonceProxy`.
-3. La cola de envios pendientes se flushea ESTRICTAMENTE despues del ACK. Nunca viaja un mensaje
-   de aplicacion sin handshake negociado.
+1. Companion (backend) sends `HELLO`: supported frameVersion range, the namespace's
+   msgsetVersion, SnLib version, its random half of the session nonce (i64), and for
+   `snlib:bridge` the verb catalog with each verb's vocabulary version (e.g. the version of
+   ActionEngine's tag set).
+2. Proxy answers `HELLO_ACK` with its own data, including its half of the nonce. The common
+   minimum is negotiated and from then on both sides sign with `sessionNonce = nonceBackend XOR
+   nonceProxy`.
+3. The pending send queue is flushed STRICTLY after the ACK. No application message ever
+   travels without a negotiated handshake.
 
-- Estado por namespace: `WARMING -> READY` con callback `onState`. El plugin decide que hacer si
-  le llega interaccion antes del warmup (mensaje al jugador, retry, etc.) en vez del fallo
-  silencioso actual.
-- Ciclo de vida: HELLO es POR CONEXION de carrier; el estado del namespace es el agregado de las
-  conexiones handshakeadas vivas (READY mientras quede al menos una). Un envio chunked cuyo
-  carrier se desconecta a mitad de transferencia se ABORTA y resuelve como `EXPIRED_TTL` del
-  lado emisor: nunca perdida silenciosa.
-- Todas las constantes de version (frameVersion, msgsetVersion por plugin, vocabularios de verbos)
-  se generan en build-time desde una sola fuente con check de igualdad en CI (precedente real de
-  drift manual: SnCredits `@Plugin 1.4.0` vs pom `1.11.1`).
+- Per-namespace state: `WARMING -> READY` with an `onState` callback. The plugin decides what to
+  do if interaction arrives before warmup (message to the player, retry, etc.) instead of the
+  current silent failure.
+- Lifecycle: HELLO is PER carrier CONNECTION; the namespace state is the aggregate of the live
+  handshaked connections (READY while at least one remains). A chunked send whose carrier
+  disconnects mid-transfer is ABORTED and resolves as `EXPIRED_TTL` on the sending side:
+  never silent loss.
+- All version constants (frameVersion, per-plugin msgsetVersion, verb vocabularies) are
+  generated at build time from a single source with an equality check in CI (real precedent of
+  manual drift: SnCredits `@Plugin 1.4.0` vs pom `1.11.1`).
 
-## 7. Semanticas de mensajeria (Tier 1)
+## 7. Messaging semantics (Tier 1)
 
-Tres primitivas, todas at-most-once como piso documentado.
+Three primitives, all at-most-once as the documented floor.
 
-**Un solo enum de resultado para ambos tiers** (`SnDeliveryResult`), siempre TERMINAL:
+**A single result enum for both tiers** (`SnDeliveryResult`), always TERMINAL:
 
 ```
-SENT                        entregado a una conexion viva (Tier 1: aca termina; no hay ack de app)
-DELIVERED                   solo verbos: el backend confirmo ejecucion (ACK)
-DENIED_BY_ALLOWLIST         solo verbos: NACK del backend
-UNSUPPORTED_AT_DESTINATION  solo verbos: el backend no conoce el verbo o su vocabulario
-UNSUPPORTED_MSGSET          la negociacion HELLO dice que el destino no habla este msgset
-EXPIRED_TTL                 murio en cola (sin carrier, sin handshake, o carrier caido a mitad)
-UNKNOWN_SERVER              el nombre de server no existe
+SENT                        delivered to a live connection (Tier 1: ends here; no app-level ack)
+DELIVERED                   verbs only: the backend confirmed execution (ACK)
+DENIED_BY_ALLOWLIST         verbs only: NACK from the backend
+UNSUPPORTED_AT_DESTINATION  verbs only: the backend does not know the verb or its vocabulary
+UNSUPPORTED_MSGSET          the HELLO negotiation says the destination does not speak this msgset
+EXPIRED_TTL                 died in queue (no carrier, no handshake, or carrier dropped midway)
+UNKNOWN_SERVER              the server name does not exist
 ```
 
-El ENCOLADO no es terminal y por eso NO es un valor del enum: un send sin carrier o pre-handshake
-queda en cola (observable via `ch.pending()` y contadores) y su future resuelve recien cuando el
-mensaje sale (`SENT`) o muere (`EXPIRED_TTL`). Regla de implementacion: el future SIEMPRE resuelve.
+ENQUEUED is not terminal and therefore is NOT an enum value: a send without a carrier or
+pre-handshake stays queued (observable via `ch.pending()` and counters) and its future resolves
+only when the message leaves (`SENT`) or dies (`EXPIRED_TTL`). Implementation rule: the future
+ALWAYS resolves.
 
-1. **Fire-and-forget**: `ch.send(...)`. Devuelve SIEMPRE `CompletableFuture<SnDelivery>` con
-   resultado terminal, nunca void, nunca drop silencioso. Cola de carrier con TTL por clase de
-   mensaje (config: minutos; comandos: segundos; configurable), cap de tamaño, callback
-   `onUndeliverable` y contadores. Convierte "se perdio en silencio" en "expiro y quedo contado",
-   y evita el incidente nuevo de "se ejecuto 20 minutos tarde cuando entro el primer jugador".
-2. **Request/response**: correlationId (msgId) + timeout configurable. En Paper devuelve `SnFuture`
-   (idioma existente: `thenSync`/`exceptionally`); en Velocity `CompletableFuture`. Reemplaza los
-   pares implicitos `REQUEST_CONFIG -> SYNC_CONFIG` etc.
-3. **Verbos** (Tier 2, seccion 8): mensajes predefinidos servidos por SnLib mismo.
+1. **Fire-and-forget**: `ch.send(...)`. ALWAYS returns `CompletableFuture<SnDelivery>` with a
+   terminal result, never void, never a silent drop. Carrier queue with a TTL per message class
+   (config: minutes; commands: seconds; configurable), size cap, `onUndeliverable` callback
+   and counters. Turns "it got lost silently" into "it expired and got counted",
+   and avoids the new incident of "it ran 20 minutes late when the first player joined".
+2. **Request/response**: correlationId (msgId) + configurable timeout. On Paper it returns
+   `SnFuture` (existing idiom: `thenSync`/`exceptionally`); on Velocity `CompletableFuture`.
+   Replaces the implicit `REQUEST_CONFIG -> SYNC_CONFIG` pairs etc.
+3. **Verbs** (Tier 2, section 8): predefined messages served by SnLib itself.
 
-## 8. Verbos genericos (Tier 2)
+## 8. Generic verbs (Tier 2)
 
-Servidos por SnLib backend en `snlib:bridge`. Catalogo v1.2 (cerrado; agregar un verbo nuevo es
-propuesta propia con threat model):
+Served by the SnLib backend on `snlib:bridge`. v1.2 catalog (closed; adding a new verb is its
+own proposal with a threat model):
 
-| Verbo | Que hace en el backend | Consumidor inmediato |
+| Verb | What it does on the backend | Immediate consumer |
 |-------|------------------------|----------------------|
-| `console` | `Bukkit.dispatchCommand(console, cmd)` filtrado por allowlist | SnKeyAll, SnCredits resend, futuros |
-| `message` / `title` / `actionbar` / `sound` | via pipeline de texto y compat de SnLib | SnKeyAll, SnCredits |
-| `bossbar` | glue sobre `BossBarUtil` existente: `create(id)` + `show/hide(player, id)` + `setText/setProgress(id, ...)` | SnKeyAll (mata su jar Paper) |
-| `actions` | lista de action-strings al ActionEngine existente | generaliza casi todo |
-| `heartbeat` | interno del handshake/diagnostico | infra |
+| `console` | `Bukkit.dispatchCommand(console, cmd)` filtered by allowlist | SnKeyAll, SnCredits resend, future ones |
+| `message` / `title` / `actionbar` / `sound` | via SnLib's text pipeline and compat | SnKeyAll, SnCredits |
+| `bossbar` | glue over the existing `BossBarUtil`: `create(id)` + `show/hide(player, id)` + `setText/setProgress(id, ...)` | SnKeyAll (kills its Paper jar) |
+| `actions` | list of action-strings to the existing ActionEngine | generalizes almost everything |
+| `heartbeat` | handshake/diagnostics internal | infra |
 
-Reglas duras de los verbos:
-- **Nunca void**: cada llamada devuelve future con resultado terminal del enum unico
-  `SnDeliveryResult` (seccion 7); los verbos ademas pueden resolver `DELIVERED` o
-  `DENIED_BY_ALLOWLIST` porque llevan ACK/NACK de aplicacion.
-- **Allowlist del verbo console**: backend-autoritativa en `plugins/SnLib/config.yml`, patrones
-  ANCLADOS por argumento (no wildcards de prefijo: `crates key give <player> vote <int:1..64>`
-  si, `crates key give *` no), rate limit por namespace. Rechazos = NACK visible en el proxy
-  (rate-limited), no silencio.
-- **Audit de drift**: comando proxy que pide y difea las allowlists efectivas de todos los
-  backends (el merge de ymls por servidor de sn-deploy hace que el drift sea la norma; tiene que
-  ser visible, no un ghost incident).
-- **At-most-once**: documentado y prohibido para entregas pagas sin persistencia DB propia.
-- Vocabularios versionados en HELLO: si el proxy manda un action-tag que el ActionEngine de ese
-  backend no conoce, es `UNSUPPORTED_AT_DESTINATION`, no un warn perdido en una consola.
+Hard verb rules:
+- **Never void**: every call returns a future with a terminal result from the single
+  `SnDeliveryResult` enum (section 7); verbs can additionally resolve `DELIVERED` or
+  `DENIED_BY_ALLOWLIST` because they carry an application-level ACK/NACK.
+- **Console verb allowlist**: backend-authoritative in `plugins/SnLib/config.yml`, patterns
+  ANCHORED per argument (no prefix wildcards: `crates key give <player> vote <int:1..64>`
+  yes, `crates key give *` no), rate limit per namespace. Rejections = visible NACK on the
+  proxy (rate-limited), not silence.
+- **Drift audit**: proxy command that requests and diffs the effective allowlists of all
+  backends (sn-deploy's per-server yml merge makes drift the norm; it has to be visible, not a
+  ghost incident).
+- **At-most-once**: documented and forbidden for paid deliveries without own DB persistence.
+- Vocabularies versioned in HELLO: if the proxy sends an action-tag that this backend's
+  ActionEngine does not know, it is `UNSUPPORTED_AT_DESTINATION`, not a warn lost in a console.
 
 ## 9. API sketch
 
-### Records compartidos (modulo common del plugin, cero imports de plataforma)
+### Shared records (common module of the plugin, zero platform imports)
 ```java
 public record OpenConfirm(UUID player, String itemId, double price) {
   public static final SnWireType<OpenConfirm> TYPE = SnWireType.of(
-      "sncredits:open_confirm",   // wireId estable, en el ledger, nunca se reusa
-      2,                          // msgVersion actual
+      "sncredits:open_confirm",   // stable wireId, in the ledger, never reused
+      2,                          // current msgVersion
       (buf, m) -> { buf.uuid(m.player()); buf.str(m.itemId()); buf.f64(m.price()); },
       (buf, version) -> {
         UUID p = buf.uuid(); String item = buf.str();
-        double price = version >= 2 ? buf.f64() : 0.0;  // aditivo real via length-prefix
+        double price = version >= 2 ? buf.f64() : 0.0;  // real additive via length-prefix
         return new OpenConfirm(p, item, price);
       });
 }
-// en tests: OpenConfirm.TYPE.selfTest(new OpenConfirm(uuid, "key_vote", 500.0));
+// in tests: OpenConfirm.TYPE.selfTest(new OpenConfirm(uuid, "key_vote", 500.0));
 ```
 
-### Lado Paper (companion fino = SnPlugin consumidor normal)
+### Paper side (thin companion = normal consumer SnPlugin)
 ```java
 public final class SnCreditsBridge extends SnPlugin {
-  // estado final post-congelamiento; durante la ventana experimental: return 2
+  // final post-freeze state; during the experimental window: return 2
   @Override protected int requiredApiLevel() { return 3; }
-  @Override protected void onInnerEnable() {   // hook real de SnPlugin (no existe start(Sn))
+  @Override protected void onInnerEnable() {   // real SnPlugin hook (start(Sn) does not exist)
     Sn sn = sn();
     SnBridgeChannel ch = sn.bridge().channel("sncredits", /*msgset*/ 3);
     ch.register(OpenConfirm.TYPE, ShopClick.TYPE, SyncBalance.TYPE, SyncConfig.TYPE);
 
-    ch.on(OpenConfirm.TYPE, (player, msg) ->      // handler ya en main thread via SnScheduler
+    ch.on(OpenConfirm.TYPE, (player, msg) ->      // handler already on main thread via SnScheduler
         sn.guis().open(player, "confirm", Map.of("item", msg.itemId())));
     ch.onState(state -> { if (state == SnBridgeState.READY) refreshOpenGuis(); });
-    ch.detectLegacy("sncredits:main");            // ventana de migracion: loguea "proxy viejo"
+    ch.detectLegacy("sncredits:main");            // migration window: logs "old proxy"
 
     ch.send(player, new ShopClick(player.getUniqueId(), cat, item));
     ch.request(RequestConfig.INSTANCE, SyncConfig.TYPE, Duration.ofSeconds(5))
@@ -297,7 +304,7 @@ public final class SnCreditsBridge extends SnPlugin {
 }
 ```
 
-### Lado Velocity (plugin proxy, SnLib como dependencia de plugin, SIN shade)
+### Velocity side (proxy plugin, SnLib as a plugin dependency, NO shading)
 ```java
 @Plugin(id = "sncredits", dependencies = {@Dependency(id = "snlib")})
 public final class SnCreditsVelocity {
@@ -307,141 +314,142 @@ public final class SnCreditsVelocity {
     bridge.register(OpenConfirm.TYPE, ShopClick.TYPE, SyncBalance.TYPE, SyncConfig.TYPE);
 
     bridge.on(ShopClick.TYPE, (src, msg) -> shop.handleClick(src.player(), msg));
-    bridge.respond(RequestConfig.TYPE, (src, req) -> new SyncConfig(configBlob)); // chunkea ~24KB
+    bridge.respond(RequestConfig.TYPE, (src, req) -> new SyncConfig(configBlob)); // chunks at ~24KB
 
     bridge.to("gens").send(new OpenConfirm(uuid, itemId, 500.0), SnSendOpts.ttl(ofSeconds(10)))
         .thenAccept(d -> { if (d.result() != SnDeliveryResult.SENT) log.warn("gens: " + d.result()); });
 
-    // Verbos (Tier 2): sin jar Paper propio del otro lado
+    // Verbs (Tier 2): no own Paper jar on the other side
     SnVerbs verbs = SnProxy.verbs(this);
     verbs.on("gens").console("crates key give " + name + " vote 1")
         .thenAccept(r -> { if (r != SnVerbResult.DELIVERED) log.warn("gens console: " + r); });
-    // glue nuevo sobre BossBarUtil existente (create(id)/show(player,id)/setText/setProgress)
-    verbs.on("work").bossbar(playerUuid, bar -> bar.text("<red>KeyAll en 5m").progress(0.5f));
+    // new glue over the existing BossBarUtil (create(id)/show(player,id)/setText/setProgress)
+    verbs.on("work").bossbar(playerUuid, bar -> bar.text("<red>KeyAll in 5m").progress(0.5f));
 
     bridge.capabilities("work").ifPresentOrElse(
-        c -> { if (c.msgset() < 3) log.warn("work corre msgset " + c.msgset()); },
-        () -> log.warn("work: sin handshake (backend vacio o SnLib viejo)"));
-    log.info(SnProxy.statusReport());  // tabla: backend | frame | msgset | estado | cola | drops
+        c -> { if (c.msgset() < 3) log.warn("work runs msgset " + c.msgset()); },
+        () -> log.warn("work: no handshake (empty backend or old SnLib)"));
+    log.info(SnProxy.statusReport());  // table: backend | frame | msgset | state | queue | drops
   }
 }
 ```
 
-## 10. Diagnostico (deliverable 1.0, no follow-up)
+## 10. Diagnostics (a 1.0 deliverable, not a follow-up)
 
-Para un operador solo con 8 consolas Pterodactyl, "loguea fuerte" es operacionalmente silencio.
+For an operator alone with 8 Pterodactyl consoles, "log loudly" is operationally silence.
 
-- Backend: `/snlib bridge status` -> estado de handshake por namespace, versiones negociadas,
-  profundidad de cola, drops/expirados, NACKs, frames con HMAC invalido.
-- Proxy: `/snlibv status` (o subcomando por plugin) -> tabla agregada por backend
-  (frame/msgset/estado/cola/drops) via `SnProxy.statusReport()`.
-- Proxy: `/snlibv allowlist-audit` -> diff de allowlists efectivas entre backends.
-- NACKs rate-limited visibles del lado proxy.
+- Backend: `/snlib bridge status` -> handshake state per namespace, negotiated versions, queue
+  depth, drops/expired, NACKs, frames with invalid HMAC.
+- Proxy: `/snlibv status` (or a per-plugin subcommand) -> aggregated table per backend
+  (frame/msgset/state/queue/drops) via `SnProxy.statusReport()`.
+- Proxy: `/snlibv allowlist-audit` -> diff of the effective allowlists across backends.
+- Rate-limited NACKs visible on the proxy side.
 
-## 11. Gates de CI nuevos
+## 11. New CI gates
 
-japicmp no protege ni un byte del wire. Se agregan:
+japicmp protects not a single byte of the wire. The following are added:
 
-1. Corpus de fixtures de bytes dorados por mensaje por version (encode actual == fixture;
-   decode de fixtures viejos == valores esperados).
-2. `selfTest()` obligatorio por `SnWireType` (round-trip en unit tests).
-3. Ledger de wireIds usados (seccion 12) con test que verifica no-reuso.
-4. Constantes de version generadas en build-time desde una sola fuente + check de igualdad.
-5. Test de pureza de plataforma: `bridge.wire` sin referencias Bukkit NI Velocity;
-   `com.sn.lib.velocity.*` sin referencias Bukkit.
-6. Smoke ampliado: Paper 1.20.4/1.21.8 (existente) + arranque en Velocity con un consumer dummy.
+1. Corpus of golden byte fixtures per message per version (current encode == fixture;
+   decode of old fixtures == expected values).
+2. Mandatory `selfTest()` per `SnWireType` (round-trip in unit tests).
+3. Ledger of used wireIds (section 12) with a test that verifies no-reuse.
+4. Version constants generated at build time from a single source + equality check.
+5. Platform purity test: `bridge.wire` with no Bukkit NOR Velocity references;
+   `com.sn.lib.velocity.*` with no Bukkit references.
+6. Extended smoke: Paper 1.20.4/1.21.8 (existing) + Velocity startup with a dummy consumer.
 
-## 12. Reglas de wire y ledger
+## 12. Wire rules and ledger
 
-Reglas (checklist para todo cambio de protocolo):
-- Un wireId se usa UNA vez en la historia; deprecar = dejar de emitir, jamas reasignar.
-- Campos solo ADITIVOS al final del body; nunca reordenar ni cambiar tipo de un campo existente.
-- Cambio incompatible = wireId nuevo (`sncredits:open_confirm_v2` es valido como id nuevo).
-- Todo mensaje nuevo entra con fixture dorado + selfTest en el mismo commit.
+Rules (checklist for every protocol change):
+- A wireId is used ONCE in history; deprecating = stop emitting, never reassign.
+- Fields are ADDITIVE only, at the end of the body; never reorder or change the type of an
+  existing field.
+- Incompatible change = new wireId (`sncredits:open_confirm_v2` is valid as a new id).
+- Every new message lands with a golden fixture + selfTest in the same commit.
 
-Ledger de wireIds (se llena durante la implementacion):
+WireId ledger (filled in during implementation):
 ```
-(reservados de infra) snlib:hello, snlib:hello_ack, snlib:nack, snlib:heartbeat,
-                      snlib:verb/console, snlib:verb/message, snlib:verb/title,
-                      snlib:verb/actionbar, snlib:verb/sound, snlib:verb/bossbar,
-                      snlib:verb/actions
+(infra reserved) snlib:hello, snlib:hello_ack, snlib:nack, snlib:heartbeat,
+                 snlib:verb/console, snlib:verb/message, snlib:verb/title,
+                 snlib:verb/actionbar, snlib:verb/sound, snlib:verb/bossbar,
+                 snlib:verb/actions
 ```
 
-## 13. Diferidos con trigger explicito
+## 13. Deferred items with an explicit trigger
 
-| Diferido | Trigger para revisitar |
+| Deferred | Trigger to revisit |
 |----------|------------------------|
-| Verbo de menus remotos | probablemente nunca: round-trips de clicks, races de doble compra, UI laggy. Las GUIs quedan en consumers Paper finos |
-| Redis / transporte SPI | segundo proxy, feature cross-network, dashboard web, o tasa medida de incidentes por backends vacios. La API de canal ya no expone tipos de plugin-messaging en firmas publicas, asi que el asiento esta reservado gratis |
-| Cola con acks (at-least-once) | solo junto con claves de idempotencia + dedupe persistente en el backend; sin eso, "compra perdida" se vuelve "compra duplicada" |
-| Verbo PAPI query | dos consumidores concretos que lo pidan |
-| bstats en Velocity | cuando haya id de servicio velocity |
+| Remote menus verb | probably never: click round-trips, double-purchase races, laggy UI. GUIs stay in thin Paper consumers |
+| Redis / transport SPI | a second proxy, a cross-network feature, a web dashboard, or a measured incident rate from empty backends. The channel API no longer exposes plugin-messaging types in public signatures, so the seat is reserved for free |
+| Acked queue (at-least-once) | only together with idempotency keys + persistent dedupe on the backend; without that, "lost purchase" becomes "duplicated purchase" |
+| PAPI query verb | two concrete consumers asking for it |
+| bstats on Velocity | when a velocity service id exists |
 
-## 14. Migraciones
+## 14. Migrations
 
-Sin flag-day: canales viejos y nuevos coexisten. `detectLegacy` hace que el lado NUEVO escuche
-tambien el canal legacy y loguee "contraparte desactualizada" cuando ve trafico viejo. El lado
-viejo es codigo viejo: sigue mudo (no puede avisar); por eso la deteccion vive en el lado nuevo
-de CADA mitad de la migracion, y requiere que el legacy realmente emita trafico.
+No flag day: old and new channels coexist. `detectLegacy` makes the NEW side also listen on the
+legacy channel and log "outdated counterpart" when it sees old traffic. The old side is old
+code: it stays mute (it cannot warn); that is why detection lives on the new side of EACH half
+of the migration, and requires the legacy side to actually emit traffic.
 
-**SnKeyAll (primero: chico, valida la API con libertad de romperla)**
-- Borrar `common/protocol` + paquetes `messaging` de ambos lados (~440 lineas).
-- Definir ~7 records tipados; el lado proxy usa canal tipado + verbos.
-- El jar Paper de SnKeyAll DESAPARECE: bossbar + comandos + mensajes son verbos.
-- Deploy: SnLib.jar nuevo en backends donde corre KeyAll (proximo ciclo de restarts manuales),
-  despues el jar velocity nuevo. Todo hallazgo de API se corrige libremente (aun experimental).
+**SnKeyAll (first: small, validates the API with freedom to break it)**
+- Delete `common/protocol` + the `messaging` packages on both sides (~440 lines).
+- Define ~7 typed records; the proxy side uses a typed channel + verbs.
+- SnKeyAll's Paper jar DISAPPEARS: bossbar + commands + messages are verbs.
+- Deploy: new SnLib.jar on the backends where KeyAll runs (next manual restart cycle),
+  then the new velocity jar. Every API finding is fixed freely (still experimental).
 
-**SnCredits (segundo: el grande, ANTES de congelar la API)**
-- Mapeo: `REQUEST_*/SYNC_*` -> request/response; `OPEN_*/UPDATE_*` -> fire-and-forget tipados;
-  `buildConfigJson` + `JsonHelper` -> record `SyncConfig` chunkeado (mata el riesgo 64KB).
-- El jar Paper queda como consumer FINO (records + handlers de GUI); borra ~1400 lineas de stack.
-- Los caches PAPI siguen siendo ConcurrentHashMaps del plugin alimentados por handlers tipados.
-- `pending_commands` SE QUEDA (unico camino para flujos pagos con backend vacio), con fix puntual:
-  select+delete en una sola transaccion.
-- Presupuestar diferencias de timing (warmup de config, primer join post-restart) cubiertas por
-  el estado WARMING.
+**SnCredits (second: the big one, BEFORE freezing the API)**
+- Mapping: `REQUEST_*/SYNC_*` -> request/response; `OPEN_*/UPDATE_*` -> typed fire-and-forget;
+  `buildConfigJson` + `JsonHelper` -> chunked `SyncConfig` record (kills the 64KB risk).
+- The Paper jar remains a THIN consumer (records + GUI handlers); deletes ~1400 lines of stack.
+- The PAPI caches remain plugin-owned ConcurrentHashMaps fed by typed handlers.
+- `pending_commands` STAYS (the only path for paid flows with an empty backend), with a
+  targeted fix: select+delete in a single transaction.
+- Budget for timing differences (config warmup, first join post-restart) covered by the
+  WARMING state.
 
-**Cierre**
-- Congelar: `SnApi.LEVEL = 3`, baseline japicmp nueva, quitar `@SnExperimental`.
-- Adopcion interna: ActionEngine `[connect]` y SnPlayerCount sobre la infra compartida.
-- SnStaffLink v2 (polling MySQL -> canal tipado push) como consumidor futuro post-congelamiento.
+**Closing**
+- Freeze: `SnApi.LEVEL = 3`, new japicmp baseline, remove `@SnExperimental`.
+- Internal adoption: ActionEngine `[connect]` and SnPlayerCount on top of the shared infra.
+- SnStaffLink v2 (MySQL polling -> typed push channel) as a future post-freeze consumer.
 
-## 15. Plan de ejecucion por fases
+## 15. Phased execution plan
 
-Estimacion realista solo-dev: **7-9 semanas** calendario (multiplicador historico del repo
-incluido; la v1.1 fueron 22 pasos). Durante ese lapso los demas plugins no reciben mantenimiento.
+Realistic solo-dev estimate: **7-9 weeks** calendar time (the repo's historical multiplier
+included; v1.1 took 22 steps). During that span the other plugins receive no maintenance.
 
-- **Fase 0 (hecha)**: spec + runbook escritos ANTES de implementar (este doc + SNBRIDGE-RUNBOOK.md).
-  Funcion forzadora: si el runbook da verguenza, el diseño esta mal.
-- **Fase A - wire core** (1.5-2 sem): `bridge.wire` completo (SnBuf, frame, HMAC, chunking,
-  HELLO, codecs) + selfTest + fixtures dorados + ledger + test de pureza de plataforma.
-- **Fase B - lado Paper** (1 sem): `sn.bridge()`, tenancy/teardown, cola de carrier con TTL/cap/
-  contadores, WARMING/READY, `detectLegacy`, `/snlib bridge status`, paso nuevo en `Sn.shutdown()`.
-- **Fase C - bootstrap Velocity** (1 sem): `SnLibVelocity` + `velocity-plugin.json`, `SnProxy.init`,
-  canales tipados lado proxy, cola por backend, `capabilities()`, `statusReport()`, smoke Velocity.
-- **Fase D - verbos** (1-1.5 sem): console+allowlist anclada+rate limit+NACKs, message/title/
-  actionbar/sound, bossbar, actions con vocabulario versionado, `allowlist-audit`.
-- **Fase E - docs y gate** (0.5-1 sem): seccion SnBridge en SNLIB-DOCS al implementar, golden
-  spec `docs/bridge-example.yml`, suite completa + smoke 1.20.4/1.21.8 + Velocity.
-- **Fase F - migracion SnKeyAll** (2-4 dias).
-- **Fase G - migracion SnCredits** (4-7 dias).
-- **Fase H - congelamiento**: API level 3, baseline japicmp, release 1.2.0 final.
+- **Phase 0 (done)**: spec + runbook written BEFORE implementing (this doc + SNBRIDGE-RUNBOOK.md).
+  Forcing function: if the runbook is embarrassing, the design is wrong.
+- **Phase A - wire core** (1.5-2 wk): complete `bridge.wire` (SnBuf, frame, HMAC, chunking,
+  HELLO, codecs) + selfTest + golden fixtures + ledger + platform purity test.
+- **Phase B - Paper side** (1 wk): `sn.bridge()`, tenancy/teardown, carrier queue with TTL/cap/
+  counters, WARMING/READY, `detectLegacy`, `/snlib bridge status`, new step in `Sn.shutdown()`.
+- **Phase C - Velocity bootstrap** (1 wk): `SnLibVelocity` + `velocity-plugin.json`, `SnProxy.init`,
+  proxy-side typed channels, per-backend queue, `capabilities()`, `statusReport()`, Velocity smoke.
+- **Phase D - verbs** (1-1.5 wk): console+anchored allowlist+rate limit+NACKs, message/title/
+  actionbar/sound, bossbar, actions with a versioned vocabulary, `allowlist-audit`.
+- **Phase E - docs and gate** (0.5-1 wk): SnBridge section in SNLIB-DOCS while implementing,
+  golden spec `docs/bridge-example.yml`, full suite + smoke 1.20.4/1.21.8 + Velocity.
+- **Phase F - SnKeyAll migration** (2-4 days).
+- **Phase G - SnCredits migration** (4-7 days).
+- **Phase H - freeze**: API level 3, japicmp baseline, final 1.2.0 release.
 
-## 16. Decisiones resueltas y restantes
+## 16. Resolved and remaining decisions
 
-Resueltas (2026-07-11):
-- Distribucion: jar universal unico (Paper + Velocity), sin artefacto cliente shaded. RESUELTO.
-- Alcance v1.2: Tier 1 + Tier 2 (verbos basicos, sin menus). RESUELTO.
-- Ventana experimental fuera de japicmp hasta migrar SnCredits. ACEPTADA implicitamente por el
-  alcance elegido; confirmar al arrancar Fase A.
-- Clave HMAC: forwarding secret de Velocity (cero secretos nuevos) con fallback a secreto
-  dedicado en config. Default recomendado; confirmar al arrancar Fase A.
+Resolved (2026-07-11):
+- Distribution: a single universal jar (Paper + Velocity), no shaded client artifact. RESOLVED.
+- v1.2 scope: Tier 1 + Tier 2 (basic verbs, no menus). RESOLVED.
+- Experimental window outside japicmp until SnCredits migrates. ACCEPTED implicitly by the
+  chosen scope; confirm when starting Phase A.
+- HMAC key: Velocity's forwarding secret (zero new secrets) with a fallback to a dedicated
+  secret in config. Recommended default; confirm when starting Phase A.
 
-- Comando proxy: `/snlibv` con subcomandos `status` y `allowlist-audit`. RESUELTO (el runbook
-  ya opera con esos nombres).
+- Proxy command: `/snlibv` with `status` and `allowlist-audit` subcommands. RESOLVED (the
+  runbook already operates with those names).
 
-Restantes (se deciden durante la implementacion, no bloquean la spec):
-- TTLs default por clase de mensaje.
-- Formato exacto de `bridge-example.yml` (golden spec).
-- Nota util de implementacion: `SnFuture` vive en `com.sn.lib.db` y ya expone
-  `wrap(Sn, CompletableFuture)`, el camino natural para que el bridge devuelva SnFuture en Paper.
+Remaining (decided during implementation, they do not block the spec):
+- Default TTLs per message class.
+- Exact format of `bridge-example.yml` (golden spec).
+- Useful implementation note: `SnFuture` lives in `com.sn.lib.db` and already exposes
+  `wrap(Sn, CompletableFuture)`, the natural path for the bridge to return SnFuture on Paper.

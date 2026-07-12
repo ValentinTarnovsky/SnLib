@@ -78,14 +78,14 @@ public final class PapiHolder {
             Map<String, Function<OfflinePlayer, String>> exact,
             Map<String, BiFunction<OfflinePlayer, String, String>> prefixed) {
         if (!available()) {
-            owner.getLogger().warning("PlaceholderAPI ausente: expansion '" + identifier
-                    + "' no registrada");
+            owner.getLogger().warning("PlaceholderAPI absent: expansion '" + identifier
+                    + "' not registered");
             return false;
         }
         try {
             Object expansion = Bridge.register(owner, identifier, author, version, exact, prefixed);
             if (expansion == null) {
-                owner.getLogger().warning("PlaceholderAPI rechazo la expansion '" + identifier + "'");
+                owner.getLogger().warning("PlaceholderAPI rejected the expansion '" + identifier + "'");
                 return false;
             }
             registered.add(expansion);
@@ -218,7 +218,7 @@ public final class PapiHolder {
                 return resolver.get();
             } catch (Throwable t) {
                 owner.getLogger().warning("Placeholder '%" + identifier + "_" + params
-                        + "%' fallo al resolver: " + t);
+                        + "%' failed to resolve: " + t);
                 return null;
             }
         }

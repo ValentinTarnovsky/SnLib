@@ -48,15 +48,15 @@ public final class SnProxy {
     public static synchronized SnProxyChannel channel(Object consumerPlugin, String namespace,
             int msgsetVersion) {
         if (consumerPlugin == null) {
-            throw new IllegalArgumentException("consumerPlugin null: pasar la instancia del plugin");
+            throw new IllegalArgumentException("consumerPlugin null: pass the plugin instance");
         }
         validate(namespace);
         Claim existing = CHANNELS.get(namespace);
         if (existing != null) {
             if (existing.owner != consumerPlugin) {
-                throw new IllegalStateException("Namespace de bridge '" + namespace
-                        + "' ya reclamado por " + existing.owner.getClass().getName()
-                        + " (first-claim-wins, elegir otro namespace)");
+                throw new IllegalStateException("Bridge namespace '" + namespace
+                        + "' already claimed by " + existing.owner.getClass().getName()
+                        + " (first-claim-wins, pick another namespace)");
             }
             return existing.channel;
         }
@@ -72,7 +72,7 @@ public final class SnProxy {
     /** Aggregated per-backend status table (log it or expose it in a plugin command). */
     public static String statusReport() {
         ProxyBridgeRuntime runtime = ProxyBridgeRuntime.live();
-        return runtime == null ? "SnBridge runtime apagado." : runtime.statusReport();
+        return runtime == null ? "SnBridge runtime shut down." : runtime.statusReport();
     }
 
     /** Clears the local wrapper cache; the runtime shutdown already tears cores down. */
@@ -84,11 +84,11 @@ public final class SnProxy {
         if (namespace == null || namespace.isBlank()
                 || !namespace.equals(namespace.toLowerCase(Locale.ROOT))
                 || !namespace.matches("[a-z0-9_-]+")) {
-            throw new IllegalArgumentException("Namespace de bridge invalido: '" + namespace
-                    + "' (minusculas [a-z0-9_-], sin ':' ni '/')");
+            throw new IllegalArgumentException("Invalid bridge namespace: '" + namespace
+                    + "' (lowercase [a-z0-9_-], no ':' or '/')");
         }
         if (namespace.startsWith("snlib")) {
-            throw new IllegalArgumentException("Namespace '" + namespace + "' reservado para SnLib");
+            throw new IllegalArgumentException("Namespace '" + namespace + "' is reserved for SnLib");
         }
     }
 }

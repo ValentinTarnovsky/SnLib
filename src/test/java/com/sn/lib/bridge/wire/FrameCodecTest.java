@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FrameCodecTest {
 
-    private static final HmacSigner SIGNER = new HmacSigner("secreto-de-prueba".getBytes(StandardCharsets.UTF_8));
-    private static final HmacSigner OTHER_SIGNER = new HmacSigner("otro-secreto".getBytes(StandardCharsets.UTF_8));
-    private static final byte[] BODY = "cuerpo del mensaje".getBytes(StandardCharsets.UTF_8);
+    private static final HmacSigner SIGNER = new HmacSigner("test-secret-key".getBytes(StandardCharsets.UTF_8));
+    private static final HmacSigner OTHER_SIGNER = new HmacSigner("other-secret".getBytes(StandardCharsets.UTF_8));
+    private static final byte[] BODY = "message body bytes".getBytes(StandardCharsets.UTF_8);
 
     private static byte[] frame(boolean toProxy, long nonce) {
         return FrameCodec.encode(42, 0, 1, toProxy, false, BODY, 0, BODY.length, SIGNER, nonce);
@@ -60,7 +60,7 @@ class FrameCodecTest {
         byte[] toBackend = frame(false, 0L);
         SnWireException ex = assertThrows(SnWireException.class,
                 () -> FrameCodec.decode(toBackend, SIGNER, 0L, true));
-        assertTrue(ex.getMessage().contains("reflejado"));
+        assertTrue(ex.getMessage().contains("reflected"));
 
         byte[] toProxy = frame(true, 0L);
         assertThrows(SnWireException.class, () -> FrameCodec.decode(toProxy, SIGNER, 0L, false));

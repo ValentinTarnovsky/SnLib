@@ -214,15 +214,15 @@ public final class EquipmentBackup {
     }
 
     private void warnBroken(String entry) {
-        ctx.plugin().getLogger().warning("Backup de equipamiento ilegible en "
-                + STORE_PATH + " -> '" + entry + "': entrada ignorada");
+        ctx.plugin().getLogger().warning("Unreadable equipment backup in "
+                + STORE_PATH + " -> '" + entry + "': entry ignored");
     }
 
     private void warnNoStore() {
         if (warnedNoStore.compareAndSet(false, true)) {
-            ctx.plugin().getLogger().warning("EquipmentBackup sin modulo yml declarado: "
-                    + "backups de items locked solo en memoria; un crash sin onDisable "
-                    + "puede perder el item real desplazado");
+            ctx.plugin().getLogger().warning("EquipmentBackup without a declared yml module: "
+                    + "locked-item backups are memory only; a crash without onDisable "
+                    + "may lose the real displaced item");
         }
     }
 

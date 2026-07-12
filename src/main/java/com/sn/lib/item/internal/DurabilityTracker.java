@@ -152,9 +152,9 @@ public final class DurabilityTracker {
                 return true;
             }
         }
-        ctx.debug().log(() -> "breakFor: el stack roto no se encontro (ni identidad ni"
-                + " equals) en el inventario de " + player.getName()
-                + "; no se removio nada");
+        ctx.debug().log(() -> "breakFor: the broken stack was not found (neither identity"
+                + " nor equals) in the inventory of " + player.getName()
+                + "; nothing was removed");
         return false;
     }
 

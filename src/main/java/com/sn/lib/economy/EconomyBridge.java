@@ -78,7 +78,7 @@ public final class EconomyBridge {
         try {
             registerBackend(VAULT, new VaultBackend(ctx));
         } catch (Throwable t) {
-            ctx.debug().log(() -> "Vault ausente del classpath: backend vault no registrado ("
+            ctx.debug().log(() -> "Vault absent from the classpath: vault backend not registered ("
                     + t.getClass().getSimpleName() + ")");
         }
     }
@@ -92,8 +92,8 @@ public final class EconomyBridge {
         if (!Bukkit.isPrimaryThread()) {
             String site = callSiteTag();
             if (warnedOffMainSites.add(site)) {
-                ctx.plugin().getLogger().warning("getBalance llamado fuera del main thread desde "
-                        + site + "; devolviendo 0 (Economy siempre main thread)");
+                ctx.plugin().getLogger().warning("getBalance called off the main thread from "
+                        + site + "; returning 0 (Economy is always main thread)");
             }
             return 0.0D;
         }
@@ -185,14 +185,14 @@ public final class EconomyBridge {
         if (Double.isFinite(amount) && amount > 0.0D) {
             return true;
         }
-        ctx.debug().log(() -> "Cantidad de economia invalida: " + amount);
+        ctx.debug().log(() -> "Invalid economy amount: " + amount);
         return false;
     }
 
     private void warnNoBackend() {
         if (warnedNoBackend.compareAndSet(false, true)) {
-            ctx.plugin().getLogger().warning("No hay backend de economia disponible: instala Vault"
-                    + " o configura useCommandBackend(...); las operaciones devuelven false");
+            ctx.plugin().getLogger().warning("No economy backend available: install Vault"
+                    + " or configure useCommandBackend(...); operations return false");
         }
     }
 }

@@ -103,7 +103,7 @@ public final class GuiProtectionListener implements Listener {
         if (hand != null) {
             event.getPlayer().getInventory().setItem(hand, null);
         }
-        // Ambos results en DENY equivalen al cancel del evento de interaccion.
+        // Both results on DENY are equivalent to cancelling the interaction event.
         event.setUseItemInHand(Event.Result.DENY);
         event.setUseInteractedBlock(Event.Result.DENY);
     }
@@ -117,7 +117,7 @@ public final class GuiProtectionListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        // El item que iba a la main hand vive en la offhand actual, y viceversa.
+        // The item headed to the main hand lives in the current offhand, and vice versa.
         if (toMain) {
             event.getPlayer().getInventory().setItemInOffHand(null);
         }

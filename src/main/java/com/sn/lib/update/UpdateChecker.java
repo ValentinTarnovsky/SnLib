@@ -98,8 +98,8 @@ public final class UpdateChecker {
      */
     public void watch(String ownerRepo) {
         if (ownerRepo == null || !REPO_PATTERN.matcher(ownerRepo).matches()) {
-            ctx.plugin().getLogger().warning("updates: repo invalido '" + ownerRepo
-                    + "'; formato esperado owner/repo");
+            ctx.plugin().getLogger().warning("updates: invalid repo '" + ownerRepo
+                    + "'; expected format owner/repo");
             return;
         }
         registerState();
@@ -118,8 +118,8 @@ public final class UpdateChecker {
      */
     public void checkNow(String ownerRepo) {
         if (ownerRepo == null || !REPO_PATTERN.matcher(ownerRepo).matches()) {
-            ctx.plugin().getLogger().warning("updates: repo invalido '" + ownerRepo
-                    + "'; formato esperado owner/repo");
+            ctx.plugin().getLogger().warning("updates: invalid repo '" + ownerRepo
+                    + "'; expected format owner/repo");
             return;
         }
         registerState();
@@ -169,22 +169,22 @@ public final class UpdateChecker {
             HttpResponse<String> response =
                     client().send(builder.GET().build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                warnOnce(repo, "update check de '" + repo + "' fallo: HTTP "
+                warnOnce(repo, "update check of '" + repo + "' failed: HTTP "
                         + response.statusCode());
                 return;
             }
             body = response.body();
         } catch (IOException e) {
-            warnOnce(repo, "update check de '" + repo + "' fallo: " + e);
+            warnOnce(repo, "update check of '" + repo + "' failed: " + e);
             return;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            warnOnce(repo, "update check de '" + repo + "' fallo: interrumpido");
+            warnOnce(repo, "update check of '" + repo + "' failed: interrupted");
             return;
         }
         String tag = jsonString(body, "tag_name");
         if (tag == null) {
-            warnOnce(repo, "update check de '" + repo + "' fallo: respuesta sin tag_name");
+            warnOnce(repo, "update check of '" + repo + "' failed: response without tag_name");
             return;
         }
         String url = jsonString(body, "html_url");
@@ -194,7 +194,7 @@ public final class UpdateChecker {
             Finding finding = new Finding(latest, current, url == null ? "" : url);
             Finding previous = state.findings.put(repo, finding);
             if (previous == null || !previous.latest().equals(latest)) {
-                ctx.plugin().getLogger().info("Version " + latest + " disponible, instalada "
+                ctx.plugin().getLogger().info("Version " + latest + " available, installed "
                         + current + ": " + finding.url());
             }
         } else {
@@ -327,8 +327,8 @@ public final class UpdateChecker {
                         }
                         for (Finding f : state.findings.values()) {
                             player.sendMessage(SnText.color("&e" + owner.getName()
-                                    + " &7tiene una version nueva: &a" + f.latest()
-                                    + " &7(instalada &c" + f.current() + "&7) &f" + f.url()));
+                                    + " &7has a new version: &a" + f.latest()
+                                    + " &7(installed &c" + f.current() + "&7) &f" + f.url()));
                         }
                     });
                 }

@@ -286,8 +286,8 @@ items:
 # Templates can use custom placeholders defined by the plugin (e.g. %index%, %warp_name%).
 #
 # Usage example (backpack plugin):
-#   - Plugin defines: mochilas-slots: [0,1,2,3,4]
-#   - Plugin code decides per-player: slot 0 -> "mochila-disponible", slots 1-4 -> "mochila-bloqueada"
+#   - Plugin defines: backpack-slots: [0,1,2,3,4]
+#   - Plugin code decides per-player: slot 0 -> "backpack-available", slots 1-4 -> "backpack-locked"
 #   - Config user customizes the look of each template
 
 templates:

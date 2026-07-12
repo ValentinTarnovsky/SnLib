@@ -140,7 +140,7 @@ public final class Cooldowns {
                 if (!sweepWarned) {
                     sweepWarned = true;
                     ctx.plugin().getLogger().warning(
-                            "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: " + t);
+                            "Could not schedule the cooldown sweep; only the lazy purge remains: " + t);
                 }
             }
         }

@@ -125,8 +125,8 @@ public final class HeadUtil {
         }
         String texture = extractTextureValue(value);
         if (texture == null) {
-            warnOnce("texture:" + value, "Textura de cabeza invalida '" + abbreviate(value)
-                    + "'; se deja la cabeza por defecto");
+            warnOnce("texture:" + value, "Invalid head texture '" + abbreviate(value)
+                    + "'; keeping the default head");
             return;
         }
         try {
@@ -218,9 +218,9 @@ public final class HeadUtil {
             profileField.setAccessible(true);
             profileField.set(meta, profile);
         } catch (Throwable legacyFailure) {
-            warnOnce("head-apply", "No se pudo aplicar la textura de cabeza (PlayerProfile: "
-                    + cause + "; GameProfile legacy: " + legacyFailure
-                    + "); se deja la cabeza por defecto");
+            warnOnce("head-apply", "Could not apply the head texture (PlayerProfile: "
+                    + cause + "; legacy GameProfile: " + legacyFailure
+                    + "); keeping the default head");
         }
     }
 

@@ -100,9 +100,9 @@ public final class DiscordWebhook {
             }
         }
         if (dropped > 0) {
-            ctx.plugin().getLogger().warning("Drain de webhooks corto el flush: " + dropped
-                    + " mensaje(s) descartado(s) por el deadline de "
-                    + DRAIN_DEADLINE_MILLIS + "ms");
+            ctx.plugin().getLogger().warning("Webhook drain cut the flush short: " + dropped
+                    + " message(s) dropped by the "
+                    + DRAIN_DEADLINE_MILLIS + "ms deadline");
         }
         HttpClient current = client;
         client = null;
@@ -170,7 +170,7 @@ public final class DiscordWebhook {
                     .POST(HttpRequest.BodyPublishers.ofString(pending.json(), StandardCharsets.UTF_8))
                     .build();
         } catch (IllegalArgumentException e) {
-            warnOnce(pending.url(), "URL invalida: " + e.getMessage());
+            warnOnce(pending.url(), "invalid URL: " + e.getMessage());
             return 0L;
         }
         try {
@@ -181,11 +181,11 @@ public final class DiscordWebhook {
                 return retryAfterMillis(response);
             }
             if (status < 200 || status >= 300) {
-                warnOnce(pending.url(), "el endpoint respondio HTTP " + status);
+                warnOnce(pending.url(), "the endpoint responded HTTP " + status);
             }
             return 0L;
         } catch (IOException e) {
-            warnOnce(pending.url(), "fallo de red: " + e);
+            warnOnce(pending.url(), "network failure: " + e);
             return 0L;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -207,8 +207,8 @@ public final class DiscordWebhook {
     private void warnOnce(String url, String reason) {
         String endpoint = sanitize(url);
         if (warnedEndpoints.add(endpoint)) {
-            ctx.plugin().getLogger().warning("Webhook de Discord " + endpoint + " fallo ("
-                    + reason + "); errores posteriores de este endpoint se omiten del log");
+            ctx.plugin().getLogger().warning("Discord webhook " + endpoint + " failed ("
+                    + reason + "); later errors of this endpoint are omitted from the log");
         }
     }
 

@@ -65,7 +65,7 @@ public final class HologramUtil {
         World world = location == null ? null : location.getWorld();
         if (world == null) {
             ctx.plugin().getLogger().warning(
-                    "Holograma '" + id + "': location invalida, spawn ignorado");
+                    "Hologram '" + id + "': invalid location, spawn ignored");
             return;
         }
         delete(id);
@@ -235,8 +235,8 @@ public final class HologramUtil {
     private @Nullable HologramEntry get(String id) {
         HologramEntry entry = byId.get(id);
         if (entry == null && warnedIds.add(id)) {
-            ctx.plugin().getLogger().warning("Holograma desconocido '" + id
-                    + "': la operacion se ignora (falta spawn(\"" + id + "\", ...))");
+            ctx.plugin().getLogger().warning("Unknown hologram '" + id
+                    + "': the operation is ignored (missing spawn(\"" + id + "\", ...))");
         }
         return entry;
     }

@@ -72,7 +72,7 @@ public final class SubCommandBuilder {
     public SubCommandBuilder arg(String name, Arg<?> arg) {
         if (optionalDeclared) {
             throw new IllegalStateException(
-                    "Argumento obligatorio '" + name + "' despues de uno opcional");
+                    "Required argument '" + name + "' after an optional one");
         }
         declare(name, arg);
         requiredArgs++;
@@ -105,7 +105,7 @@ public final class SubCommandBuilder {
      */
     public SubCommandBuilder when(int index, Predicate<String> condition) {
         if (index < 0) {
-            throw new IllegalArgumentException("Indice de condicion negativo: " + index);
+            throw new IllegalArgumentException("Negative condition index: " + index);
         }
         Objects.requireNonNull(condition, "condition");
         conditions.add(new RootCommand.Condition(index, condition));

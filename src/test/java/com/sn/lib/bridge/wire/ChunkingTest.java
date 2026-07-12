@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ChunkingTest {
 
-    private static final HmacSigner SIGNER = new HmacSigner("secreto".getBytes(StandardCharsets.UTF_8));
+    private static final HmacSigner SIGNER = new HmacSigner("secret".getBytes(StandardCharsets.UTF_8));
 
     private static byte[] randomBody(int size) {
         byte[] body = new byte[size];

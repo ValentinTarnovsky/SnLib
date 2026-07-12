@@ -32,21 +32,21 @@ final class ProxySecretResolver {
     static byte @Nullable [] resolve(Path proxyRoot, Path dataDirectory, Logger logger) {
         Path dedicated = dataDirectory.resolve("hmac-secret.txt");
         if (Files.isRegularFile(dedicated)) {
-            // Fail-closed: si el operador OPTO por un secreto dedicado, un archivo vacio
-            // o ilegible apaga el bridge con evidencia, jamas cae en silencio al
-            // forwarding secret (correria con la clave equivocada sin que nadie lo vea)
+            // Fail-closed: if the operator OPTED for a dedicated secret, an empty or
+            // unreadable file turns the bridge off with evidence, never silently falling
+            // back to the forwarding secret (it would run with the wrong key unnoticed)
             try {
                 String secret = Files.readString(dedicated, StandardCharsets.UTF_8).trim();
                 if (secret.isBlank()) {
-                    logger.error("SnBridge desactivado: {} existe pero esta VACIO"
-                            + " (completarlo o borrarlo para volver al forwarding secret)",
+                    logger.error("SnBridge disabled: {} exists but is EMPTY"
+                            + " (fill it in or delete it to fall back to the forwarding secret)",
                             dedicated);
                     return null;
                 }
-                logger.info("SnBridge: usando secreto HMAC dedicado de {}", dedicated);
+                logger.info("SnBridge: using dedicated HMAC secret from {}", dedicated);
                 return secret.getBytes(StandardCharsets.UTF_8);
             } catch (IOException e) {
-                logger.error("SnBridge desactivado: no se pudo leer {}: {}", dedicated,
+                logger.error("SnBridge disabled: could not read {}: {}", dedicated,
                         e.getMessage());
                 return null;
             }
@@ -61,24 +61,24 @@ final class ProxySecretResolver {
                     secretFileName = matcher.group(1);
                 }
             } catch (IOException e) {
-                logger.error("SnBridge: no se pudo leer velocity.toml: {}", e.getMessage());
+                logger.error("SnBridge: could not read velocity.toml: {}", e.getMessage());
             }
         }
         Path secretFile = proxyRoot.resolve(secretFileName);
         if (!Files.isRegularFile(secretFile)) {
-            logger.error("SnBridge desactivado: no existe {} (configurar forwarding moderno o"
-                    + " crear plugins/snlib/hmac-secret.txt)", secretFile);
+            logger.error("SnBridge disabled: {} does not exist (configure modern forwarding or"
+                    + " create plugins/snlib/hmac-secret.txt)", secretFile);
             return null;
         }
         try {
             String secret = Files.readString(secretFile, StandardCharsets.UTF_8).trim();
             if (secret.isBlank()) {
-                logger.error("SnBridge desactivado: {} esta vacio", secretFile);
+                logger.error("SnBridge disabled: {} is empty", secretFile);
                 return null;
             }
             return secret.getBytes(StandardCharsets.UTF_8);
         } catch (IOException e) {
-            logger.error("SnBridge desactivado: fallo leyendo {}: {}", secretFile, e.getMessage());
+            logger.error("SnBridge disabled: failed reading {}: {}", secretFile, e.getMessage());
             return null;
         }
     }

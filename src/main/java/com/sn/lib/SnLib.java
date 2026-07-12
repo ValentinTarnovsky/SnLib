@@ -80,7 +80,7 @@ public final class SnLib {
             Sn existing = CONTEXTS.get(plugin);
             if (existing != null) {
                 plugin.getLogger().warning(
-                        "SnLib.init doble: se devuelve el contexto existente sin re-montar modulos");
+                        "Double SnLib.init: returning existing context without re-mounting modules");
                 return existing;
             }
         }

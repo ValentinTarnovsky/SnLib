@@ -113,7 +113,7 @@ public final class GuiDef {
                 .warning("[gui " + id + "] " + message);
         ConfigurationSection root = yml.getSection("");
         if (root == null) {
-            warn.accept("Archivo vacio o ilegible; se usa un gui por defecto sin items");
+            warn.accept("File is empty or unreadable; using a default gui without items");
             return new GuiDef(id, "Menu", 3, null, "", "", List.of(), 0, false, false,
                     new int[0], List.of(), Map.of());
         }
@@ -123,18 +123,18 @@ public final class GuiDef {
         int rows = root.getInt("rows", 3);
         if (!layoutRows.isEmpty()) {
             if (root.isSet("rows") && rows != layoutRows.size()) {
-                warn.accept("rows " + rows + " contradice layout de " + layoutRows.size()
-                        + " filas; usando " + layoutRows.size());
+                warn.accept("rows " + rows + " contradicts a layout of " + layoutRows.size()
+                        + " rows; using " + layoutRows.size());
             }
             rows = layoutRows.size();
         } else if (rows < 1 || rows > 6) {
-            warn.accept("rows " + rows + " fuera de rango 1-6; usando 3");
+            warn.accept("rows " + rows + " out of range 1-6; using 3");
             rows = 3;
         }
         InventoryType type = parseInventoryType(root.getString("inventory-type", ""), warn);
         if (!layoutRows.isEmpty() && type != null) {
-            warn.accept("layout asume grilla de cofre de 9 columnas; con inventory-type "
-                    + type + " los slots fuera de rango no se renderizan");
+            warn.accept("layout assumes the 9-column chest grid; with inventory-type "
+                    + type + " out-of-range slots are not rendered");
         }
         String openSound = root.getString("open-sound", "");
         String closeSound = root.getString("close-sound", "");
@@ -152,7 +152,7 @@ public final class GuiDef {
                     continue;
                 }
                 if (!item.hasSlots()) {
-                    warn.accept("Item '" + key + "' sin slots validos; no se renderiza");
+                    warn.accept("Item '" + key + "' has no valid slots; not rendered");
                     continue;
                 }
                 items.add(item);
@@ -184,15 +184,15 @@ public final class GuiDef {
         }
         List<String> rows = raw;
         if (rows.size() > 6) {
-            warn.accept("layout tiene " + rows.size() + " filas; se truncan a 6");
+            warn.accept("layout has " + rows.size() + " rows; truncated to 6");
             rows = rows.subList(0, 6);
         }
         List<String> out = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             String row = rows.get(i) == null ? "" : rows.get(i);
             if (row.length() > 9) {
-                warn.accept("fila " + (i + 1) + " del layout tiene " + row.length()
-                        + " caracteres; se trunca a 9");
+                warn.accept("layout row " + (i + 1) + " has " + row.length()
+                        + " characters; truncated to 9");
                 row = row.substring(0, 9);
             }
             out.add(row);
@@ -247,23 +247,23 @@ public final class GuiDef {
             return new int[0];
         }
         if (!hasLayout) {
-            warn.accept("paged-key declarado sin layout; ignorado");
+            warn.accept("paged-key declared without a layout; ignored");
             return new int[0];
         }
         String trimmed = raw.trim();
         if (trimmed.length() != 1) {
-            warn.accept("paged-key '" + raw + "' invalido (debe ser 1 caracter); ignorado");
+            warn.accept("paged-key '" + raw + "' is invalid (must be 1 character); ignored");
             return new int[0];
         }
         char key = trimmed.charAt(0);
         int[] slots = keySlots.get(key);
         if (slots == null) {
-            warn.accept("paged-key '" + key + "' no aparece en layout; ignorado");
+            warn.accept("paged-key '" + key + "' does not appear in layout; ignored");
             return new int[0];
         }
         if (!pagination) {
-            warn.accept("paged-key declarado con pagination false; bindPaged quedara"
-                    + " ignorado hasta activar pagination");
+            warn.accept("paged-key declared with pagination false; bindPaged stays"
+                    + " ignored until pagination is enabled");
         }
         return slots.clone();
     }
@@ -281,7 +281,7 @@ public final class GuiDef {
         try {
             return InventoryType.valueOf(name);
         } catch (IllegalArgumentException e) {
-            warn.accept("inventory-type invalido '" + raw + "'; usando CHEST");
+            warn.accept("Invalid inventory-type '" + raw + "'; using CHEST");
             return null;
         }
     }

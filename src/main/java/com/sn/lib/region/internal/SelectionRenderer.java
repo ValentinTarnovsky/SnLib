@@ -62,8 +62,8 @@ public final class SelectionRenderer implements Runnable {
                     spec.dustSize());
         } else {
             if (resolved.getDataType() != Void.class) {
-                warnOnce("data:" + resolved.name(), "Particula de seleccion '"
-                        + resolved.name() + "' requiere data; usando FLAME");
+                warnOnce("data:" + resolved.name(), "Selection particle '"
+                        + resolved.name() + "' requires data; using FLAME");
                 resolved = Particle.FLAME;
             }
             this.particle = resolved;
@@ -252,12 +252,12 @@ public final class SelectionRenderer implements Runnable {
         if (alias != null) {
             Particle aliased = lookup(alias);
             if (aliased != null) {
-                warnOnce("alias:" + name, "Particula de seleccion '" + name
-                        + "' no existe en este servidor; usando alias '" + alias + "'");
+                warnOnce("alias:" + name, "Selection particle '" + name
+                        + "' does not exist on this server; using alias '" + alias + "'");
                 return aliased;
             }
         }
-        warnOnce("name:" + name, "Particula de seleccion invalida '" + raw + "'; usando FLAME");
+        warnOnce("name:" + name, "Invalid selection particle '" + raw + "'; using FLAME");
         return Particle.FLAME;
     }
 

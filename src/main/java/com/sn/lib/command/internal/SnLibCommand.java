@@ -94,10 +94,10 @@ public final class SnLibCommand {
         com.sn.lib.bridge.internal.BridgeRuntime runtime =
                 com.sn.lib.bridge.internal.BridgeRuntime.live();
         if (runtime == null) {
-            send(sender, "&7Bridge runtime apagado.");
+            send(sender, "&7Bridge runtime off.");
             return;
         }
-        send(sender, "&7Estado de SnBridge:");
+        send(sender, "&7SnBridge status:");
         for (String line : runtime.statusLines()) {
             send(sender, line);
         }

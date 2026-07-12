@@ -32,16 +32,16 @@ class WireIdLedgerTest {
     @Test
     void ledgerIsDuplicateFreeAndCoversEveryShippedType() throws IOException {
         List<String> ledger = parseLedger();
-        assertTrue(ledger.size() >= WireIds.INFRA.size(), "ledger sospechosamente corto: " + ledger);
+        assertTrue(ledger.size() >= WireIds.INFRA.size(), "ledger suspiciously short: " + ledger);
 
         Set<String> unique = new HashSet<>(ledger);
         assertEquals(ledger.size(), unique.size(),
-                "el ledger de SNBRIDGE-SPEC.md seccion 12 tiene ids duplicados: " + ledger);
+                "the SNBRIDGE-SPEC.md section 12 ledger has duplicate ids: " + ledger);
 
         for (SnWireType<?> type : SHIPPED) {
             assertTrue(unique.contains(type.wireId()),
-                    "'" + type.wireId() + "' esta shippeado pero falta en el ledger de la spec"
-                            + " (agregarlo en el mismo commit que lo reclama)");
+                    "'" + type.wireId() + "' is shipped but missing from the spec ledger"
+                            + " (add it in the same commit that claims it)");
         }
     }
 
@@ -52,7 +52,7 @@ class WireIdLedgerTest {
             shippedIds.add(type.wireId());
         }
         assertEquals(shippedIds, WireIds.INFRA,
-                "WireIds.INFRA no coincide con los TYPE realmente shippeados");
+                "WireIds.INFRA does not match the TYPE constants actually shipped");
     }
 
     @Test
@@ -61,20 +61,20 @@ class WireIdLedgerTest {
         registry.register(SHIPPED.toArray(SnWireType<?>[]::new)); // throws on any double claim
         for (SnWireType<?> type : SHIPPED) {
             assertTrue(type.wireId().startsWith(WireIds.RESERVED_PREFIX),
-                    type.wireId() + " deberia usar el prefijo reservado de infra");
+                    type.wireId() + " should use the reserved infra prefix");
         }
     }
 
     /** Extracts the ids from the fenced ledger block under spec section 12 (surefire cwd = basedir). */
     private static List<String> parseLedger() throws IOException {
         Path spec = Path.of("docs", "SNBRIDGE-SPEC.md");
-        assertTrue(Files.exists(spec), "no se encontro " + spec.toAbsolutePath());
+        assertTrue(Files.exists(spec), "could not find " + spec.toAbsolutePath());
         String text = Files.readString(spec, StandardCharsets.UTF_8);
-        int anchor = text.indexOf("Ledger de wireIds");
-        assertTrue(anchor > 0, "la spec perdio la seccion 'Ledger de wireIds'");
+        int anchor = text.indexOf("WireId ledger");
+        assertTrue(anchor > 0, "the spec lost the 'WireId ledger' section");
         int open = text.indexOf("```", anchor);
         int close = text.indexOf("```", open + 3);
-        assertTrue(open > 0 && close > open, "el ledger ya no es un bloque de codigo parseable");
+        assertTrue(open > 0 && close > open, "the ledger is no longer a parseable code block");
         String block = text.substring(open, close);
         Matcher matcher = Pattern.compile("snlib:[a-z_/]+").matcher(block);
         List<String> ids = new ArrayList<>(16);

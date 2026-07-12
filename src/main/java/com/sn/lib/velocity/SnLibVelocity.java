@@ -43,11 +43,11 @@ public final class SnLibVelocity {
     public void onProxyInitialize(ProxyInitializeEvent event) {
         String version = proxy.getPluginManager().getPlugin("snlib")
                 .flatMap(container -> container.getDescription().getVersion())
-                .orElse("desconocida");
+                .orElse("unknown");
         ProxyBridgeRuntime.init(this, proxy, logger, dataDirectory, version);
         registerStatusCommand();
-        logger.info("SnLib {} habilitado en Velocity (SnBridge proxy side{})", version,
-                ProxyBridgeRuntime.get().available() ? "" : ", SIN secreto HMAC: bridge apagado");
+        logger.info("SnLib {} enabled on Velocity (SnBridge proxy side{})", version,
+                ProxyBridgeRuntime.get().available() ? "" : ", NO HMAC secret: bridge disabled");
     }
 
     /** The runbook's operator surface on the proxy: {@code /snlibv status}. */

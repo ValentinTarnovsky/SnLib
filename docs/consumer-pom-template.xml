@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   consumer-pom-template.xml
-  Template de pom.xml para plugins Sn que consumen SnLib (modelo standalone hard-depend).
+  pom.xml template for Sn plugins that consume SnLib (standalone hard-depend model).
 
-  COMO SE RESUELVE com.sn:snlib
-  1. Publicar SnLib al repositorio Maven local (.m2):
-       mvn install -f <ruta>/SnLib/pom.xml
-  2. JitPack NO soportado: el repo de SnLib es privado y JitPack no construye
-     repos privados. La UNICA via de resolucion es el .m2 local.
-  3. En runtime NADA de SnLib se shadea en el consumer: el server carga
-     SnLib.jar como plugin standalone en plugins/ y el consumer declara
-     depend: [SnLib] en su plugin.yml. Por eso el scope es provided y este
-     template NO incluye maven-shade-plugin para la lib. Si el consumer shadea
-     otras dependencias propias, JAMAS incluir com.sn:snlib en el shade.
+  HOW com.sn:snlib IS RESOLVED
+  1. Publish SnLib to the local Maven repository (.m2):
+       mvn install -f <path>/SnLib/pom.xml
+  2. JitPack is NOT supported: the SnLib repo is private and JitPack does not
+     build private repos. The ONLY resolution path is the local .m2.
+  3. At runtime NOTHING of SnLib is shaded into the consumer: the server loads
+     SnLib.jar as a standalone plugin in plugins/ and the consumer declares
+     depend: [SnLib] in its plugin.yml. That is why the scope is provided and
+     this template does NOT include maven-shade-plugin for the lib. If the
+     consumer shades other dependencies of its own, NEVER include com.sn:snlib
+     in the shade.
 
-  BLOQUE plugin.yml MINIMO DEL CONSUMER
+  MINIMAL CONSUMER plugin.yml BLOCK
 
     name: MyPlugin
     main: com.sn.myplugin.MyPlugin
@@ -23,18 +24,18 @@
     depend: [SnLib]
     commands:
       myplugin:
-        description: Comando principal de MyPlugin
+        description: Main command of MyPlugin
     permissions:
       myplugin.admin:
-        description: Acceso administrativo completo de MyPlugin
+        description: Full administrative access of MyPlugin
         default: op
         children:
           myplugin.admin.reload: true
       myplugin.admin.reload:
-        description: Permite /myplugin reload
+        description: Allows /myplugin reload
         default: op
 
-  CLASE PRINCIPAL DEL CONSUMER (unica via de init: extender SnPlugin)
+  CONSUMER MAIN CLASS (the only init path: extend SnPlugin)
 
     package com.sn.myplugin;
 
@@ -48,7 +49,7 @@
             return SnSpec.builder().config("config.yml").lang().guis().build();
         }
         protected void onInnerEnable() {
-            // registrar comandos, guis, items, db, etc. sobre el contexto Sn
+            // register commands, guis, items, db, etc. on the Sn context
         }
     }
 -->
@@ -75,8 +76,8 @@
     </repositories>
 
     <dependencies>
-        <!-- SnLib: SIEMPRE provided. Se resuelve del .m2 local (mvn install en SnLib).
-             En runtime la provee el plugin SnLib.jar instalado en plugins/. -->
+        <!-- SnLib: ALWAYS provided. Resolved from the local .m2 (mvn install in SnLib).
+             At runtime it is provided by the SnLib.jar plugin installed in plugins/. -->
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
@@ -99,7 +100,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
             </plugin>
-            <!-- SIN maven-shade-plugin para la lib: SnLib jamas se shadea en el consumer. -->
+            <!-- NO maven-shade-plugin for the lib: SnLib is never shaded into the consumer. -->
         </plugins>
     </build>
 </project>

@@ -117,7 +117,7 @@ public final class SnScheduler {
     public <T> void thenSync(CompletableFuture<T> future, Consumer<T> consumer) {
         future.whenComplete((value, error) -> {
             if (error != null) {
-                plugin.getLogger().warning("Tarea async termino con error: " + error);
+                plugin.getLogger().warning("Async task ended with an error: " + error);
                 return;
             }
             if (!plugin.isEnabled()) {
@@ -127,7 +127,7 @@ public final class SnScheduler {
                 sync(() -> consumer.accept(value));
             } catch (IllegalPluginAccessException e) {
                 plugin.getLogger().warning(
-                        "Hop al main descartado: plugin deshabilitado durante el scheduling");
+                        "Hop to main discarded: plugin disabled during scheduling");
             }
         });
     }

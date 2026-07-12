@@ -57,10 +57,10 @@ public final class SnProxyChannel {
         for (SnWireType<?> type : types) {
             if (type.wireId().startsWith(WireIds.RESERVED_PREFIX)) {
                 throw new SnWireException("wireId '" + type.wireId()
-                        + "' usa el prefijo reservado snlib:");
+                        + "' uses the reserved snlib: prefix");
             }
         }
-        core.registerTypes(types); // bajo el monitor del core: los threads netty lo leen
+        core.registerTypes(types); // under the core monitor: netty threads read it
     }
 
     /** Handler for one message type arriving from any backend. */
@@ -135,9 +135,9 @@ public final class SnProxyChannel {
             if (runtime.proxy().getServer(serverName).isEmpty()) {
                 return CompletableFuture.completedFuture(SnDelivery.of(
                         SnDeliveryResult.UNKNOWN_SERVER,
-                        "'" + serverName + "' no es un server registrado en velocity.toml"));
+                        "'" + serverName + "' is not a server registered in velocity.toml"));
             }
-            // Normalizado: getServer es case-insensitive pero el core matchea exacto
+            // Normalized: getServer is case-insensitive but the core matches exactly
             return core.sendToServer(normalize(serverName), type, message, opts.ttlMillis());
         }
     }
@@ -148,17 +148,17 @@ public final class SnProxyChannel {
         return (type, carrier, serverName, message) -> {
             BiConsumer<SnProxySource, Object> handler = handlers.get(type.wireId());
             if (handler == null) {
-                return; // sin handler: mensaje de aplicacion ignorado a proposito
+                return; // no handler: application message ignored on purpose
             }
             Player player = runtime.proxy().getPlayer(carrier).orElse(null);
             if (player == null) {
-                return; // el carrier se desconecto en vuelo: el contrato de SnProxySource
-                        // garantiza player no-null, asi que el handler se saltea
+                return; // the carrier disconnected in flight: the SnProxySource contract
+                        // guarantees a non-null player, so the handler is skipped
             }
             try {
                 handler.accept(new SnProxySource(player, serverName), message);
             } catch (Throwable t) {
-                runtime.logger().warn("[SnBridge] handler de {} en '{}' lanzo {}",
+                runtime.logger().warn("[SnBridge] handler of {} in '{}' threw {}",
                         type.wireId(), namespace, t.toString());
             }
         };

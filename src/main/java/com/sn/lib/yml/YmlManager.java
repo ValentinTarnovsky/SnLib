@@ -146,9 +146,9 @@ public final class YmlManager {
             if (existing != null) {
                 if ((existing.mode() != mode || existing.prune() != prune)
                         && modeConflictWarned.add(path)) {
-                    ctx.plugin().getLogger().warning("yml '" + path + "' ya montado en modo "
+                    ctx.plugin().getLogger().warning("yml '" + path + "' already mounted in mode "
                             + describe(existing.mode(), existing.prune())
-                            + "; se ignora el modo " + describe(mode, prune));
+                            + "; mode " + describe(mode, prune) + " is ignored");
                 }
                 return existing.yml();
             }
@@ -202,7 +202,7 @@ public final class YmlManager {
             lines.add(GATE_KEY + ": true");
             Files.write(disk.toPath(), lines, StandardCharsets.UTF_8);
         } catch (IOException | InvalidConfigurationException ex) {
-            ctx.plugin().getLogger().warning("No se pudo seedear la key " + GATE_KEY + " en "
+            ctx.plugin().getLogger().warning("Could not seed key " + GATE_KEY + " into "
                     + disk.getName() + ": " + ex.getMessage());
         }
     }

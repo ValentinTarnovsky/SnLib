@@ -53,7 +53,7 @@ public final class SnPapi {
         if (!Bukkit.isPrimaryThread()) {
             SnDebug debug = ctx.debug();
             if (debug != null) {
-                debug.log(() -> "PAPI omitido fuera del main thread; tokens intactos: " + text);
+                debug.log(() -> "PAPI skipped off the main thread; tokens untouched: " + text);
             }
             return text;
         }
@@ -92,7 +92,7 @@ public final class SnPapi {
                 } catch (Throwable t) {
                     SnDebug debug = ctx.debug();
                     if (debug != null) {
-                        debug.log(() -> "applyOnMain fallo al resolver; texto original intacto: " + t);
+                        debug.log(() -> "applyOnMain failed to resolve; original text untouched: " + t);
                     }
                     future.complete(text);
                 }
@@ -119,7 +119,7 @@ public final class SnPapi {
                 } catch (Throwable t) {
                     SnDebug debug = ctx.debug();
                     if (debug != null) {
-                        debug.log(() -> "applyOnMain fallo al resolver la lista; lineas originales intactas: " + t);
+                        debug.log(() -> "applyOnMain failed to resolve the list; original lines untouched: " + t);
                     }
                     future.complete(lines);
                 }

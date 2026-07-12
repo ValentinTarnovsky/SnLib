@@ -54,13 +54,13 @@ public final class SnWireType<T> {
      */
     public static <T> SnWireType<T> of(String wireId, int version, Encoder<T> encoder, Decoder<T> decoder) {
         if (wireId == null || wireId.isBlank()) {
-            throw new SnWireException("wireId vacio");
+            throw new SnWireException("empty wireId");
         }
         if (!wireId.equals(wireId.toLowerCase(java.util.Locale.ROOT)) || wireId.indexOf(':') <= 0) {
-            throw new SnWireException("wireId invalido: '" + wireId + "' (formato esperado: namespace:nombre, minusculas)");
+            throw new SnWireException("invalid wireId: '" + wireId + "' (expected format: namespace:name, lowercase)");
         }
         if (version < 1 || version > 0xFFFF) {
-            throw new SnWireException("msgVersion fuera de rango para '" + wireId + "': " + version);
+            throw new SnWireException("msgVersion out of range for '" + wireId + "': " + version);
         }
         Objects.requireNonNull(encoder, "encoder");
         Objects.requireNonNull(decoder, "decoder");
@@ -104,19 +104,19 @@ public final class SnWireType<T> {
         SnBuf buf = SnBuf.forRead(body);
         String readId = buf.str();
         if (!wireId.equals(readId)) {
-            throw new SnWireException("selfTest de '" + wireId + "': el body dice wireId '" + readId + "'");
+            throw new SnWireException("selfTest of '" + wireId + "': the body says wireId '" + readId + "'");
         }
         int readVersion = buf.u16();
         int len = buf.i32();
         SnBuf slice = buf.readSlice(len);
         T decoded = decoder.decode(slice, readVersion);
         if (slice.remaining() != 0) {
-            throw new SnWireException("selfTest de '" + wireId + "': el decoder dejo " + slice.remaining()
-                    + " bytes sin leer (drift de campos entre encoder y decoder)");
+            throw new SnWireException("selfTest of '" + wireId + "': decoder finished with " + slice.remaining()
+                    + " bytes left unread (field drift between encoder and decoder)");
         }
         if (!sample.equals(decoded)) {
-            throw new SnWireException("selfTest de '" + wireId + "': round-trip desigual.\n  original: " + sample
-                    + "\n  decodificado: " + decoded);
+            throw new SnWireException("selfTest of '" + wireId + "': round-trip mismatch.\n  original: " + sample
+                    + "\n  decoded: " + decoded);
         }
         return decoded;
     }

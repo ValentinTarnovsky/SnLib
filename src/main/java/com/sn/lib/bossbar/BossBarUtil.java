@@ -152,8 +152,8 @@ public final class BossBarUtil {
     private @Nullable BarEntry get(String id) {
         BarEntry entry = byId.get(id);
         if (entry == null && warnedIds.add(id)) {
-            ctx.plugin().getLogger().warning("Bossbar desconocida '" + id
-                    + "': la operacion se ignora (falta create(\"" + id + "\").build())");
+            ctx.plugin().getLogger().warning("Unknown bossbar '" + id
+                    + "': the operation is ignored (missing create(\"" + id + "\").build())");
         }
         return entry;
     }

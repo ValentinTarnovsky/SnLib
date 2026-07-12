@@ -339,7 +339,7 @@ public final class SnLang {
      */
     private void seedEnglish(File dir, File enFile) {
         if (!dir.isDirectory() && !dir.mkdirs()) {
-            ctx.plugin().getLogger().warning("No se pudo crear la carpeta " + LANG_DIR + "/");
+            ctx.plugin().getLogger().warning("Could not create folder " + LANG_DIR + "/");
         }
         if (ctx.plugin().getResource(CONSUMER_RESOURCE) != null) {
             YamlUpdater.update(ctx.plugin(), CONSUMER_RESOURCE, enFile, false);
@@ -350,14 +350,14 @@ public final class SnLang {
         }
         try {
             Files.write(enFile.toPath(), List.of(
-                    "# Archivo minimo creado por SnLib: el jar de " + ctx.plugin().getName()
-                            + " no incluye " + CONSUMER_RESOURCE + ".",
-                    "# Las keys snlib.* las inserta y mantiene el updater always-merge de SnLib."),
+                    "# Minimal file created by SnLib: the jar of " + ctx.plugin().getName()
+                            + " does not include " + CONSUMER_RESOURCE + ".",
+                    "# The snlib.* keys are inserted and maintained by SnLib's always-merge updater."),
                     StandardCharsets.UTF_8);
-            ctx.plugin().getLogger().warning("El jar de " + ctx.plugin().getName()
-                    + " no incluye " + CONSUMER_RESOURCE + "; se creo un archivo minimo");
+            ctx.plugin().getLogger().warning("The jar of " + ctx.plugin().getName()
+                    + " does not include " + CONSUMER_RESOURCE + "; a minimal file was created");
         } catch (IOException ex) {
-            ctx.plugin().getLogger().warning("No se pudo crear " + enFile.getName()
+            ctx.plugin().getLogger().warning("Could not create " + enFile.getName()
                     + ": " + ex.getMessage());
         }
     }
@@ -370,8 +370,8 @@ public final class SnLang {
     private void mergeSnlibKeys(File enFile) {
         List<String> resource = snlibResourceLines();
         if (resource == null) {
-            ctx.plugin().getLogger().warning("Recurso " + SNLIB_RESOURCE
-                    + " ausente de SnLib.jar; las keys snlib.* no se pueden mergear");
+            ctx.plugin().getLogger().warning("Resource " + SNLIB_RESOURCE
+                    + " absent from SnLib.jar; the snlib.* keys cannot be merged");
             return;
         }
         try {
@@ -381,7 +381,7 @@ public final class SnLang {
             if (!disk.isEmpty() && !YamlUpdater.isParseable(
                     YamlPreprocessor.preprocess(String.join("\n", disk)).cleanText())) {
                 ctx.plugin().getLogger().warning(enFile.getName()
-                        + " no parsea como YAML; se omite el merge de keys snlib.*");
+                        + " does not parse as YAML; the snlib.* key merge is skipped");
                 return;
             }
             List<String> merged = YamlUpdater.merge(resource, disk);
@@ -394,7 +394,7 @@ public final class SnLang {
             }
             Files.write(enFile.toPath(), merged, StandardCharsets.UTF_8);
         } catch (IOException ex) {
-            ctx.plugin().getLogger().warning("No se pudieron mergear las keys snlib.* en "
+            ctx.plugin().getLogger().warning("Could not merge the snlib.* keys into "
                     + enFile.getName() + ": " + ex.getMessage());
         }
     }
@@ -408,7 +408,7 @@ public final class SnLang {
         File langFile = new File(dir, "messages_" + code + ".yml");
         if (!langFile.isFile()) {
             ctx.plugin().getLogger().warning(LANG_DIR + "/" + langFile.getName()
-                    + " no existe; usando messages_" + FALLBACK_CODE + ".yml");
+                    + " does not exist; using messages_" + FALLBACK_CODE + ".yml");
             this.active = this.fallback;
             this.activeCode = FALLBACK_CODE;
             return;
@@ -417,7 +417,7 @@ public final class SnLang {
         YamlConfiguration parsed = parseFile(langFile);
         if (parsed.getKeys(false).isEmpty()) {
             ctx.plugin().getLogger().warning(LANG_DIR + "/" + langFile.getName()
-                    + " esta vacio o corrupto; usando messages_" + FALLBACK_CODE + ".yml");
+                    + " is empty or corrupt; using messages_" + FALLBACK_CODE + ".yml");
             this.active = this.fallback;
             this.activeCode = FALLBACK_CODE;
             return;
@@ -432,12 +432,12 @@ public final class SnLang {
             boolean changed = YamlUpdater.updateFromLines(ctx.plugin(), reference, langFile,
                     config != null ? config.file() : null);
             if (changed) {
-                ctx.plugin().getLogger().info("[update-configs] Keys nuevas de messages_"
-                        + FALLBACK_CODE + ".yml agregadas a " + LANG_DIR + "/"
-                        + langFile.getName() + "; traducirlas cuando convenga");
+                ctx.plugin().getLogger().info("[update-configs] New keys from messages_"
+                        + FALLBACK_CODE + ".yml added to " + LANG_DIR + "/"
+                        + langFile.getName() + "; translate them when convenient");
             }
         } catch (IOException ex) {
-            ctx.plugin().getLogger().warning("No se pudo mergear la traduccion "
+            ctx.plugin().getLogger().warning("Could not merge translation "
                     + langFile.getName() + ": " + ex.getMessage());
         }
     }
@@ -463,12 +463,12 @@ public final class SnLang {
             String raw = YamlPreprocessor.read(file.toPath());
             YamlPreprocessor.Result result = YamlPreprocessor.preprocess(raw);
             if (!result.fixedLines().isEmpty()) {
-                ctx.plugin().getLogger().warning("Tabs de indentacion corregidos en "
-                        + file.getName() + " (lineas " + result.fixedLines() + ")");
+                ctx.plugin().getLogger().warning("Indentation tabs fixed in "
+                        + file.getName() + " (lines " + result.fixedLines() + ")");
             }
             cfg.loadFromString(result.cleanText());
         } catch (IOException | InvalidConfigurationException ex) {
-            ctx.plugin().getLogger().warning("No se pudo leer " + LANG_DIR + "/"
+            ctx.plugin().getLogger().warning("Could not read " + LANG_DIR + "/"
                     + file.getName() + ": " + ex.getMessage());
         }
         return cfg;
@@ -529,8 +529,8 @@ public final class SnLang {
         if (active != fallback) {
             List<String> fromFallback = readLines(fallback, key);
             if (fromFallback != null && warnedKeys.add("fallback:" + key)) {
-                ctx.plugin().getLogger().warning("Key '" + key + "' falta en messages_"
-                        + activeCode + ".yml; usando el valor de messages_" + FALLBACK_CODE + ".yml");
+                ctx.plugin().getLogger().warning("Key '" + key + "' missing in messages_"
+                        + activeCode + ".yml; using the value from messages_" + FALLBACK_CODE + ".yml");
             }
             return fromFallback;
         }
@@ -625,7 +625,7 @@ public final class SnLang {
 
     private Component missing(String key) {
         if (warnedKeys.add("missing:" + key)) {
-            ctx.plugin().getLogger().warning("Key de mensaje '" + key + "' no existe en "
+            ctx.plugin().getLogger().warning("Message key '" + key + "' does not exist in "
                     + LANG_DIR + "/messages_" + FALLBACK_CODE + ".yml");
         }
         return Component.text("<missing:" + key + ">");

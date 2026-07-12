@@ -92,7 +92,7 @@ public final class CommandBackend implements EconomyBridge.Backend {
         String name = player.getName();
         if (name == null) {
             ctx.plugin().getLogger().warning(
-                    "Jugador sin nombre conocido; comando de economia omitido");
+                    "Player has no known name; economy command skipped");
             return false;
         }
         String command = template
@@ -101,7 +101,7 @@ public final class CommandBackend implements EconomyBridge.Backend {
         try {
             return Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Comando de economia fallo ('" + command + "'): " + t);
+            ctx.plugin().getLogger().warning("Economy command failed ('" + command + "'): " + t);
             return false;
         }
     }
@@ -124,15 +124,15 @@ public final class CommandBackend implements EconomyBridge.Backend {
         try {
             return Boolean.TRUE.equals(operation.get());
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Operacion del command backend fallo: " + t);
+            ctx.plugin().getLogger().warning("Command backend operation failed: " + t);
             return false;
         }
     }
 
     private void warnUnreadable(String resolved) {
         if (warnedUnreadable.compareAndSet(false, true)) {
-            ctx.plugin().getLogger().warning("Balance ilegible via '" + balancePlaceholder
-                    + "' (resultado: '" + resolved + "'); el command backend no puede verificar balances");
+            ctx.plugin().getLogger().warning("Unreadable balance via '" + balancePlaceholder
+                    + "' (result: '" + resolved + "'); the command backend cannot verify balances");
         }
     }
 

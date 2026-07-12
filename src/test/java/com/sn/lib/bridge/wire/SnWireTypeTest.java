@@ -61,7 +61,7 @@ class SnWireTypeTest {
                 (buf, version) -> new Sample(buf.uuid(), buf.str(), 0.0) /* forgets f64 */);
         SnWireException ex = assertThrows(SnWireException.class,
                 () -> lazy.selfTest(new Sample(UUID_A, "abc", 0.0)));
-        assertTrue(ex.getMessage().contains("sin leer"));
+        assertTrue(ex.getMessage().contains("left unread"));
     }
 
     @Test
@@ -136,16 +136,16 @@ class SnWireTypeTest {
         registry.register(Sample.TYPE);
         SnWireException ex = assertThrows(SnWireException.class,
                 () -> registry.decode(forged.toByteArray()));
-        assertTrue(ex.getMessage().contains("bodyLen invalido"));
+        assertTrue(ex.getMessage().contains("invalid bodyLen"));
     }
 
     @Test
     void wireIdFormatIsValidated() {
         SnWireType.Encoder<Sample> enc = (buf, m) -> { };
         SnWireType.Decoder<Sample> dec = (buf, v) -> null;
-        assertThrows(SnWireException.class, () -> SnWireType.of("SinNamespace", 1, enc, dec));
-        assertThrows(SnWireException.class, () -> SnWireType.of("Mayus:cula", 1, enc, dec));
-        assertThrows(SnWireException.class, () -> SnWireType.of(":vacio", 1, enc, dec));
+        assertThrows(SnWireException.class, () -> SnWireType.of("NoNamespaceHere", 1, enc, dec));
+        assertThrows(SnWireException.class, () -> SnWireType.of("Upper:case", 1, enc, dec));
+        assertThrows(SnWireException.class, () -> SnWireType.of(":empty", 1, enc, dec));
         assertThrows(SnWireException.class, () -> SnWireType.of("test:ok", 0, enc, dec));
     }
 }

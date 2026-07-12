@@ -183,7 +183,7 @@ class ChannelCoreTest {
     @Test
     void sendBeforeHandshakeQueuesAndFlushesAfterAck() {
         CompletableFuture<SnDelivery> future = core.send(null,
-                TestMsg.TYPE, new TestMsg(CARRIER_A, "hola"), -1L);
+                TestMsg.TYPE, new TestMsg(CARRIER_A, "hello"), -1L);
         assertFalse(future.isDone());
         assertEquals(1, core.pending());
 
@@ -194,14 +194,14 @@ class ChannelCoreTest {
 
         List<ProxyView> seen = proxyDecode(CARRIER_A, 0);
         Object last = seen.get(seen.size() - 1).message();
-        assertEquals(new TestMsg(CARRIER_A, "hola"), last);
+        assertEquals(new TestMsg(CARRIER_A, "hello"), last);
     }
 
     @Test
     void sendToReadyCarrierResolvesSentImmediately() {
         handshake(CARRIER_A);
         CompletableFuture<SnDelivery> future = core.send(CARRIER_A,
-                TestMsg.TYPE, new TestMsg(CARRIER_A, "ya"), -1L);
+                TestMsg.TYPE, new TestMsg(CARRIER_A, "now"), -1L);
         assertEquals(SnDeliveryResult.SENT, future.join().result());
     }
 
@@ -209,8 +209,8 @@ class ChannelCoreTest {
     void targetedSendWaitsForItsOwnCarrier() {
         handshake(CARRIER_A);
         CompletableFuture<SnDelivery> future = core.send(CARRIER_B,
-                TestMsg.TYPE, new TestMsg(CARRIER_B, "para-b"), -1L);
-        assertFalse(future.isDone(), "no debe viajar por la sesion de A");
+                TestMsg.TYPE, new TestMsg(CARRIER_B, "for-b"), -1L);
+        assertFalse(future.isDone(), "must not travel over A's session");
         handshake(CARRIER_B);
         assertEquals(SnDeliveryResult.SENT, future.join().result());
     }
@@ -231,9 +231,9 @@ class ChannelCoreTest {
             core.send(null, TestMsg.TYPE, new TestMsg(CARRIER_A, "q" + i), -1L);
         }
         CompletableFuture<SnDelivery> overflow = core.send(null,
-                TestMsg.TYPE, new TestMsg(CARRIER_A, "demasiado"), -1L);
+                TestMsg.TYPE, new TestMsg(CARRIER_A, "overflowed"), -1L);
         assertEquals(SnDeliveryResult.EXPIRED_TTL, overflow.join().result());
-        assertTrue(overflow.join().detail().contains("cola llena"));
+        assertTrue(overflow.join().detail().contains("queue full"));
     }
 
     @Test
@@ -245,10 +245,10 @@ class ChannelCoreTest {
         List<ProxyView> seen = proxyDecode(CARRIER_A, before);
         int requestMsgId = seen.get(seen.size() - 1).msgId();
 
-        feedResponse(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("aca-tenes")),
+        feedResponse(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("here-you-go")),
                 requestMsgId, proxyNonces.get(CARRIER_A));
-        assertEquals(new RespMsg("aca-tenes"), future.join());
-        assertTrue(dispatched.isEmpty(), "la respuesta correlacionada no pasa por el handler");
+        assertEquals(new RespMsg("here-you-go"), future.join());
+        assertTrue(dispatched.isEmpty(), "the correlated response does not go through the handler");
     }
 
     @Test
@@ -259,11 +259,11 @@ class ChannelCoreTest {
                 RespMsg.TYPE, 5_000L);
         int requestMsgId = proxyDecode(CARRIER_A, before).get(0).msgId();
 
-        // Mismo msgId y mismo TIPO que la respuesta esperada, pero SIN flag de response:
-        // es un push independiente y debe despachar al handler, no resolver el request
+        // Same msgId and same TYPE as the expected response, but WITHOUT the response flag:
+        // it is an independent push and must dispatch to the handler, not resolve the request
         feed(CARRIER_A, RespMsg.TYPE.encodeMessage(new RespMsg("push-casual")),
                 requestMsgId, proxyNonces.get(CARRIER_A));
-        assertFalse(future.isDone(), "el request sigue esperando su respuesta real");
+        assertFalse(future.isDone(), "the request keeps waiting for its real response");
         assertEquals(1, dispatched.size());
         assertEquals("test:resp", dispatched.get(0).wireId());
     }
@@ -271,7 +271,7 @@ class ChannelCoreTest {
     @Test
     void requestTimesOutThroughSweep() {
         handshake(CARRIER_A);
-        CompletableFuture<Object> future = core.request(ReqMsg.TYPE, new ReqMsg("nadie?"),
+        CompletableFuture<Object> future = core.request(ReqMsg.TYPE, new ReqMsg("nobody?"),
                 RespMsg.TYPE, 1_000L);
         clock.addAndGet(1_001L);
         core.sweep();
@@ -282,12 +282,12 @@ class ChannelCoreTest {
     void nackResolvesRequestExceptionally() {
         handshake(CARRIER_A);
         int before = deliveries.size();
-        CompletableFuture<Object> future = core.request(ReqMsg.TYPE, new ReqMsg("permitido?"),
+        CompletableFuture<Object> future = core.request(ReqMsg.TYPE, new ReqMsg("allowed?"),
                 RespMsg.TYPE, 5_000L);
         int requestMsgId = proxyDecode(CARRIER_A, before).get(0).msgId();
 
         feed(CARRIER_A, NackMsg.TYPE.encodeMessage(new NackMsg(requestMsgId, "test:req",
-                NackReason.DENIED_BY_ALLOWLIST, "patron no coincide")),
+                NackReason.DENIED_BY_ALLOWLIST, "pattern mismatch")),
                 8_000, proxyNonces.get(CARRIER_A));
         assertTrue(future.isCompletedExceptionally());
     }
@@ -305,7 +305,7 @@ class ChannelCoreTest {
     @Test
     void appMessageReachesDispatcher() {
         handshake(CARRIER_A);
-        feed(CARRIER_A, TestMsg.TYPE.encodeMessage(new TestMsg(CARRIER_A, "abrir-gui")),
+        feed(CARRIER_A, TestMsg.TYPE.encodeMessage(new TestMsg(CARRIER_A, "open-gui")),
                 7_100, proxyNonces.get(CARRIER_A));
         assertEquals(1, dispatched.size());
         assertEquals("test:msg", dispatched.get(0).wireId());
@@ -382,7 +382,7 @@ class ChannelCoreTest {
         CompletableFuture<SnDelivery> expiring = core.send(CARRIER_B,
                 TestMsg.TYPE, new TestMsg(CARRIER_B, "x"), 500L);
         expiring.thenAccept(d -> core.send(CARRIER_B, TestMsg.TYPE,
-                new TestMsg(CARRIER_B, "reintento"), 500L));
+                new TestMsg(CARRIER_B, "retry"), 500L));
         clock.addAndGet(501L);
         core.sweep();
         assertEquals(SnDeliveryResult.EXPIRED_TTL, expiring.join().result());
@@ -399,7 +399,7 @@ class ChannelCoreTest {
         assertEquals(1, reentrant.size());
         assertEquals(SnDeliveryResult.EXPIRED_TTL, reentrant.get(0).join().result());
         assertTrue(reentrant.get(0).join().detail().contains("shutdown"),
-                "el send reentrante durante teardown resuelve, jamas cuelga");
+                "the reentrant send during teardown resolves, never hangs");
     }
 
     @Test
@@ -441,11 +441,11 @@ class ChannelCoreTest {
 
         racy.openSession(CARRIER_A);
         assertEquals(0, racy.counters().sent());
-        assertTrue(lateDeliveries.isEmpty(), "nada salio antes del register");
+        assertTrue(lateDeliveries.isEmpty(), "nothing went out before the register");
 
         channelRegistered[0] = true;
         racy.sweep(); // retry lands now
-        assertEquals(1, lateDeliveries.size(), "el sweep reintenta el HELLO");
+        assertEquals(1, lateDeliveries.size(), "the sweep retries the HELLO");
 
         // Complete the handshake against the retried HELLO
         ChunkReassembler reassembler = new ChunkReassembler(1024 * 1024, 8);
@@ -471,13 +471,13 @@ class ChannelCoreTest {
     void closedCoreResolvesEverythingImmediately() {
         core.teardown();
         CompletableFuture<SnDelivery> send = core.send(null,
-                TestMsg.TYPE, new TestMsg(CARRIER_A, "tarde"), -1L);
+                TestMsg.TYPE, new TestMsg(CARRIER_A, "late"), -1L);
         assertEquals(SnDeliveryResult.EXPIRED_TTL, send.join().result());
-        CompletableFuture<Object> request = core.request(ReqMsg.TYPE, new ReqMsg("tarde"),
+        CompletableFuture<Object> request = core.request(ReqMsg.TYPE, new ReqMsg("late"),
                 RespMsg.TYPE, 5_000L);
         assertTrue(request.isCompletedExceptionally());
         core.openSession(CARRIER_A);
-        assertEquals(0, core.sessionCount(), "un core cerrado no abre sesiones");
+        assertEquals(0, core.sessionCount(), "a closed core opens no sessions");
     }
 
     @Test
@@ -489,7 +489,7 @@ class ChannelCoreTest {
                 9_100, WireProtocol.HANDSHAKE_NONCE);
         // Signed with handshake nonce but the session is READY: dropped as HMAC/nonce mismatch
         assertEquals(ready, core.counters().received());
-        assertEquals(5, core.remoteMsgset(), "el msgset negociado no cambia");
+        assertEquals(5, core.remoteMsgset(), "the negotiated msgset does not change");
     }
 }
 

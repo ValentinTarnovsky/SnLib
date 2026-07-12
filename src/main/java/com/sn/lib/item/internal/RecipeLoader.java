@@ -79,10 +79,10 @@ public final class RecipeLoader {
             if (Bukkit.addRecipe(recipe)) {
                 KEYS.add(plugin, key);
             } else {
-                warn("addRecipe rechazo la receta de '" + itemId + "'");
+                warn("addRecipe rejected the recipe of '" + itemId + "'");
             }
         } catch (IllegalStateException | IllegalArgumentException e) {
-            warn("No se pudo registrar la receta de '" + itemId + "': " + e.getMessage());
+            warn("Could not register the recipe of '" + itemId + "': " + e.getMessage());
         }
     }
 
@@ -110,8 +110,8 @@ public final class RecipeLoader {
                     buildCooking(key, result, recipe, itemId);
             case "STONECUTTING" -> buildStonecutting(key, result, recipe, itemId);
             default -> {
-                warn("Tipo de receta desconocido '" + recipe.type() + "' en '" + itemId
-                        + "'; se ignora");
+                warn("Unknown recipe type '" + recipe.type() + "' in '" + itemId
+                        + "'; ignored");
                 yield null;
             }
         };
@@ -125,17 +125,17 @@ public final class RecipeLoader {
             for (Map.Entry<Character, String> entry : recipe.ingredients().entrySet()) {
                 Material material = resolveMaterial(entry.getValue());
                 if (material == null) {
-                    warn("Ingrediente invalido '" + entry.getValue() + "' (simbolo '"
-                            + entry.getKey() + "') en la receta de '" + itemId
-                            + "'; receta ignorada");
+                    warn("Invalid ingredient '" + entry.getValue() + "' (symbol '"
+                            + entry.getKey() + "') in the recipe of '" + itemId
+                            + "'; recipe ignored");
                     return null;
                 }
                 shaped.setIngredient(entry.getKey(), material);
             }
             return shaped;
         } catch (IllegalArgumentException invalid) {
-            warn("Receta SHAPED invalida en '" + itemId + "' (" + invalid.getMessage()
-                    + "); se ignora");
+            warn("Invalid SHAPED recipe in '" + itemId + "' (" + invalid.getMessage()
+                    + "); ignored");
             return null;
         }
     }
@@ -147,15 +147,15 @@ public final class RecipeLoader {
         for (String raw : recipe.shapelessIngredients()) {
             Material material = resolveMaterial(raw);
             if (material == null) {
-                warn("Ingrediente invalido '" + raw + "' en la receta de '" + itemId
-                        + "'; se omite");
+                warn("Invalid ingredient '" + raw + "' in the recipe of '" + itemId
+                        + "'; skipped");
                 continue;
             }
             shapeless.addIngredient(material);
             added++;
         }
         if (added == 0) {
-            warn("Receta SHAPELESS de '" + itemId + "' sin ingredientes validos; se ignora");
+            warn("SHAPELESS recipe of '" + itemId + "' has no valid ingredients; ignored");
             return null;
         }
         return shapeless;
@@ -165,8 +165,8 @@ public final class RecipeLoader {
             ItemDef.Recipe recipe, String itemId) {
         Material input = resolveMaterial(recipe.input());
         if (input == null) {
-            warn("Input invalido '" + recipe.input() + "' en la receta de '" + itemId
-                    + "'; se ignora");
+            warn("Invalid input '" + recipe.input() + "' in the recipe of '" + itemId
+                    + "'; ignored");
             return null;
         }
         float experience = (float) recipe.experience();
@@ -183,8 +183,8 @@ public final class RecipeLoader {
             ItemDef.Recipe recipe, String itemId) {
         Material input = resolveMaterial(recipe.input());
         if (input == null) {
-            warn("Input invalido '" + recipe.input() + "' en la receta de '" + itemId
-                    + "'; se ignora");
+            warn("Invalid input '" + recipe.input() + "' in the recipe of '" + itemId
+                    + "'; ignored");
             return null;
         }
         return new StonecuttingRecipe(key, result, input);
@@ -197,7 +197,7 @@ public final class RecipeLoader {
         try {
             return new NamespacedKey(plugin, "snlib_recipe_" + cleaned);
         } catch (IllegalArgumentException invalid) {
-            warn("Id de item '" + itemId + "' no genera una key de receta valida; se ignora");
+            warn("Item id '" + itemId + "' does not produce a valid recipe key; ignored");
             return null;
         }
     }

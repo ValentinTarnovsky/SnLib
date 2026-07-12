@@ -47,7 +47,7 @@ import com.sn.lib.text.SnText;
 import com.sn.lib.util.SoundUtil;
 
 /**
- * Executes YML action lists of the form {@code [tag] argumento}, reached through
+ * Executes YML action lists of the form {@code [tag] argument}, reached through
  * {@code sn.actions()} (one engine per context).
  *
  * <p>Line anatomy: optional guard prefixes, then the action tag and its argument. Guard
@@ -84,13 +84,13 @@ import com.sn.lib.util.SoundUtil;
  *
  * <p>Built-in catalog: {@code [player]}, {@code [player-as-op]}, {@code [console]},
  * {@code [message]}, {@code [broadcastmessage]}, {@code [actionbar]},
- * {@code [title] titulo;subtitulo;fadeIn;stay;fadeOut} (times in ticks),
+ * {@code [title] title;subtitle;fadeIn;stay;fadeOut} (times in ticks),
  * {@code [sound] SOUND_ID [vol] [pitch]}, {@code [close]}, {@code [open] gui-id},
- * {@code [connect] servidor}, {@code [next-page]}, {@code [previous-page]},
+ * {@code [connect] server}, {@code [next-page]}, {@code [previous-page]},
  * {@code [set-page] n}, {@code [refresh-page]}, {@code [refresh-menu]},
  * {@code [particle] TYPE [count] [offX offY offZ] [extra] [key=value...]} (options:
  * {@code color}, {@code size}, {@code to}, {@code block}, {@code item}, matched to the
- * particle data type), {@code [potion] EFFECT [segundos] [amplifier]} and
+ * particle data type), {@code [potion] EFFECT [seconds] [amplifier]} and
  * {@code [remove-item] [n] [selector]} (default main hand; selectors {@code offhand},
  * {@code MATERIAL} - which never consumes SnLib-tagged stacks - and
  * {@code id:<item-id>}). Page actions delegate to the context {@link PageTarget}; with a null target or
@@ -138,7 +138,7 @@ public final class ActionEngine {
             ctx.scheduler().sync(() -> execute(player, actions, context));
         } catch (IllegalPluginAccessException e) {
             plugin.getLogger().warning(
-                    "Acciones descartadas: plugin deshabilitado durante el scheduling");
+                    "Actions discarded: plugin disabled during scheduling");
         }
     }
 
@@ -151,7 +151,7 @@ public final class ActionEngine {
         Objects.requireNonNull(handler, "handler");
         String key = normalizeTag(tag);
         if (key.isEmpty()) {
-            throw new IllegalArgumentException("Tag de accion vacio");
+            throw new IllegalArgumentException("Empty action tag");
         }
         handlers.put(key, handler);
     }
@@ -175,7 +175,7 @@ public final class ActionEngine {
             try {
                 executeLine(player, line, context);
             } catch (Throwable t) {
-                plugin.getLogger().warning("Accion fallo en '" + line + "': " + t);
+                plugin.getLogger().warning("Action failed in '" + line + "': " + t);
             }
         }
     }
@@ -194,7 +194,7 @@ public final class ActionEngine {
         String arg = head == null ? work : head.arg();
         ActionHandler handler = handlers.get(tag);
         if (handler == null) {
-            warnOnce("tag:" + tag, "Accion desconocida '[" + tag + "]'; linea ignorada: " + line);
+            warnOnce("tag:" + tag, "Unknown action '[" + tag + "]'; line ignored: " + line);
             return;
         }
         String resolved = ctx.papi().apply(player, SnText.applyLocals(arg, context.phs()));
@@ -235,16 +235,16 @@ public final class ActionEngine {
                 double chance = Double.parseDouble(rawChance);
                 return ThreadLocalRandom.current().nextDouble(100.0) < chance;
             } catch (NumberFormatException e) {
-                warnOnce("chance:" + rawChance, "Guard [chance=" + rawChance
-                        + "] invalido; la accion corre igual: " + line);
+                warnOnce("chance:" + rawChance, "Invalid guard [chance=" + rawChance
+                        + "]; the action runs anyway: " + line);
                 return true;
             }
         }
         if (tag.equals("click-block") || tag.equals("click-air")) {
             ClickSurface surface = context.clickSurface();
             if (surface == null) {
-                ctx.debug().log(() -> "Guard posicional [" + tag
-                        + "] sin ClickSurface en el contexto; linea omitida: " + line);
+                ctx.debug().log(() -> "Positional guard [" + tag
+                        + "] without ClickSurface in the context; line skipped: " + line);
                 return false;
             }
             return surface == (tag.equals("click-block") ? ClickSurface.BLOCK
@@ -255,21 +255,21 @@ public final class ActionEngine {
             EnumSet<ClickType> allowed = parseClickTypes(spec);
             if (allowed == null) {
                 warnOnce("click-guard:" + spec, "Guard [click=" + spec
-                        + "] con tipo invalido; linea omitida: " + line);
+                        + "] with invalid type; line skipped: " + line);
                 return false;
             }
             ClickType specClick = context.clickType();
             if (specClick == null) {
-                ctx.debug().log(() -> "Guard de click [" + tag
-                        + "] sin ClickType en el contexto; linea omitida: " + line);
+                ctx.debug().log(() -> "Click guard [" + tag
+                        + "] without ClickType in the context; line skipped: " + line);
                 return false;
             }
             return allowed.contains(specClick);
         }
         ClickType click = context.clickType();
         if (click == null) {
-            ctx.debug().log(() -> "Guard de click [" + tag
-                    + "] sin ClickType en el contexto; linea omitida: " + line);
+            ctx.debug().log(() -> "Click guard [" + tag
+                    + "] without ClickType in the context; line skipped: " + line);
             return false;
         }
         return matchesExactClickGuard(tag, click);
@@ -349,7 +349,7 @@ public final class ActionEngine {
     private void dispatch(CommandSender sender, String arg) {
         String command = stripSlash(arg);
         if (command.isEmpty()) {
-            warnOnce("empty-command", "Accion de comando sin argumento; se ignora");
+            warnOnce("empty-command", "Command action without an argument; ignored");
             return;
         }
         Bukkit.dispatchCommand(sender, command);
@@ -397,7 +397,7 @@ public final class ActionEngine {
     private void openGui(Player player, String arg) {
         String id = arg.trim();
         if (id.isEmpty()) {
-            warnOnce("open-arg", "Accion [open] sin gui-id; se ignora");
+            warnOnce("open-arg", "Action [open] without gui-id; ignored");
             return;
         }
         Gui gui;
@@ -405,11 +405,11 @@ public final class ActionEngine {
             gui = ctx.guis().get(id);
         } catch (UnsupportedOperationException e) {
             warnOnce("open-module",
-                    "Accion [open] ignorada: modulo guis no declarado en el spec");
+                    "Action [open] ignored: guis module not declared in the spec");
             return;
         }
         if (gui == null) {
-            warnOnce("open:" + id, "Accion [open] ignorada: gui '" + id + "' no existe");
+            warnOnce("open:" + id, "Action [open] ignored: gui '" + id + "' does not exist");
             return;
         }
         gui.open(player);
@@ -418,7 +418,7 @@ public final class ActionEngine {
     private void connect(Player player, String arg) {
         String server = arg.trim();
         if (server.isEmpty()) {
-            warnOnce("connect-arg", "Accion [connect] sin servidor destino; se ignora");
+            warnOnce("connect-arg", "Action [connect] without a target server; ignored");
             return;
         }
         if (bungeeRegistered.compareAndSet(false, true)) {
@@ -429,7 +429,7 @@ public final class ActionEngine {
             out.writeUTF("Connect");
             out.writeUTF(server);
         } catch (IOException e) {
-            warnOnce("connect-io", "Accion [connect] fallo armando el mensaje: " + e);
+            warnOnce("connect-io", "Action [connect] failed building the message: " + e);
             return;
         }
         player.sendPluginMessage(plugin, BUNGEE_CHANNEL, bytes.toByteArray());
@@ -438,8 +438,8 @@ public final class ActionEngine {
     private void withPagination(ActionContext context, String tag, Consumer<PageTarget> op) {
         PageTarget target = context.pageTarget();
         if (target == null || !target.paginationEnabled()) {
-            ctx.debug().log(() -> "Accion [" + tag
-                    + "] omitida: paginacion no habilitada (opt-in por menu)");
+            ctx.debug().log(() -> "Action [" + tag
+                    + "] skipped: pagination not enabled (opt-in per menu)");
             return;
         }
         op.accept(target);
@@ -454,7 +454,7 @@ public final class ActionEngine {
     private void spawnParticle(Player player, String arg) {
         String[] parts = arg.trim().split("\\s+");
         if (parts[0].isEmpty()) {
-            warnOnce("particle-arg", "Accion [particle] sin tipo; se ignora");
+            warnOnce("particle-arg", "Action [particle] without a type; ignored");
             return;
         }
         Particle particle = resolveParticle(parts[0]);
@@ -470,7 +470,7 @@ public final class ActionEngine {
                 options.put(key, parts[i].substring(eq + 1));
                 if (!isParticleOption(key)) {
                     warnOnce("particle-opt-unknown:" + key,
-                            "Opcion desconocida '" + key + "' en [particle]; se ignora");
+                            "Unknown option '" + key + "' in [particle]; ignored");
                 }
             } else {
                 positional.add(parts[i]);
@@ -487,8 +487,8 @@ public final class ActionEngine {
             data = null;
             for (String key : options.keySet()) {
                 if (isParticleOption(key)) {
-                    warnOnce("particle-opt:" + parts[0] + ":" + key, "Opcion '" + key
-                            + "' incompatible con la particula '" + parts[0] + "'; se ignora");
+                    warnOnce("particle-opt:" + parts[0] + ":" + key, "Option '" + key
+                            + "' incompatible with particle '" + parts[0] + "'; ignored");
                 }
             }
         } else if (dataType == Particle.DustOptions.class) {
@@ -506,8 +506,8 @@ public final class ActionEngine {
             try {
                 data = mat.createBlockData();
             } catch (IllegalArgumentException e) {
-                warnOnce("particle-block-data:" + parts[0], "Particula '" + parts[0]
-                        + "' no acepta block data de '" + mat + "'; se ignora");
+                warnOnce("particle-block-data:" + parts[0], "Particle '" + parts[0]
+                        + "' does not accept block data of '" + mat + "'; ignored");
                 return;
             }
         } else if (dataType == ItemStack.class) {
@@ -517,8 +517,8 @@ public final class ActionEngine {
             }
             data = new ItemStack(mat);
         } else {
-            warnOnce("particle-data:" + parts[0], "Particula '" + parts[0]
-                    + "' requiere datos no soportados; se ignora");
+            warnOnce("particle-data:" + parts[0], "Particle '" + parts[0]
+                    + "' requires unsupported data; ignored");
             return;
         }
         player.getWorld().spawnParticle(particle, player.getLocation().add(0.0, 1.0, 0.0),
@@ -555,13 +555,13 @@ public final class ActionEngine {
         String raw = options.get(key);
         if (raw == null) {
             warnOnce("particle-" + key + "-missing:" + type,
-                    "Particula '" + type + "' requiere " + key + "=MATERIAL; se ignora");
+                    "Particle '" + type + "' requires " + key + "=MATERIAL; ignored");
             return null;
         }
         Material mat = Material.matchMaterial(raw);
         if (mat == null || !usable.test(mat)) {
-            warnOnce("particle-" + key + ":" + raw, "Material invalido '" + raw + "' en "
-                    + key + "= de [particle]; se ignora");
+            warnOnce("particle-" + key + ":" + raw, "Invalid material '" + raw + "' in "
+                    + key + "= of [particle]; ignored");
             return null;
         }
         return mat;
@@ -579,10 +579,10 @@ public final class ActionEngine {
                         Integer.parseInt(rgb[1].trim()), Integer.parseInt(rgb[2].trim()));
             }
         } catch (IllegalArgumentException invalid) {
-            // cae al warnOnce de abajo
+            // falls through to the warnOnce below
         }
-        warnOnce("color:" + tag + ":" + raw, "Color invalido '" + raw + "' en accion ["
-                + tag + "]; usando el default");
+        warnOnce("color:" + tag + ":" + raw, "Invalid color '" + raw + "' in action ["
+                + tag + "]; using the default");
         return null;
     }
 
@@ -605,14 +605,14 @@ public final class ActionEngine {
             if (alias != null) {
                 try {
                     Particle particle = Particle.valueOf(alias);
-                    warnOnce("particle-alias:" + name, "Particula '" + name
-                            + "' no existe en este servidor; usando alias '" + alias + "'");
+                    warnOnce("particle-alias:" + name, "Particle '" + name
+                            + "' does not exist on this server; using alias '" + alias + "'");
                     return particle;
                 } catch (IllegalArgumentException aliasMissing) {
-                    // ninguno de los dos nombres existe en este runtime
+                    // neither of the two names exists in this runtime
                 }
             }
-            warnOnce("particle:" + name, "Particula invalida '" + raw + "'; se ignora");
+            warnOnce("particle:" + name, "Invalid particle '" + raw + "'; ignored");
             return null;
         }
     }
@@ -620,12 +620,12 @@ public final class ActionEngine {
     private void applyPotion(Player player, String arg) {
         String[] parts = arg.trim().split("\\s+");
         if (parts[0].isEmpty()) {
-            warnOnce("potion-arg", "Accion [potion] sin efecto; se ignora");
+            warnOnce("potion-arg", "Action [potion] without an effect; ignored");
             return;
         }
         PotionEffectType type = resolveEffect(parts[0]);
         if (type == null) {
-            warnOnce("potion:" + parts[0], "Efecto de pocion invalido '" + parts[0] + "'; se ignora");
+            warnOnce("potion:" + parts[0], "Invalid potion effect '" + parts[0] + "'; ignored");
             return;
         }
         int seconds = parts.length > 1 ? parseInt(parts[1], 10, "potion") : 10;
@@ -680,8 +680,8 @@ public final class ActionEngine {
         if (selector.regionMatches(true, 0, "id:", 0, 3)) {
             String id = selector.substring(3).trim();
             if (id.isEmpty() || ctx.items().def(id) == null) {
-                warnOnce("remove-item-id:" + id, "Accion [remove-item] ignorada: item '"
-                        + id + "' no esta registrado");
+                warnOnce("remove-item-id:" + id, "Action [remove-item] ignored: item '"
+                        + id + "' is not registered");
                 return;
             }
             sweepInventory(player, amount, stack -> ctx.items().is(stack, id));
@@ -689,8 +689,8 @@ public final class ActionEngine {
         }
         Material mat = Material.matchMaterial(selector);
         if (mat == null || !mat.isItem()) {
-            warnOnce("remove-item-mat:" + selector, "Accion [remove-item] ignorada: "
-                    + "material invalido '" + selector + "'");
+            warnOnce("remove-item-mat:" + selector, "Action [remove-item] ignored: "
+                    + "invalid material '" + selector + "'");
             return;
         }
         sweepInventory(player, amount, stack -> stack.getType() == mat && !hasSnlibTag(stack));
@@ -768,8 +768,8 @@ public final class ActionEngine {
         try {
             return Integer.parseInt(token.trim());
         } catch (NumberFormatException e) {
-            warnOnce("num:" + tag + ":" + token, "Numero invalido '" + token
-                    + "' en accion [" + tag + "]; usando " + def);
+            warnOnce("num:" + tag + ":" + token, "Invalid number '" + token
+                    + "' in action [" + tag + "]; using " + def);
             return def;
         }
     }
@@ -778,8 +778,8 @@ public final class ActionEngine {
         try {
             return Double.parseDouble(token.trim());
         } catch (NumberFormatException e) {
-            warnOnce("num:" + tag + ":" + token, "Numero invalido '" + token
-                    + "' en accion [" + tag + "]; usando " + def);
+            warnOnce("num:" + tag + ":" + token, "Invalid number '" + token
+                    + "' in action [" + tag + "]; using " + def);
             return def;
         }
     }

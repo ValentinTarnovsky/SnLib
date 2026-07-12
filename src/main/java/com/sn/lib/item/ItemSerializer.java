@@ -26,7 +26,7 @@ public final class ItemSerializer {
      */
     public static byte[] serialize(ItemStack stack) {
         if (stack == null || stack.getType().isAir()) {
-            throw new IllegalArgumentException("No se puede serializar un item null o AIR");
+            throw new IllegalArgumentException("Cannot serialize a null or AIR item");
         }
         ItemStack single = stack.clone();
         single.setAmount(1);
@@ -43,7 +43,7 @@ public final class ItemSerializer {
      */
     public static ItemStack deserialize(byte[] data) {
         if (data == null || data.length <= 4) {
-            throw new IllegalArgumentException("Datos de item invalidos ("
+            throw new IllegalArgumentException("Invalid item data ("
                     + (data == null ? "null" : data.length + " bytes") + ")");
         }
         ByteBuffer in = ByteBuffer.wrap(data);
@@ -63,7 +63,7 @@ public final class ItemSerializer {
     /** Inverse of {@link #serializeBase64}. */
     public static ItemStack deserializeBase64(String data) {
         if (data == null || data.isBlank()) {
-            throw new IllegalArgumentException("Datos de item base64 vacios");
+            throw new IllegalArgumentException("Empty base64 item data");
         }
         return deserialize(Base64.getDecoder().decode(data));
     }

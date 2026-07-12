@@ -20,8 +20,8 @@ public final class WireTypeRegistry {
         for (SnWireType<?> type : wireTypes) {
             SnWireType<?> previous = types.putIfAbsent(type.wireId(), type);
             if (previous != null && previous != type) {
-                throw new SnWireException("wireId duplicado: '" + type.wireId()
-                        + "' ya esta registrado (los wireIds se reclaman una sola vez)");
+                throw new SnWireException("duplicate wireId: '" + type.wireId()
+                        + "' is already registered (wireIds are claimed exactly once)");
             }
         }
     }
@@ -44,8 +44,8 @@ public final class WireTypeRegistry {
         int version = buf.u16();
         int len = buf.i32();
         if (len < 0 || len > buf.remaining()) {
-            throw new SnWireException("bodyLen invalido para '" + wireId + "': " + len
-                    + " (quedan " + buf.remaining() + " bytes)");
+            throw new SnWireException("invalid bodyLen for '" + wireId + "': " + len
+                    + " (" + buf.remaining() + " bytes remain)");
         }
         SnBuf slice = buf.readSlice(len);
         SnWireType<?> type = types.get(wireId);

@@ -79,7 +79,7 @@ public final class SnCron {
         try {
             parsed = CronExpr.parse(expr);
         } catch (IllegalArgumentException e) {
-            ctx.plugin().getLogger().warning("Job cron '" + id + "' no agendado: "
+            ctx.plugin().getLogger().warning("Cron job '" + id + "' not scheduled: "
                     + e.getMessage());
             return;
         }
@@ -119,7 +119,7 @@ public final class SnCron {
         try {
             job.task.run();
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Job cron '" + job.id + "' lanzo un error: " + t);
+            ctx.plugin().getLogger().warning("Cron job '" + job.id + "' threw an error: " + t);
         }
         scheduleNext(job);
     }
@@ -159,7 +159,7 @@ public final class SnCron {
             job.task.run();
         } catch (Throwable t) {
             ctx.plugin().getLogger().warning(
-                    "Job cron '" + job.id + "' lanzo un error en el catch-up: " + t);
+                    "Cron job '" + job.id + "' threw an error in the catch-up: " + t);
         }
     }
 
@@ -184,8 +184,8 @@ public final class SnCron {
                     data = ctx.yml().data(DATA_FILE);
                 } catch (UnsupportedOperationException e) {
                     dataUnavailable = true;
-                    ctx.plugin().getLogger().warning("catchUp(true) requiere el modulo yml"
-                            + " (SnSpec.builder().config(...)): el last-run no persiste");
+                    ctx.plugin().getLogger().warning("catchUp(true) requires the yml module"
+                            + " (SnSpec.builder().config(...)): the last-run does not persist");
                 }
             }
             return data;

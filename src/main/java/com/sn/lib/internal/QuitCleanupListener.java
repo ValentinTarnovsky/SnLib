@@ -51,7 +51,7 @@ public final class QuitCleanupListener implements Listener {
                 try {
                     callback.accept(uuid);
                 } catch (Throwable t) {
-                    owner.getLogger().warning("Callback de quit-cleanup fallo: " + t);
+                    owner.getLogger().warning("Quit-cleanup callback failed: " + t);
                 }
             }
         });
@@ -72,7 +72,7 @@ public final class QuitCleanupListener implements Listener {
                 }
             } catch (Throwable t) {
                 holder.owner().getLogger()
-                        .warning("No se pudo inspeccionar un inventario de la lib: " + t);
+                        .warning("Could not inspect a library inventory: " + t);
             }
         });
         if (viewing[0]) {

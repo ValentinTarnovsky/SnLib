@@ -10,7 +10,7 @@ public final class UnknownWireIdException extends SnWireException {
     private final String wireId;
 
     public UnknownWireIdException(String wireId) {
-        super("wireId desconocido en este lado: '" + wireId + "' (registrar el SnWireType o actualizar la contraparte)");
+        super("wireId unknown on this side: '" + wireId + "' (register the SnWireType or update the counterpart)");
         this.wireId = wireId;
     }
 

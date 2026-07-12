@@ -45,7 +45,7 @@ public final class ChunkReassembler {
     public ChunkReassembler(int maxMessageBytes, int maxPendingMessages,
             boolean outOfOrderTolerant) {
         if (maxMessageBytes <= 0 || maxPendingMessages <= 0) {
-            throw new SnWireException("Caps del reassembler deben ser positivos");
+            throw new SnWireException("Reassembler caps must be positive");
         }
         this.maxMessageBytes = maxMessageBytes;
         this.maxPendingMessages = maxPendingMessages;
@@ -85,18 +85,18 @@ public final class ChunkReassembler {
         }
         if (state == null) {
             throw new SnWireException("Chunk " + (header.chunkIndex() + 1) + "/" + header.chunkCount()
-                    + " de msgId " + msgId + " sin chunk inicial: mensaje descartado");
+                    + " of msgId " + msgId + " without an initial chunk: message discarded");
         }
         if (header.chunkCount() != state.chunkCount || header.chunkIndex() != state.received) {
             pending.remove(msgId);
-            throw new SnWireException("Chunk fuera de orden para msgId " + msgId + ": llego "
-                    + header.chunkIndex() + "/" + header.chunkCount() + ", se esperaba "
-                    + state.received + "/" + state.chunkCount + "; mensaje descartado");
+            throw new SnWireException("Out-of-order chunk for msgId " + msgId + ": got "
+                    + header.chunkIndex() + "/" + header.chunkCount() + ", expected "
+                    + state.received + "/" + state.chunkCount + "; message discarded");
         }
         if (state.size + chunkBody.length > maxMessageBytes) {
             pending.remove(msgId);
-            throw new SnWireException("Mensaje " + msgId + " supera el cap de " + maxMessageBytes
-                    + " bytes al reensamblar; descartado");
+            throw new SnWireException("Message " + msgId + " exceeds the cap of " + maxMessageBytes
+                    + " bytes while reassembling; discarded");
         }
         state.appendSequential(chunkBody);
         if (state.received < state.chunkCount) {
@@ -113,18 +113,18 @@ public final class ChunkReassembler {
             pending.put(msgId, state);
         } else if (header.chunkCount() != state.chunkCount) {
             pending.remove(msgId);
-            throw new SnWireException("chunkCount inconsistente para msgId " + msgId
-                    + ": mensaje descartado");
+            throw new SnWireException("Inconsistent chunkCount for msgId " + msgId
+                    + ": message discarded");
         }
         if (state.size + chunkBody.length > maxMessageBytes) {
             pending.remove(msgId);
-            throw new SnWireException("Mensaje " + msgId + " supera el cap de " + maxMessageBytes
-                    + " bytes al reensamblar; descartado");
+            throw new SnWireException("Message " + msgId + " exceeds the cap of " + maxMessageBytes
+                    + " bytes while reassembling; discarded");
         }
         if (!state.putIndexed(header.chunkIndex(), chunkBody)) {
             pending.remove(msgId);
-            throw new SnWireException("Chunk duplicado " + header.chunkIndex() + " para msgId "
-                    + msgId + ": mensaje descartado");
+            throw new SnWireException("Duplicate chunk " + header.chunkIndex() + " for msgId "
+                    + msgId + ": message discarded");
         }
         if (state.received < state.chunkCount) {
             return null;
@@ -135,8 +135,8 @@ public final class ChunkReassembler {
 
     private Pending openPending(int msgId, int chunkCount, int firstChunkBytes) {
         if (pending.size() >= maxPendingMessages) {
-            throw new SnWireException("Reassembler lleno: " + pending.size()
-                    + " mensajes parciales en vuelo (cap " + maxPendingMessages + "), frame descartado");
+            throw new SnWireException("Reassembler full: " + pending.size()
+                    + " partial messages in flight (cap " + maxPendingMessages + "), frame discarded");
         }
         checkSize(firstChunkBytes);
         return new Pending(chunkCount, maxMessageBytes, outOfOrderTolerant);
@@ -154,8 +154,8 @@ public final class ChunkReassembler {
 
     private void checkSize(int bytes) {
         if (bytes > maxMessageBytes) {
-            throw new SnWireException("Mensaje de " + bytes + " bytes supera el cap de "
-                    + maxMessageBytes + "; descartado");
+            throw new SnWireException("Message of " + bytes + " bytes exceeds the cap of "
+                    + maxMessageBytes + "; discarded");
         }
     }
 

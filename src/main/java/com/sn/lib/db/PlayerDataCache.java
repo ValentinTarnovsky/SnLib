@@ -161,7 +161,7 @@ public final class PlayerDataCache<T> {
             saver.save(db, uuid, value);
         } catch (Throwable t) {
             ctx.plugin().getLogger()
-                    .warning("Save de datos de jugador fallo (" + uuid + "): " + t);
+                    .warning("Player data save failed (" + uuid + "): " + t);
         }
     }
 

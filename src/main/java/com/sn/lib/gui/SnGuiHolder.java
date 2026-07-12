@@ -53,7 +53,7 @@ public final class SnGuiHolder implements OwnedHolder {
     public Inventory getInventory() {
         Inventory current = inventory;
         if (current == null) {
-            throw new IllegalStateException("La sesion del gui '" + guiId + "' aun no creo su inventario");
+            throw new IllegalStateException("Session of gui '" + guiId + "' has not created its inventory yet");
         }
         return current;
     }

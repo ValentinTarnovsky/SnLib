@@ -40,7 +40,7 @@ public final class SnLibPlugin extends JavaPlugin {
         SnLibPlugin plugin = instance;
         if (plugin == null) {
             throw new IllegalStateException(
-                    "SnLib no esta habilitado: el consumer necesita depend: [SnLib]");
+                    "SnLib is not enabled: the consumer needs depend: [SnLib]");
         }
         return plugin;
     }
@@ -97,7 +97,7 @@ public final class SnLibPlugin extends JavaPlugin {
     private void logDetectedVersion() {
         String detected = SnVersion.MAJOR + "." + SnVersion.MINOR
                 + (SnVersion.PATCH > 0 ? "." + SnVersion.PATCH : "");
-        getLogger().info("Servidor detectado: " + detected
+        getLogger().info("Detected server: " + detected
                 + (SnVersion.isFolia() ? " (Folia)" : ""));
     }
 
@@ -110,7 +110,7 @@ public final class SnLibPlugin extends JavaPlugin {
     private void purgeOrphanHolograms() {
         int purged = HologramChunkListener.purgeLoadedWorlds();
         if (purged > 0) {
-            getLogger().info("Purgados " + purged + " hologramas huerfanos de arranques previos");
+            getLogger().info("Purged " + purged + " orphaned holograms from previous startups");
         }
     }
 

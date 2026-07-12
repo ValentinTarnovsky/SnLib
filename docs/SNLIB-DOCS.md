@@ -1,357 +1,356 @@
-# SnLib v1.1.0 - Documentacion tecnica del estado actual
+# SnLib v1.1.0 - Technical documentation of the current state
 
-> Generada el 2026-07-10 contra el codigo real del repo (commit HEAD de main); actualizada el 2026-07-11 para la release 1.1.0.
-> Cobertura: todas las clases de `src/main/java/com/sn/lib` (121 archivos java), recursos, build y tests (21 suites).
+> Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11 for the 1.1.0 release.
+> Coverage: every class under `src/main/java/com/sn/lib` (121 java files), resources, build and tests (21 suites).
 
-**Resumen del proyecto:** SnLib es el plugin standalone base de los ~57 plugins Sn: un solo `SnLib-1.1.0.jar` en `plugins/`, consumers con `depend: [SnLib]` y scope provided. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ con WARN. 204 tests JUnit verdes en 21 suites; smoke gate verde en Paper 1.21.8 y 1.20.4 (ejecutado para v1.0.0 y re-ejecutado para v1.1.0 con el jar 1.1.0: `/snlib version` responde 1.1.0 + API level 2 en ambas versiones). La release 1.1.0 es 100% additive sobre 1.0.0 (API level 2, gate japicmp con baseline 1.0.0 activa); el smoke de 1.0.0 cerro 38/38 pasos en 46 commits atomicos.
+**Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins: a single `SnLib-1.1.0.jar` in `plugins/`, consumers with `depend: [SnLib]` and provided scope. Java 21, floor 1.20.4, target 1.21.8, forward 1.22+ with WARN. 204 green JUnit tests across 21 suites; smoke gate green on Paper 1.21.8 and 1.20.4 (executed for v1.0.0 and re-executed for v1.1.0 with the 1.1.0 jar: `/snlib version` answers 1.1.0 + API level 2 on both versions). The 1.1.0 release is 100% additive over 1.0.0 (API level 2, japicmp gate with the 1.0.0 baseline active); the 1.0.0 smoke closed 38/38 steps across 46 atomic commits.
 
-## Indice
+## Index
 
-- [01. Arquitectura y ciclo de vida](#01-arquitectura-y-ciclo-de-vida)
-- [02. Compat multi-version](#02-compat-multi-version)
-- [03. Pipeline de texto](#03-pipeline-de-texto)
-- [04. YML: lectura, preprocesado y auto-update](#04-yml-lectura-preprocesado-y-auto-update)
-- [05. Lang y Debug](#05-lang-y-debug)
-- [06. Scheduler, SoftDependency y Cron](#06-scheduler-softdependency-y-cron)
+- [01. Architecture and lifecycle](#01-architecture-and-lifecycle)
+- [02. Multi-version compat](#02-multi-version-compat)
+- [03. Text pipeline](#03-text-pipeline)
+- [04. YML: reading, preprocessing and auto-update](#04-yml-reading-preprocessing-and-auto-update)
+- [05. Lang and Debug](#05-lang-and-debug)
+- [06. Scheduler, SoftDependency and Cron](#06-scheduler-softdependency-and-cron)
 - [07. Utils](#07-utils)
-- [08. Acciones, Requirements y PAPI](#08-acciones-requirements-y-papi)
-- [09. Multi-tenant, cleanup y reload](#09-multi-tenant-cleanup-y-reload)
-- [10. Eventos custom](#10-eventos-custom)
+- [08. Actions, Requirements and PAPI](#08-actions-requirements-and-papi)
+- [09. Multi-tenant, cleanup and reload](#09-multi-tenant-cleanup-and-reload)
+- [10. Custom events](#10-custom-events)
 - [11. Items](#11-items)
 - [12. GUI](#12-gui)
-- [13. Comandos](#13-comandos)
-- [14. Base de datos y Economia](#14-base-de-datos-y-economia)
-- [15. BossBars, Hologramas, Leaderboards y Discord](#15-bossbars-hologramas-leaderboards-y-discord)
-- [16. Build, tests, specs golden y TODOs](#16-build-tests-specs-golden-y-todos)
+- [13. Commands](#13-commands)
+- [14. Database and Economy](#14-database-and-economy)
+- [15. BossBars, Holograms, Leaderboards and Discord](#15-bossbars-holograms-leaderboards-and-discord)
+- [16. Build, tests, golden specs and TODOs](#16-build-tests-golden-specs-and-todos)
 - [17. UpdateChecker (v1.1)](#17-updatechecker-v11)
-- [18. Region: seleccion de cuboides (v1.1)](#18-region-seleccion-de-cuboides-v11)
+- [18. Region: cuboid selection (v1.1)](#18-region-cuboid-selection-v11)
 
 ---
-## 01. Arquitectura y ciclo de vida
+## 01. Architecture and lifecycle
 
-SnLib es un plugin standalone cargado una sola vez (load: STARTUP) y compartido por todos los consumidores via classloader compartido; cada registry que guarda datos de plugin, jugador o sesion DEBE estar keyeado por el `Plugin` dueño (los statics sin namespace de owner solo se permiten para datos server-wide). El unico camino publico de inicializacion es extender `SnPlugin`, que ejecuta el handshake de API level contra el jar instalado y llama al `SnLib.init` package-private; el contexto resultante (`Sn`) monta en una sola llamada todos los modulos declarados en el `SnSpec` del consumidor y se desmonta con `Sn.shutdown()` en un orden estricto de 13 pasos. Los paquetes `*.internal` quedan fuera del contrato semver. Piso de runtime 1.20.4, target 1.21.8, Java 21, 100% Paper/Adventure API (NMS, packets e InventoryView prohibidos); versiones desconocidas (1.22+) arrancan con WARN y nunca hard-failean.
+SnLib is a standalone plugin loaded exactly once (load: STARTUP) and shared by all consumers through a shared classloader; every registry that stores plugin, player or session data MUST be keyed by the owning `Plugin` (statics without an owner namespace are only allowed for server-wide data). The only public initialization path is extending `SnPlugin`, which runs the API level handshake against the installed jar and calls the package-private `SnLib.init`; the resulting context (`Sn`) mounts every module declared in the consumer's `SnSpec` in a single call and is torn down with `Sn.shutdown()` in a strict 13-step order. The `*.internal` packages sit outside the semver contract. Runtime floor 1.20.4, target 1.21.8, Java 21, 100% Paper/Adventure API (NMS, packets and InventoryView are forbidden); unknown versions (1.22+) start with a WARN and never hard-fail.
 
 ### SnLib
 `src/main/java/com/sn/lib/SnLib.java`
 
-Punto de entrada y registro de contextos de la libreria. Clase `final` con constructor privado; mantiene el static server-wide `CONTEXTS` (un `LinkedHashMap<Plugin, Sn>` sincronizado a mano) justificado por ser el unico registro de contextos: keyeado por plugin dueño y con orden de insercion para que la cascada del sweeper apague en orden inverso de registro. Un bloque `static {}` llama `TenantSweeper.bindContexts(new ContextAccessImpl())` al cargar la clase.
+Entry point and context registry of the library. `final` class with a private constructor; it keeps the server-wide static `CONTEXTS` (a manually synchronized `LinkedHashMap<Plugin, Sn>`), justified by being the single context registry: keyed by owning plugin and insertion-ordered so the sweeper cascade shuts down in reverse registration order. A `static {}` block calls `TenantSweeper.bindContexts(new ContextAccessImpl())` when the class loads.
 
-- `static Sn init(JavaPlugin plugin, SnSpec spec)` - (package-private A PROPOSITO) crea y registra el contexto de un consumidor, montando todo lo que declara su spec en una llamada: config administrada (con el gate `update-configs` sembrado), lang, la carpeta `guis/` con su load, el archivo de items, el modulo de base de datos y el comando de debug de runtime. Idempotente por owner: un doble init devuelve el contexto vivo existente con el WARN "SnLib.init doble: se devuelve el contexto existente sin re-montar modulos" en vez de montar un segundo. Ante una race en el `putIfAbsent` final devuelve el contexto que gano la carrera.
-- `static void detach(Plugin owner, Sn ctx)` - (package-private) quita la key del contexto de un owner solo si todavia mapea a `ctx` (`CONTEXTS.remove(owner, ctx)`); es el paso final de `Sn.shutdown()` e idempotente con el detach propio del tenant sweeper.
-- `public static @Nullable Sn context(JavaPlugin plugin)` - contexto de un plugin consumidor, o `null` si ese plugin nunca se inicializo contra SnLib.
+- `static Sn init(JavaPlugin plugin, SnSpec spec)` - (package-private ON PURPOSE) creates and registers a consumer's context, mounting everything its spec declares in one call: managed config (with the `update-configs` gate seeded), lang, the `guis/` folder with its load, the items file, the database module and the runtime debug command. Idempotent per owner: a double init returns the existing live context with the WARN "double SnLib.init: returning the existing context without re-mounting modules" instead of mounting a second one. On a race in the final `putIfAbsent` it returns the context that won the race.
+- `static void detach(Plugin owner, Sn ctx)` - (package-private) removes an owner's context key only if it still maps to `ctx` (`CONTEXTS.remove(owner, ctx)`); it is the final step of `Sn.shutdown()` and idempotent with the tenant sweeper's own detach.
+- `public static @Nullable Sn context(JavaPlugin plugin)` - context of a consumer plugin, or `null` if that plugin never initialized against SnLib.
 
-#### Logica interna
+#### Internal logic
 
-- `ContextAccessImpl` (clase privada estatica, implementa `TenantSweeper.ContextAccess`): acceso que usa el tenant sweeper para desmontar keys de contexto sin ensanchar la API publica.
-  - `boolean detach(Plugin owner, Sn expected)` - remove condicional (owner -> expected) bajo el lock de `CONTEXTS`; devuelve si removio.
-  - `List<Sn> detachAllReversed()` - copia todos los contextos vivos, limpia el mapa y devuelve la lista invertida (orden inverso de registro) para la cascada cuando SnLib se deshabilita.
+- `ContextAccessImpl` (private static class, implements `TenantSweeper.ContextAccess`): access the tenant sweeper uses to detach context keys without widening the public API.
+  - `boolean detach(Plugin owner, Sn expected)` - conditional remove (owner -> expected) under the `CONTEXTS` lock; returns whether it removed.
+  - `List<Sn> detachAllReversed()` - copies all live contexts, clears the map and returns the reversed list (reverse registration order) for the cascade when SnLib gets disabled.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- `init` es package-private a proposito: no existe camino publico alternativo de inicializacion; extender `com.sn.lib.SnPlugin` es la unica via, y esa clase hace el handshake de API level ANTES de llamar aca.
-- El tenant sweeper actua como red doble para owners que nunca hacen shutdown, y cascadea todos los contextos vivos, en orden inverso de registro, cuando SnLib mismo se deshabilita.
-- Contrato arquitectonico documentado en el Javadoc de la clase: (a) classloader compartido con registries keyeados por owner, (b) paquetes `*.internal` fuera del semver, (c) compatibilidad 1.20.4 a 1.21.8 con `Sound`/`Particle`/`ItemFlag` tratados como sets abiertos (nunca switch/EnumSet sobre ellos), aliases lenientes con WARN (`HIDE_POTION_EFFECTS` -> `HIDE_ADDITIONAL_TOOLTIP`, `REDSTONE` -> `DUST`) y toda API posterior a 1.20.4 solo detras de `SnCompat.probe`, (d) entrypoint congelado: `SnPlugin` + `requiredApiLevel()` + `SnSpec` + `SnApi.LEVEL` nunca cambian dentro de una version mayor.
+- `init` is package-private on purpose: there is no alternative public initialization path; extending `com.sn.lib.SnPlugin` is the only way, and that class runs the API level handshake BEFORE calling here.
+- The tenant sweeper acts as a double safety net for owners that never shut down, and cascades all live contexts, in reverse registration order, when SnLib itself gets disabled.
+- Architectural contract documented in the class Javadoc: (a) shared classloader with owner-keyed registries, (b) `*.internal` packages outside semver, (c) 1.20.4 to 1.21.8 compatibility with `Sound`/`Particle`/`ItemFlag` treated as open sets (never switch/EnumSet over them), lenient aliases with WARN (`HIDE_POTION_EFFECTS` -> `HIDE_ADDITIONAL_TOOLTIP`, `REDSTONE` -> `DUST`) and every post-1.20.4 API only behind `SnCompat.probe`, (d) frozen entrypoint: `SnPlugin` + `requiredApiLevel()` + `SnSpec` + `SnApi.LEVEL` never change within a major version.
 
 ### SnLibPlugin
 `src/main/java/com/sn/lib/SnLibPlugin.java`
 
-Plugin de bootstrap del runtime de SnLib. Cargado en STARTUP antes que todo consumidor; punto unico que registra los listeners compartidos y el lado runtime del handshake de API level de los consumidores. Es dueño de su propio contexto sobre `plugins/SnLib/config.yml` (debug de la libreria mas el opt-out de bStats), creado por el mismo `SnLib.init` package-private que atraviesan todos los consumidores.
+Bootstrap plugin of the SnLib runtime. Loaded at STARTUP before every consumer; the single point that registers the shared listeners and the runtime side of the consumers' API level handshake. It owns its own context over `plugins/SnLib/config.yml` (library debug plus the bStats opt-out), created by the same package-private `SnLib.init` every consumer goes through.
 
-Constantes: `private static final int BSTATS_SERVICE_ID = 32541` (id de servicio real de SnLib en bstats.org). Estado: `private static volatile @Nullable SnLibPlugin instance`, mas los campos de instancia `selfCtx` y `metrics` (ambos nullable).
+Constants: `private static final int BSTATS_SERVICE_ID = 32541` (SnLib's real service id on bstats.org). State: `private static volatile @Nullable SnLibPlugin instance`, plus the instance fields `selfCtx` and `metrics` (both nullable).
 
-- `public static SnLibPlugin get()` - bootstrap de SnLib en ejecucion. Los consumidores nunca lo llaman directo; `SnPlugin` lo usa para el handshake, garantizado presente por `depend: [SnLib]` mas `load: STARTUP`. Si `instance` es null lanza `IllegalStateException("SnLib no esta habilitado: el consumer necesita depend: [SnLib]")`.
-- `public int apiLevel()` - API level del SnLib.jar instalado: devuelve `SnApi.LEVEL` tal como quedo inlined en ESTE jar al compilarlo, comparado contra el `requiredApiLevel()` del consumidor.
-- `public @Nullable Sn selfContext()` - contexto de la libreria misma, o `null` mientras esta deshabilitada.
-- `public void onEnable()` - bootstrap: ver "Logica interna".
-- `public void onDisable()` - `TenantSweeper.cascadeAll()` (apaga todo contexto vivo en orden inverso de registro), `metrics.shutdown()` si habia bStats activo (y lo nullea), `HeadUtil.clearCache()`, `PlayerLookup.clearCache()`, nullea `selfCtx` e `instance`.
+- `public static SnLibPlugin get()` - the running SnLib bootstrap. Consumers never call it directly; `SnPlugin` uses it for the handshake, guaranteed present by `depend: [SnLib]` plus `load: STARTUP`. If `instance` is null it throws `IllegalStateException("SnLib is not enabled: the consumer needs depend: [SnLib]")`.
+- `public int apiLevel()` - API level of the installed SnLib.jar: returns `SnApi.LEVEL` as it was inlined into THIS jar at compile time, compared against the consumer's `requiredApiLevel()`.
+- `public @Nullable Sn selfContext()` - the library's own context, or `null` while it is disabled.
+- `public void onEnable()` - bootstrap: see "Internal logic".
+- `public void onDisable()` - `TenantSweeper.cascadeAll()` (shuts down every live context in reverse registration order), `metrics.shutdown()` if bStats was active (and nulls it), `HeadUtil.clearCache()`, `PlayerLookup.clearCache()`, nulls `selfCtx` and `instance`.
 
-#### Logica interna
+#### Internal logic
 
-Orden exacto del bootstrap (`onEnable`):
-1. `instance = this` (habilita `get()` para el handshake de consumidores).
-2. `logDetectedVersion()` - fuerza la inicializacion de la clase `SnVersion` (que WARNea una sola vez ante versiones forward desconocidas y nunca hard-failea) y loguea "Servidor detectado: X.Y[.Z]" con sufijo " (Folia)" cuando corresponde.
-3. `ListenerHub.registerAll(this)` - registra los listeners compartidos de la libreria.
-4. `Sn ctx = SnLib.init(this, buildSelfSpec())` - crea el contexto propio (`selfCtx`) con spec `SnSpec.builder().config("config.yml").debugCommand().build()` (solo config + comando de debug; sin lang/guis/items/db).
-5. `SnLibCommand.register(this, ctx)` - registra el comando administrativo `/snlib`.
-6. Si `ctx.yml().config().getBoolean("bstats", true)` esta activo, crea `new Metrics(this, 32541)`.
-7. `ctx.scheduler().sync(this::purgeOrphanHolograms)` - scan de arranque de hologramas huerfanos, diferido al primer tick: SnLib se habilita en STARTUP antes de que cargue mundo alguno y antes de que ningun consumidor registre sus hologramas; para el primer tick ambas cosas ya pasaron y todo TextDisplay marcado sin registro vivo es sobra de una corrida anterior (`HologramChunkListener.purgeLoadedWorlds()`; si purgo > 0 loguea "Purgados N hologramas huerfanos de arranques previos").
-8. Log final: `"SnLib <version> enabled (API level " + SnApi.LEVEL + ")"`.
+Exact bootstrap order (`onEnable`):
+1. `instance = this` (enables `get()` for the consumer handshake).
+2. `logDetectedVersion()` - forces initialization of the `SnVersion` class (which WARNs exactly once on unknown forward versions and never hard-fails) and logs "Detected server: X.Y[.Z]" with the suffix " (Folia)" when applicable.
+3. `ListenerHub.registerAll(this)` - registers the library's shared listeners.
+4. `Sn ctx = SnLib.init(this, buildSelfSpec())` - creates the self context (`selfCtx`) with spec `SnSpec.builder().config("config.yml").debugCommand().build()` (config + debug command only; no lang/guis/items/db).
+5. `SnLibCommand.register(this, ctx)` - registers the administrative `/snlib` command.
+6. If `ctx.yml().config().getBoolean("bstats", true)` is on, creates `new Metrics(this, 32541)`.
+7. `ctx.scheduler().sync(this::purgeOrphanHolograms)` - startup scan for orphan holograms, deferred to the first tick: SnLib enables at STARTUP before any world loads and before any consumer registers its holograms; by the first tick both things have already happened and every marked TextDisplay without a live registration is a leftover of a previous run (`HologramChunkListener.purgeLoadedWorlds()`; if it purged > 0 it logs "Purged N orphan holograms from previous startups").
+8. Final log: `"SnLib <version> enabled (API level " + SnApi.LEVEL + ")"`.
 
 ### SnPlugin
 `src/main/java/com/sn/lib/SnPlugin.java`
 
-Clase base obligatoria de todo consumidor de SnLib y UNICO camino de inicializacion de la libreria: como `SnLib.init` es package-private, extender esta clase es la unica via publica de obtener un contexto. Parte del entrypoint congelado (esta superficie nunca cambia dentro de una version mayor). Los consumidores deben declarar `depend: [SnLib]` en su plugin.yml. Clase `abstract` que extiende `JavaPlugin`; `onEnable()` y `onDisable()` son `final`.
+Mandatory base class of every SnLib consumer and the ONLY initialization path of the library: since `SnLib.init` is package-private, extending this class is the only public way to obtain a context. Part of the frozen entrypoint (this surface never changes within a major version). Consumers must declare `depend: [SnLib]` in their plugin.yml. `abstract` class extending `JavaPlugin`; `onEnable()` and `onDisable()` are `final`.
 
-- `protected abstract int requiredApiLevel()` - implementarlo EXACTAMENTE como `return SnApi.LEVEL;` - inline-a el API level de compilacion del consumidor (ver handshake abajo).
-- `public final void onEnable()` - ejecuta el handshake de API level; si pasa, hace `this.sn = SnLib.init(this, buildSpec())` y luego llama `onInnerEnable()` dentro de un try/catch de `Throwable`: ante cualquier fallo loguea SEVERE "onInnerEnable fallo" con el stacktrace y deshabilita el plugin via `PluginManager.disablePlugin(this)`.
-- `public final void onDisable()` - llama `onInnerDisable()` y, en un `finally` (o sea incluso si el disable del consumidor tira), ejecuta `sn.shutdown()` si el contexto existe.
-- `protected SnSpec buildSpec()` - modulos que declara este consumidor; se sobreescribe para opt-in (`SnSpec.builder().config("config.yml").lang()...build()`). El default (`SnSpec.builder().build()`) no declara ningun modulo opcional.
-- `protected abstract void onInnerEnable()` - logica de enable del consumidor; corre despues del handshake y de la inicializacion del contexto.
-- `protected void onInnerDisable()` - logica de disable del consumidor; corre antes del teardown del contexto. Opcional (implementacion vacia por defecto).
-- `public final Sn sn()` - contexto SnLib de este plugin; disponible desde `onInnerEnable()` en adelante.
+- `protected abstract int requiredApiLevel()` - implement it EXACTLY as `return SnApi.LEVEL;` - it inlines the consumer's compile-time API level (see handshake below).
+- `public final void onEnable()` - runs the API level handshake; if it passes, does `this.sn = SnLib.init(this, buildSpec())` and then calls `onInnerEnable()` inside a `Throwable` try/catch: on any failure it logs SEVERE "onInnerEnable failed" with the stacktrace and disables the plugin via `PluginManager.disablePlugin(this)`.
+- `public final void onDisable()` - calls `onInnerDisable()` and, in a `finally` (that is, even if the consumer's disable throws), runs `sn.shutdown()` if the context exists.
+- `protected SnSpec buildSpec()` - modules declared by this consumer; overridden to opt in (`SnSpec.builder().config("config.yml").lang()...build()`). The default (`SnSpec.builder().build()`) declares no optional module.
+- `protected abstract void onInnerEnable()` - the consumer's enable logic; runs after the handshake and the context initialization.
+- `protected void onInnerDisable()` - the consumer's disable logic; runs before the context teardown. Optional (empty default implementation).
+- `public final Sn sn()` - this plugin's SnLib context; available from `onInnerEnable()` onward.
 
-#### Handshake de API level (bytecode-side)
+#### API level handshake (bytecode-side)
 
-Mecanismo completo, tal como esta implementado:
+The complete mechanism, as implemented:
 
-1. `SnApi.LEVEL` es un `public static final int` (constante de compilacion). Al compilar el consumidor, javac inline-a el literal en el class file DEL CONSUMIDOR: el `return SnApi.LEVEL;` del `requiredApiLevel()` del consumidor queda congelado con el nivel contra el que se compilo, no con el del jar instalado en runtime.
-2. En `onEnable()`, `SnPlugin` obtiene `int installed = SnLibPlugin.get().apiLevel()` - que devuelve el `SnApi.LEVEL` inlined en el SnLib.jar INSTALADO - y `int required = requiredApiLevel()`.
-3. Si `installed < required`, loguea SEVERE: `"Requiere SnLib API level " + required + " (instalado: " + installed + "). Actualiza SnLib.jar (requiere restart): https://github.com/ValentinTarnovsky/SnLib/releases"` y se deshabilita a si mismo con `disablePlugin(this)`, con `return` inmediato (nunca llega a `SnLib.init`).
-4. Resultado: un consumidor compilado contra un API level mas nuevo que el jar instalado se apaga limpio con mensaje de actualizacion en vez de fallar mas tarde con `NoSuchMethodError` o `NoClassDefFoundError`.
+1. `SnApi.LEVEL` is a `public static final int` (compile-time constant). When the consumer compiles, javac inlines the literal into the CONSUMER's class file: the `return SnApi.LEVEL;` of the consumer's `requiredApiLevel()` is frozen with the level it compiled against, not with the level of the jar installed at runtime.
+2. In `onEnable()`, `SnPlugin` obtains `int installed = SnLibPlugin.get().apiLevel()` - which returns the `SnApi.LEVEL` inlined in the INSTALLED SnLib.jar - and `int required = requiredApiLevel()`.
+3. If `installed < required`, it logs SEVERE: `"Requires SnLib API level " + required + " (installed: " + installed + "). Update SnLib.jar (requires restart): https://github.com/ValentinTarnovsky/SnLib/releases"` and disables itself with `disablePlugin(this)`, with an immediate `return` (it never reaches `SnLib.init`).
+4. Result: a consumer compiled against a newer API level than the installed jar shuts down cleanly with an update message instead of failing later with `NoSuchMethodError` or `NoClassDefFoundError`.
 
-La presencia de `SnLibPlugin.get()` en el paso 2 esta garantizada por `depend: [SnLib]` del consumidor mas el `load: STARTUP` de SnLib; si falta, `get()` tira `IllegalStateException` con mensaje explicativo.
+The presence of `SnLibPlugin.get()` in step 2 is guaranteed by the consumer's `depend: [SnLib]` plus SnLib's `load: STARTUP`; if it is missing, `get()` throws `IllegalStateException` with an explanatory message.
 
 ### Sn
 `src/main/java/com/sn/lib/Sn.java`
 
-Contexto SnLib por plugin: el handle por el que un consumidor llega a cada modulo que declaro en su `SnSpec`. Clase `final`; constructor package-private `Sn(JavaPlugin plugin, SnSpec spec)` que cablea TODOS los modulos en construccion (los declarados quedan montados; los no declarados quedan `null` solo en los 4 modulos gateados). Parte de la superficie del entrypoint congelado: su set de accessors solo crece dentro de una version mayor. Campo `volatile boolean shuttingDown` (package-private): lo setea el teardown antes que nada y flipea `SnYml.save()` a escrituras sincronicas.
+Per-plugin SnLib context: the handle through which a consumer reaches every module it declared in its `SnSpec`. `final` class; package-private constructor `Sn(JavaPlugin plugin, SnSpec spec)` that wires ALL modules at construction (declared ones end up mounted; undeclared ones stay `null` only for the 4 gated modules). Part of the frozen entrypoint surface: its accessor set only grows within a major version. Field `volatile boolean shuttingDown` (package-private): the teardown sets it before anything else and it flips `SnYml.save()` to synchronous writes.
 
-Accessors SIEMPRE disponibles (nunca tiran, esten o no declarados modulos):
+Accessors ALWAYS available (they never throw, whether modules were declared or not):
 
-- `public JavaPlugin plugin()` - plugin consumidor dueño de este contexto.
-- `public SnScheduler scheduler()` - scheduler Folia-aware atado al plugin dueño.
-- `public SnDebug debug()` - servicio de debug de runtime; los toggles persisten a la config principal cuando el modulo yml esta declarado, en memoria si no.
-- `public SnPapi papi()` - puente PlaceholderAPI; todo apply devuelve el texto intacto cuando PlaceholderAPI esta ausente.
-- `public ActionEngine actions()` - motor de acciones; corre listas YML de la forma `[tag] argumento` y acepta tags custom via `ActionEngine.register`.
-- `public Cooldowns cooldowns()` - store de cooldowns; las entradas no expiradas sobreviven relogs por diseño; solo las categorias registradas como de sesion se resetean en quit/kick.
-- `public EconomyBridge economy()` - puente de economia; resuelve Vault si esta, despues el backend por comandos configurado via `EconomyBridge.useCommandBackend`; sin backend disponible WARNea una vez y reporta fallo.
-- `public BossBarUtil bossbars()` - boss bars Adventure (cero packets) con titulos por el pipeline SnText; viewers que se van se dropean solos y el teardown esconde todas las barras de este owner.
-- `public HologramUtil holograms()` - hologramas como entidades TextDisplay reales marcadas en el PDC; el teardown borra las entidades de este owner y la libreria purga markers huerfanos en chunk load y al arranque.
-- `public SnCron cron()` - jobs en main thread en los instantes calendario de un subset cron de 5 campos o los shortcuts daily/hourly, re-armados tras cada corrida; los jobs con `catchUp(true)` persisten su ultima corrida a un data yml y disparan una corrida perdida en el proximo schedule.
-- `public LeaderboardCache leaderboards()` - cada board corre su query async a intervalo fijo y swapea un snapshot inmutable detras de una referencia volatile: getTop/positionOf/valueOf son lecturas de cache lock-free seguras para resolvers de PlaceholderAPI.
-- `public DiscordWebhook discord()` - los mensajes encolan FIFO y postean async por el HttpClient del JDK, honrando Retry-After en 429; el teardown drena lo que quede encolado.
-- `public UpdateChecker updates()` - update checker notify-only del plugin dueño (v1.1); sin `SnSpec.builder().updates(...)` ni `watch()`/`checkNow()` explicitos queda inerte (cero trafico). Ver seccion 17.
-- `public ItemRegistry items()` - registro de items; funciona con cero archivos: definiciones desde `ItemDef.builder()`, secciones YML o el archivo declarado via `SnSpec.builder().items(...)`.
-- `public SelectionManager selections()` - modulo de seleccion de cuboides (v1.1); 100% programatico: registra `SelectionSpec`s, entrega wands tageadas por PDC y entrega el `Cuboid` completo por callback o por el evento cancelable. Ver seccion 18.
-- `public SnCommands commands()` - modulo de comandos; los roots construidos aca inyectan subcomandos reload y help por defecto, tab-complete gateado por permiso, y se desregistran en shutdown.
-- `public ReloadManager reload()` - orquestador de reload; reconstruye los modulos declarados en orden estricto y re-despacha los reloadables registrados via `ReloadManager.register`; el subcomando `reload` default y `/snlib reload <plugin>` delegan aca.
-- `public boolean isShuttingDown()` - true desde que arranco el teardown de este contexto; el I/O de modulos debe pasar a sincronico.
+- `public JavaPlugin plugin()` - consumer plugin that owns this context.
+- `public SnScheduler scheduler()` - Folia-aware scheduler bound to the owning plugin.
+- `public SnDebug debug()` - runtime debug service; toggles persist to the main config when the yml module is declared, in memory otherwise.
+- `public SnPapi papi()` - PlaceholderAPI bridge; every apply returns the text untouched when PlaceholderAPI is absent.
+- `public ActionEngine actions()` - action engine; runs YML lists of the form `[tag] argument` and accepts custom tags via `ActionEngine.register`.
+- `public Cooldowns cooldowns()` - cooldown store; non-expired entries survive relogs by design; only categories registered as session-scoped reset on quit/kick.
+- `public EconomyBridge economy()` - economy bridge; resolves Vault if present, then the command backend configured via `EconomyBridge.useCommandBackend`; with no backend available it WARNs once and reports failure.
+- `public BossBarUtil bossbars()` - Adventure boss bars (zero packets) with titles through the SnText pipeline; departing viewers drop themselves and the teardown hides all bars of this owner.
+- `public HologramUtil holograms()` - holograms as real TextDisplay entities marked in the PDC; the teardown deletes this owner's entities and the library purges orphan markers on chunk load and at startup.
+- `public SnCron cron()` - main-thread jobs at the calendar instants of a 5-field cron subset or the daily/hourly shortcuts, re-armed after every run; jobs with `catchUp(true)` persist their last run to a data yml and fire one missed run on the next schedule.
+- `public LeaderboardCache leaderboards()` - each board runs its async query at a fixed interval and swaps an immutable snapshot behind a volatile reference: getTop/positionOf/valueOf are lock-free cache reads safe for PlaceholderAPI resolvers.
+- `public DiscordWebhook discord()` - messages enqueue FIFO and post async through the JDK HttpClient, honoring Retry-After on 429; the teardown drains whatever is still queued.
+- `public UpdateChecker updates()` - notify-only update checker of the owning plugin (v1.1); without `SnSpec.builder().updates(...)` or explicit `watch()`/`checkNow()` it stays inert (zero traffic). See section 17.
+- `public ItemRegistry items()` - item registry; works with zero files: definitions from `ItemDef.builder()`, YML sections or the file declared via `SnSpec.builder().items(...)`.
+- `public SelectionManager selections()` - cuboid selection module (v1.1); 100% programmatic: registers `SelectionSpec`s, hands out PDC-tagged wands and delivers the complete `Cuboid` through a callback or the cancelable event. See section 18.
+- `public SnCommands commands()` - command module; roots built here inject default reload and help subcommands, permission-gated tab-complete, and unregister on shutdown.
+- `public ReloadManager reload()` - reload orchestrator; rebuilds the declared modules in strict order and re-dispatches the reloadables registered via `ReloadManager.register`; the default `reload` subcommand and `/snlib reload <plugin>` delegate here.
+- `public boolean isShuttingDown()` - true from the moment this context's teardown started; module I/O must switch to synchronous.
 
-Accessors CON GATE de spec (tiran `UnsupportedOperationException` nombrando la llamada de builder faltante si el modulo no fue declarado):
+Accessors WITH a spec GATE (they throw `UnsupportedOperationException` naming the missing builder call when the module was not declared):
 
-- `public YmlManager yml()` - manager yml del plugin dueño (archivos managed/seedOnly/data mas la config principal montada). Gate: mensaje "Modulo yml no declarado: falta SnSpec.builder().config(\"config.yml\")".
-- `public SnLang lang()` - modulo de idioma: `lang/messages_<code>.yml` con las keys compartidas `snlib.*` siempre mergeadas y fallback ingles por key. Gate: "Modulo lang no declarado: falta SnSpec.builder().lang()".
-- `public GuiManager guis()` - modulo GUI: carpeta `guis/` con una GUI por archivo, una sesion e inventario por viewer, y paginacion opt-in por menu. Gate: "Modulo guis no declarado: falta SnSpec.builder().guis()".
-- `public SnDb db()` - modulo de base de datos: dual SQLite/MySQL sobre un pool Hikari con toda query y update fuera del main thread. Gate: "Modulo db no declarado: falta SnSpec.builder().db()".
+- `public YmlManager yml()` - yml manager of the owning plugin (managed/seedOnly/data files plus the mounted main config). Gate: message "yml module not declared: missing SnSpec.builder().config(\"config.yml\")".
+- `public SnLang lang()` - language module: `lang/messages_<code>.yml` with the shared `snlib.*` keys always merged and per-key English fallback. Gate: "lang module not declared: missing SnSpec.builder().lang()".
+- `public GuiManager guis()` - GUI module: `guis/` folder with one GUI per file, one session and inventory per viewer, and opt-in pagination per menu. Gate: "guis module not declared: missing SnSpec.builder().guis()".
+- `public SnDb db()` - database module: dual SQLite/MySQL over a Hikari pool with every query and update off the main thread. Gate: "db module not declared: missing SnSpec.builder().db()".
 
-Otros metodos:
+Other methods:
 
-- `SnSpec spec()` - (package-private) declaracion de modulos con la que se inicializo este contexto.
-- `public void shutdown()` - apaga cada modulo de este contexto y libera sus registraciones, en orden estricto que nunca pierde una escritura pendiente. Idempotente: solo la primera llamada corre el teardown. Ver orden exacto abajo.
-- `public void reloadAll()` - recarga cada modulo de este contexto; delega en `reload.reloadPlugin()`.
+- `SnSpec spec()` - (package-private) module declaration this context was initialized with.
+- `public void shutdown()` - shuts down every module of this context and releases its registrations, in a strict order that never loses a pending write. Idempotent: only the first call runs the teardown. See the exact order below.
+- `public void reloadAll()` - reloads every module of this context; delegates to `reload.reloadPlugin()`.
 
-#### Logica interna: orden de construccion
+#### Internal logic: construction order
 
-El constructor cablea en este orden: scheduler, papi, yml (null si `spec.config() == null`), debug (recibe la config o null), actions, lang (solo si `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (con `updates.watch(repo)` inmediato si el spec declaro `updates("owner/repo")`), items. Si el spec declara items con archivo y HAY yml, hace `items.loadAll(yml.managed(itemsFile))`; si declara items SIN config, WARNea: `items("...") declarado sin config(): el archivo no se monta y sn.items() queda solo programatico`. Despues selections (siempre disponible; despues de items y antes de guis, no depende de ningun otro modulo), guis (solo si `spec.guis()`, con `guis.load()` inmediato), db (solo si `spec.db()`, con `DbConfig.load(plugin, yml.config().getSection("database"))` o seccion null sin yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) y reload.
+The constructor wires in this order: scheduler, papi, yml (null if `spec.config() == null`), debug (receives the config or null), actions, lang (only if `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (with an immediate `updates.watch(repo)` if the spec declared `updates("owner/repo")`), items. If the spec declares items with a file and there IS yml, it does `items.loadAll(yml.managed(itemsFile))`; if it declares items WITHOUT config, it WARNs: `items("...") declared without config(): the file is not mounted and sn.items() stays programmatic only`. Then selections (always available; after items and before guis, it depends on no other module), guis (only if `spec.guis()`, with an immediate `guis.load()`), db (only if `spec.db()`, with `DbConfig.load(plugin, yml.config().getSection("database"))` or a null section without yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) and reload.
 
-#### Logica interna: los 13 pasos de shutdown()
+#### Internal logic: the 13 steps of shutdown()
 
-Si `shuttingDown` ya era true, retorna sin hacer nada (idempotencia). Si no, ejecuta exactamente:
+If `shuttingDown` was already true, it returns without doing anything (idempotency). Otherwise it runs exactly:
 
-- Paso 0 (pre-paso): `shuttingDown = true` ANTES que todo lo demas: `SnYml.save()` pasa a escribir inline y `SnFuture.join` acepta el thread del teardown. Asi toda persistencia hecha dentro del propio teardown (equipment backups, debug toggles, data files) escribe SYNC en el thread llamante en vez de pasar por un scheduler a punto de cancelarse.
-1. `guis.closeAll()` (si guis declarado) - cierra las GUIs abiertas de este owner; cada sesion por viewer cancela sus timers, destrackea su holder y fuerza el cierre a su viewer.
-2. `commands.unregisterAll()` - desregistra los command roots de este owner y refresca los arboles de comandos de los clientes.
-3. `yml.flushAll()` (si yml declarado) - drena las escrituras yml async coalescidas ANTES de cancelar el scheduler que las correria.
-4. `items.cancelTasks()`, `selections.shutdown()` y `scheduler.cancelAll()` - recien ahora corta los renderers de seleccion (limpiando sesiones y specs, sin onCancel) y cancela toda task restante del plugin dueño.
-5. `EquipmentBackup.restoreAll(plugin)` - locked items: devuelve el equipamiento real desplazado; el store write-through persiste sincronico gracias al flag `shuttingDown`.
-6. `db.flushPlayerCaches()` (si db declarado) - caches de jugador: guarda toda entrada dirty y joinea las escrituras...
-7. `db.shutdown()` (si db declarado) - ...y despues cierra el pool (joinea trabajo pendiente, `shutdownNow` tras timeout).
-8. `RecipeLoader.unregisterAll(plugin)` - saca del servidor las recipe keys de este owner.
-9. `cooldowns.clearAll()` - store de cooldowns de este owner.
-10. `SoftDependency.forEachRegistered(...)` con `hook.forceDisable()` solo para hooks cuyo `owner() == plugin`, mas `papi.unregisterAll()` - integraciones propias: fuerza el disable de los hooks de soft-dependency de este owner y desregistra sus expansiones de PlaceholderAPI.
-11. `actions.shutdown()` - libera el canal saliente de BungeeCord si `[connect]` lo registro.
-12. `bossbars.hideAll()`, `holograms.deleteAll()`, `discord.drain()`, `updates.shutdown()` - hooks de teardown de los modulos extra, antes del removeOwner generico: esconde las bossbars de este owner, borra sus hologramas TextDisplay para que no queden como huerfanos hasta la proxima purga de arranque, drena los webhooks Discord encolados best-effort bajo un deadline corto, y cancela los timers de watch del update checker liberando su HttpClient.
-13. `TenantRegistry.sweepOwner(plugin)` y `SnLib.detach(plugin, this)` - saca la key de este owner de TODOS los tenant registries y desmonta el contexto del registro global.
+- Step 0 (pre-step): `shuttingDown = true` BEFORE everything else: `SnYml.save()` switches to inline writes and `SnFuture.join` accepts the teardown thread. This way every persistence done inside the teardown itself (equipment backups, debug toggles, data files) writes SYNC on the calling thread instead of going through a scheduler about to be cancelled.
+1. `guis.closeAll()` (if guis declared) - closes this owner's open GUIs; each per-viewer session cancels its timers, untracks its holder and forces the close on its viewer.
+2. `commands.unregisterAll()` - unregisters this owner's command roots and refreshes the clients' command trees.
+3. `yml.flushAll()` (if yml declared) - drains the coalesced async yml writes BEFORE cancelling the scheduler that would run them.
+4. `items.cancelTasks()`, `selections.shutdown()` and `scheduler.cancelAll()` - only now cuts the selection renderers (clearing sessions and specs, without onCancel) and cancels every remaining task of the owning plugin.
+5. `EquipmentBackup.restoreAll(plugin)` - locked items: returns the displaced real equipment; the write-through store persists synchronously thanks to the `shuttingDown` flag.
+6. `db.flushPlayerCaches()` (if db declared) - player caches: saves every dirty entry and joins the writes...
+7. `db.shutdown()` (if db declared) - ...and then closes the pool (joins pending work, `shutdownNow` after a timeout).
+8. `RecipeLoader.unregisterAll(plugin)` - removes this owner's recipe keys from the server.
+9. `cooldowns.clearAll()` - this owner's cooldown store.
+10. `SoftDependency.forEachRegistered(...)` with `hook.forceDisable()` only for hooks whose `owner() == plugin`, plus `papi.unregisterAll()` - own integrations: forces the disable of this owner's soft-dependency hooks and unregisters its PlaceholderAPI expansions.
+11. `actions.shutdown()` - releases the outgoing BungeeCord channel if `[connect]` registered it.
+12. `bossbars.hideAll()`, `holograms.deleteAll()`, `discord.drain()`, `updates.shutdown()` - teardown hooks of the extra modules, before the generic removeOwner: hides this owner's bossbars, deletes its TextDisplay holograms so they do not linger as orphans until the next startup purge, drains the queued Discord webhooks best-effort under a short deadline, and cancels the update checker's watch timers releasing its HttpClient.
+13. `TenantRegistry.sweepOwner(plugin)` and `SnLib.detach(plugin, this)` - removes this owner's key from ALL tenant registries and unmounts the context from the global registry.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- No-interferencia: `shutdown()` y `reloadAll()` operan SOLO sobre estado propiedad de este plugin; los contextos de otros consumidores nunca se tocan.
-- El orden 3-antes-de-4 es deliberado: drenar escrituras yml antes de cancelar el scheduler evita perder writes coalescidos pendientes.
-- Politica de accessors: 4 modulos gateados por spec (`yml`, `lang`, `guis`, `db`) y el resto siempre disponible; todo modulo declarado se cablea en construccion, asi que ningun accessor de un modulo declarado tira jamas.
+- Non-interference: `shutdown()` and `reloadAll()` operate ONLY on state owned by this plugin; other consumers' contexts are never touched.
+- The 3-before-4 order is deliberate: draining yml writes before cancelling the scheduler avoids losing pending coalesced writes.
+- Accessor policy: 4 modules gated by spec (`yml`, `lang`, `guis`, `db`) and the rest always available; every declared module is wired at construction, so no accessor of a declared module ever throws.
 
 ### SnSpec
 `src/main/java/com/sn/lib/SnSpec.java`
 
-Declaracion inmutable de los modulos SnLib que usa un plugin consumidor. Parte del entrypoint congelado: la superficie del builder nunca cambia dentro de una version mayor. Todo lo declarado se monta con UNA llamada de init cuando el consumidor se habilita (config administrada sembrada y mergeada con el gate `update-configs`, lang y `guis/` cargan, el archivo de items registra sus definiciones, la db levanta y el subcomando debug se inyecta); el teardown correspondiente corre automatico cuando el consumidor se deshabilita.
+Immutable declaration of the SnLib modules a consumer plugin uses. Part of the frozen entrypoint: the builder surface never changes within a major version. Everything declared mounts with ONE init call when the consumer enables (managed config seeded and merged with the `update-configs` gate, lang and `guis/` load, the items file registers its definitions, the db comes up and the debug subcommand is injected); the corresponding teardown runs automatically when the consumer disables.
 
-- `public static Builder builder()` - crea un nuevo builder de spec.
-- `public @Nullable String config()` - nombre del archivo de config principal administrado, o `null` si el modulo config no fue declarado.
-- `public boolean lang()` - si se declaro el modulo lang (messages_en.yml).
-- `public boolean guis()` - si se declaro el modulo guis (carpeta `guis/`).
-- `public @Nullable String items()` - nombre del archivo de items, o `null` si el modulo items no fue declarado con fuente YML.
-- `public boolean db()` - si se declaro el modulo de base de datos.
-- `public boolean debugCommand()` - si se declaro el comando de debug de runtime.
-- `public @Nullable String updates()` - repo GitHub `owner/repo` del update check (v1.1), o `null` si no se declaro.
+- `public static Builder builder()` - creates a new spec builder.
+- `public @Nullable String config()` - name of the managed main config file, or `null` if the config module was not declared.
+- `public boolean lang()` - whether the lang module (messages_en.yml) was declared.
+- `public boolean guis()` - whether the guis module (`guis/` folder) was declared.
+- `public @Nullable String items()` - name of the items file, or `null` if the items module was not declared with a YML source.
+- `public boolean db()` - whether the database module was declared.
+- `public boolean debugCommand()` - whether the runtime debug command was declared.
+- `public @Nullable String updates()` - GitHub repo `owner/repo` of the update check (v1.1), or `null` if not declared.
 
-#### SnSpec.Builder (clase anidada publica)
+#### SnSpec.Builder (public nested class)
 
-Builder de `SnSpec`; cada metodo es opt-in, los modulos omitidos quedan deshabilitados. Constructor privado (solo via `SnSpec.builder()`).
+`SnSpec` builder; every method is opt-in, omitted modules stay disabled. Private constructor (only via `SnSpec.builder()`).
 
-- `public Builder config(String fileName)` - declara el archivo de config principal administrado (por ejemplo `"config.yml"`).
-- `public Builder lang()` - declara el modulo lang.
-- `public Builder guis()` - declara el modulo guis.
-- `public Builder items(String fileName)` - declara el modulo items respaldado por un archivo YML (por ejemplo `"items.yml"`).
-- `public Builder db()` - declara el modulo de base de datos.
-- `public Builder debugCommand()` - declara el comando de debug de runtime.
-- `public Builder updates(String ownerRepo)` - declara el update check notify-only contra un repo GitHub, formato `owner/repo` (v1.1; ver seccion 17).
-- `public SnSpec build()` - construye el spec inmutable.
+- `public Builder config(String fileName)` - declares the managed main config file (for example `"config.yml"`).
+- `public Builder lang()` - declares the lang module.
+- `public Builder guis()` - declares the guis module.
+- `public Builder items(String fileName)` - declares the items module backed by a YML file (for example `"items.yml"`).
+- `public Builder db()` - declares the database module.
+- `public Builder debugCommand()` - declares the runtime debug command.
+- `public Builder updates(String ownerRepo)` - declares the notify-only update check against a GitHub repo, `owner/repo` format (v1.1; see section 17).
+- `public SnSpec build()` - builds the immutable spec.
 
 ### SnApi
 `src/main/java/com/sn/lib/SnApi.java`
 
-API level publico de este build de SnLib. Clase `final` con constructor privado; una sola constante publica:
+Public API level of this SnLib build. `final` class with a private constructor; a single public constant:
 
-- `public static final int LEVEL = 1` - API level de este build. Politica: sube exactamente 1 en CADA release que agregue metodos o clases publicas a la API; la superficie esta congelada bajo un gate japicmp additive-only. Es el numero contra el que todo consumidor hace handshake via `SnPlugin#requiredApiLevel()`: el nivel requerido queda inlined en el bytecode del consumidor en compile time, asi que un consumidor compilado contra un nivel mas nuevo que el SnLib.jar instalado se deshabilita limpio en vez de fallar con `NoSuchMethodError`.
+- `public static final int LEVEL = 1` - API level of this build. Policy: it goes up by exactly 1 on EVERY release that adds public methods or classes to the API; the surface is frozen under an additive-only japicmp gate. It is the number every consumer handshakes against via `SnPlugin#requiredApiLevel()`: the required level is inlined into the consumer's bytecode at compile time, so a consumer compiled against a newer level than the installed SnLib.jar disables itself cleanly instead of failing with `NoSuchMethodError`.
 
 ### Ph
 `src/main/java/com/sn/lib/Ph.java`
 
-Record publico `Ph(String key, String value)`: par de placeholder local resuelto por el pipeline de texto ANTES de PlaceholderAPI. `key` es el nombre del placeholder sin delimitadores (se matchea como `%key%` y como `{key}`); `value` es el texto de reemplazo.
+Public record `Ph(String key, String value)`: local placeholder pair resolved by the text pipeline BEFORE PlaceholderAPI. `key` is the placeholder name without delimiters (it matches both `%key%` and `{key}`); `value` is the replacement text.
 
-- `public static Ph of(String key, Object value)` - crea un par desde cualquier valor via `String.valueOf(Object)`.
+- `public static Ph of(String key, Object value)` - creates a pair from any value via `String.valueOf(Object)`.
 
 ### plugin.yml
 `src/main/resources/plugin.yml`
 
-Descriptor Bukkit del plugin bootstrap. Valores exactos:
+Bukkit descriptor of the bootstrap plugin. Exact values:
 
-- `name: SnLib`, `main: com.sn.lib.SnLibPlugin`, `version: ${project.version}` (filtrado por Maven), `author: ValentinTarnovsky`, `api-version: '1.20'`.
-- `load: STARTUP` - clave del ciclo de vida: SnLib se habilita antes que todos los consumidores (que declaran `depend: [SnLib]`), garantizando que `SnLibPlugin.get()` funcione durante el handshake de cada consumidor.
+- `name: SnLib`, `main: com.sn.lib.SnLibPlugin`, `version: ${project.version}` (filtered by Maven), `author: ValentinTarnovsky`, `api-version: '1.20'`.
+- `load: STARTUP` - lifecycle key: SnLib enables before all consumers (which declare `depend: [SnLib]`), guaranteeing `SnLibPlugin.get()` works during every consumer's handshake.
 - `description: Common library core for Sn plugins (standalone hard-depend).`
-- `softdepend: [PlaceholderAPI, Vault]` - integraciones opcionales; ambas se degradan con gracia si faltan.
-- Comando `snlib`: "SnLib administration command.", usage `/snlib <version|plugins|integrations|iteminfo|reload>`.
-- Permisos (todos `default: op`): `snlib.admin` (padre; otorga todos los subcomandos admin, con children `snlib.admin.version`, `snlib.admin.plugins`, `snlib.admin.integrations`, `snlib.admin.iteminfo`, `snlib.admin.reload`, todos en true) mas los cinco permisos hijos individuales, uno por subcomando.
+- `softdepend: [PlaceholderAPI, Vault]` - optional integrations; both degrade gracefully when absent.
+- `snlib` command: "SnLib administration command.", usage `/snlib <version|plugins|integrations|iteminfo|reload>`.
+- Permissions (all `default: op`): `snlib.admin` (parent; grants all admin subcommands, with children `snlib.admin.version`, `snlib.admin.plugins`, `snlib.admin.integrations`, `snlib.admin.iteminfo`, `snlib.admin.reload`, all true) plus the five individual child permissions, one per subcommand.
 
 ### config.yml
 `src/main/resources/config.yml`
 
-Config administrada de SnLib mismo (montada en `plugins/SnLib/config.yml` por el self-context). Es una config "managed": las keys que agreguen versiones futuras se mergean en cada arranque preservando valores y keys extra del usuario. Claves:
+Managed config of SnLib itself (mounted at `plugins/SnLib/config.yml` by the self-context). It is a "managed" config: keys added by future versions merge in on every startup, preserving the user's values and extra keys. Keys:
 
-- `update-configs: true` - gate maestro del updater always-merge: en `false` saltea todo merge de yml excepto este archivo.
-- `debug.enabled: false` - toggle maestro del output de debug de la libreria (tambien toggleable en vivo, sin restart).
-- `debug.level: DEBUG` - umbral de verbosidad: `OFF`, `INFO`, `DEBUG` o `TRACE`.
-- `debug.categories: []` - filtro de categorias; lista vacia deja pasar todas.
-- `bstats: true` - metricas anonimas via bStats (https://bstats.org); `false` para opt-out (leido en `SnLibPlugin.onEnable` antes de crear `Metrics`).
+- `update-configs: true` - master gate of the always-merge updater: when `false` it skips every yml merge except this file.
+- `debug.enabled: false` - master toggle of the library's debug output (also toggleable live, no restart).
+- `debug.level: DEBUG` - verbosity threshold: `OFF`, `INFO`, `DEBUG` or `TRACE`.
+- `debug.categories: []` - category filter; an empty list lets everything through.
+- `bstats: true` - anonymous metrics via bStats (https://bstats.org); `false` to opt out (read in `SnLibPlugin.onEnable` before creating `Metrics`).
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-Ninguno. No hay marcadores TODO/FIXME/XXX en ninguno de los archivos de este alcance. Limitaciones de diseño documentadas en el codigo (no pendientes, decisiones): `items(...)` declarado sin `config()` deja `sn.items()` solo programatico con WARN; el handshake de API level solo protege contra jar instalado VIEJO (`installed < required`), un jar mas nuevo que el consumidor siempre pasa (garantizado por la politica additive-only de `SnApi.LEVEL`); un doble `SnLib.init` no re-monta modulos (devuelve el contexto existente con WARN).
-
+None. There are no TODO/FIXME/XXX markers in any file of this scope. Design limitations documented in the code (decisions, not pending work): `items(...)` declared without `config()` leaves `sn.items()` programmatic-only with a WARN; the API level handshake only protects against an OLD installed jar (`installed < required`), a jar newer than the consumer always passes (guaranteed by the additive-only `SnApi.LEVEL` policy); a double `SnLib.init` does not re-mount modules (it returns the existing context with a WARN).
 ---
 
-## 02. Compat multi-version
+## 02. Multi-version compat
 
-Modulo de compatibilidad multi-version de SnLib (paquete `com.sn.lib.compat`). Consta de dos clases utilitarias estaticas y finales: `SnVersion`, que parsea la version del server una unica vez en la inicializacion de la clase y expone chequeos `supports(...)` mas deteccion de Folia, y `SnCompat`, que hace probing reflectivo de API agregada despues del piso de runtime 1.20.4 para que los servers viejos degraden con un unico WARN en vez de tirar excepciones. La filosofia del modulo es "tolerancia forward": una version desconocida o 1.22+ nunca hace hard-fail, se asume soporte completo del target (1.21.8) con un solo WARN. Ambas clases usan estado estatico server-wide, permitido por el contrato de SnLib porque describen al server y no a un plugin consumidor.
+SnLib's multi-version compatibility module (package `com.sn.lib.compat`). It consists of two static final utility classes: `SnVersion`, which parses the server version exactly once at class initialization and exposes `supports(...)` checks plus Folia detection, and `SnCompat`, which reflectively probes API added after the 1.20.4 runtime floor so old servers degrade with a single WARN instead of throwing. The module's philosophy is "forward tolerance": an unknown or 1.22+ version never hard-fails, full target support (1.21.8) is assumed with a single WARN. Both classes use server-wide static state, allowed by the SnLib contract because they describe the server and not a consumer plugin.
 
 ### SnVersion
 `src/main/java/com/sn/lib/compat/SnVersion.java`
 
-Deteccion de la version del server, parseada una sola vez en el bloque `static` de la clase. Parsea `Bukkit.getBukkitVersion()` (ej: `1.21.1-R0.1-SNAPSHOT`) con el regex `(\d+)\.(\d+)(?:\.(\d+))?`; nunca usa `getVersion()`, cuyo texto libre varia por fork. Clase `final` con constructor privado (no instanciable).
+Server version detection, parsed once in the class `static` block. Parses `Bukkit.getBukkitVersion()` (e.g. `1.21.1-R0.1-SNAPSHOT`) with the regex `(\d+)\.(\d+)(?:\.(\d+))?`; it never uses `getVersion()`, whose free-form text varies per fork. `final` class with a private constructor (non-instantiable).
 
-Constantes publicas:
-- `public static final int MAJOR` - major parseado, o `1` cuando el string no se pudo parsear.
-- `public static final int MINOR` - minor parseado, o el minor target (`21`) cuando el string no se pudo parsear.
-- `public static final int PATCH` - patch parseado; `0` cuando esta ausente en el string, patch target (`8`) cuando el string no se pudo parsear.
+Public constants:
+- `public static final int MAJOR` - parsed major, or `1` when the string could not be parsed.
+- `public static final int MINOR` - parsed minor, or the target minor (`21`) when the string could not be parsed.
+- `public static final int PATCH` - parsed patch; `0` when absent from the string, target patch (`8`) when the string could not be parsed.
 
-Metodos publicos:
-- `public static boolean supports(int minor)` - true cuando el server corre 1.`minor` o mas nuevo. Siempre true en versiones desconocidas (flag interno `ASSUME_TARGET`).
-- `public static boolean supports(int minor, int patch)` - true cuando el server corre 1.`minor`.`patch` o mas nuevo: `ASSUME_TARGET || MINOR > minor || (MINOR == minor && PATCH >= patch)`. Siempre true en versiones desconocidas.
-- `public static boolean isFolia()` - true cuando el server es Folia. Detectado una sola vez y cacheado en el campo estatico `FOLIA`.
+Public methods:
+- `public static boolean supports(int minor)` - true when the server runs 1.`minor` or newer. Always true on unknown versions (internal `ASSUME_TARGET` flag).
+- `public static boolean supports(int minor, int patch)` - true when the server runs 1.`minor`.`patch` or newer: `ASSUME_TARGET || MINOR > minor || (MINOR == minor && PATCH >= patch)`. Always true on unknown versions.
+- `public static boolean isFolia()` - true when the server is Folia. Detected once and cached in the static `FOLIA` field.
 
-Logica interna:
-- `KNOWN_MAX_MINOR = 21` (privado): la linea minor mas alta reconocida por este build, con target 1.21.8.
-- Bloque `static`: aplica el regex sobre `Bukkit.getBukkitVersion()`. Si matchea, toma major/minor/patch (patch `0` si el grupo es null). Se activa el modo "assume target" (`ASSUME_TARGET = true`) en dos casos: (a) el string no matchea el regex, o (b) `major != 1 || minor > KNOWN_MAX_MINOR`, es decir cualquier 1.22+ o un major distinto de 1. En ese caso loguea exactamente un WARN: `[SnLib] '<raw>': version no reconocida, asumiendo compat target`. Con `ASSUME_TARGET` activo, ambos `supports(...)` devuelven siempre true: tolerancia forward en vez de hard-fail.
-- `private static boolean detectFolia()` - intenta `Class.forName("io.papermc.paper.threadedregions.RegionizedServer")`; true si la clase existe, false ante `ClassNotFoundException`. Se ejecuta una unica vez al inicializar la clase.
+Internal logic:
+- `KNOWN_MAX_MINOR = 21` (private): the highest minor line recognized by this build, with target 1.21.8.
+- `static` block: applies the regex to `Bukkit.getBukkitVersion()`. On a match it takes major/minor/patch (patch `0` if the group is null). "Assume target" mode activates (`ASSUME_TARGET = true`) in two cases: (a) the string does not match the regex, or (b) `major != 1 || minor > KNOWN_MAX_MINOR`, that is any 1.22+ or a major other than 1. In that case it logs exactly one WARN: `[SnLib] '<raw>': unrecognized version, assuming target compat`. With `ASSUME_TARGET` active, both `supports(...)` always return true: forward tolerance instead of hard-fail.
+- `private static boolean detectFolia()` - tries `Class.forName("io.papermc.paper.threadedregions.RegionizedServer")`; true if the class exists, false on `ClassNotFoundException`. Runs exactly once at class initialization.
 
-Notas y gotchas:
-- Cuando el parseo falla, los valores expuestos NO son la version real sino el target: `MAJOR=1`, `MINOR=21`, `PATCH=8`. Cualquier codigo que lea las constantes directamente en vez de usar `supports(...)` debe tener esto en cuenta.
-- La deteccion corre en la inicializacion de la clase (primer uso), por lo que el WARN de version desconocida aparece una sola vez por vida de la JVM, no por plugin.
-- El Javadoc justifica los estaticos server-wide: la version del server no es data per-consumer, asi que no viola el contrato de ownership por plugin de SnLib.
+Notes and gotchas:
+- When parsing fails, the exposed values are NOT the real version but the target: `MAJOR=1`, `MINOR=21`, `PATCH=8`. Any code reading the constants directly instead of using `supports(...)` must account for this.
+- Detection runs at class initialization (first use), so the unknown-version WARN appears once per JVM lifetime, not per plugin.
+- The Javadoc justifies the server-wide statics: the server version is not per-consumer data, so it does not violate SnLib's per-plugin ownership contract.
 
 ### SnCompat
 `src/main/java/com/sn/lib/compat/SnCompat.java`
 
-Probing de features para API agregada despues del piso de runtime 1.20.4. Todo uso de API Paper/Adventure mas nueva que 1.20.4 debe pasar por `probe` o `since`, de modo que un server mas viejo degrade con un unico WARN en vez de lanzar. Clase `final` con constructor privado.
+Feature probing for API added after the 1.20.4 runtime floor. Every use of Paper/Adventure API newer than 1.20.4 must go through `probe` or `since`, so an older server degrades with a single WARN instead of throwing. `final` class with a private constructor.
 
-Puntos version-sensibles reales documentados en el Javadoc de la clase:
+Real version-sensitive points documented in the class Javadoc:
 - `ItemMeta#setMaxStackSize` (1.20.5+).
 - `ItemMeta#setEnchantmentGlintOverride` (1.20.5+).
-- `ItemFlag.HIDE_ADDITIONAL_TOOLTIP` (alias del legacy `HIDE_POTION_EFFECTS`).
+- `ItemFlag.HIDE_ADDITIONAL_TOOLTIP` (alias of the legacy `HIDE_POTION_EFFECTS`).
 
-Metodos publicos:
-- `public static @Nullable Method probe(Class<?> owner, String name, Class<?>... params)` - lookup reflectivo de un metodo publico via `owner.getMethod(name, params)`, hecho una sola vez, cacheando tanto el hit como el miss. La key de cache incluye los tipos de parametros, asi que dos overloads del mismo nombre nunca colisionan. Devuelve el `Method` o null cuando falta en este server (un WARN, miss cacheado). `owner` debe ser una clase de la API del server o del JDK.
-- `public static <T> T since(int minor, Supplier<T> modern, Supplier<T> fallback)` - gate por version: devuelve `modern.get()` cuando `SnVersion.supports(minor)`, si no `fallback.get()` con un WARN por call site. El WARN reporta: `API de 1.<minor>+ no disponible en <MAJOR>.<MINOR>.<PATCH>; usando fallback`.
+Public methods:
+- `public static @Nullable Method probe(Class<?> owner, String name, Class<?>... params)` - reflective lookup of a public method via `owner.getMethod(name, params)`, done once, caching both the hit and the miss. The cache key includes the parameter types, so two overloads of the same name never collide. Returns the `Method` or null when missing on this server (one WARN, cached miss). `owner` must be a server API or JDK class.
+- `public static <T> T since(int minor, Supplier<T> modern, Supplier<T> fallback)` - version gate: returns `modern.get()` when `SnVersion.supports(minor)`, otherwise `fallback.get()` with one WARN per call site. The WARN reports: `1.<minor>+ API not available on <MAJOR>.<MINOR>.<PATCH>; using fallback`.
 
-Logica interna:
-- `CACHE` (`ConcurrentHashMap<String, Method>`): hits cacheados, key `owner.getName() + "#" + name + "(" + tipos de parametros unidos por "," + ")"` (ej `org.bukkit.inventory.meta.ItemMeta#setMaxStackSize(java.lang.Integer)`); la misma key se usa en `MISSING` y como tag del `warnOnce` del miss.
-- `MISSING` (`ConcurrentHashMap.newKeySet()`): keys probeadas y no encontradas en este server. Existe como set separado porque un `ConcurrentHashMap` no puede contener valores null, asi que el centinela de miss vive aca.
-- `WARNED` (`ConcurrentHashMap.newKeySet()`): tags ya avisados; `warnOnce(tag, message)` solo loguea `[SnLib] <message>` via `Bukkit.getLogger().warning(...)` si `WARNED.add(tag)` es true (primera vez).
-- `private static boolean isForeignPluginClass(Class<?> owner)` - guard de classloader del probe. Chequeo basado en nombre: devuelve false si el loader de `owner` es null (clases del JDK/bootstrap) o es el mismo classloader de `SnCompat` (clases de SnLib). Si no, recorre la jerarquia de clases del loader (`getClass()` y superclases) buscando un nombre que termine en `PluginClassLoader`; true si lo encuentra. Cubre tanto `org.bukkit.plugin.java.PluginClassLoader` como el `PaperPluginClassLoader` de Paper sin referenciar API interna del server.
-- `private static String callSiteTag()` - usa `StackWalker` para identificar el primer frame fuera de `SnCompat` y arma el tag `Clase#metodo:linea` (o `"unknown"`). Se usa como clave de dedup del WARN de `since`, logrando "un WARN por call site".
-- `private static void warnOnce(String tag, String message)` - loguea el WARN una sola vez por tag.
+Internal logic:
+- `CACHE` (`ConcurrentHashMap<String, Method>`): cached hits, key `owner.getName() + "#" + name + "(" + parameter types joined by "," + ")"` (e.g. `org.bukkit.inventory.meta.ItemMeta#setMaxStackSize(java.lang.Integer)`); the same key is used in `MISSING` and as the `warnOnce` tag of the miss.
+- `MISSING` (`ConcurrentHashMap.newKeySet()`): keys probed and not found on this server. It exists as a separate set because a `ConcurrentHashMap` cannot hold null values, so the miss sentinel lives here.
+- `WARNED` (`ConcurrentHashMap.newKeySet()`): tags already warned; `warnOnce(tag, message)` only logs `[SnLib] <message>` via `Bukkit.getLogger().warning(...)` if `WARNED.add(tag)` is true (first time).
+- `private static boolean isForeignPluginClass(Class<?> owner)` - classloader guard of the probe. Name-based check: returns false if `owner`'s loader is null (JDK/bootstrap classes) or is the same classloader as `SnCompat` (SnLib classes). Otherwise it walks the loader's class hierarchy (`getClass()` and superclasses) looking for a name ending in `PluginClassLoader`; true if found. Covers both `org.bukkit.plugin.java.PluginClassLoader` and Paper's `PaperPluginClassLoader` without referencing internal server API.
+- `private static String callSiteTag()` - uses `StackWalker` to identify the first frame outside `SnCompat` and builds the tag `Class#method:line` (or `"unknown"`). Used as the dedup key of the `since` WARN, achieving "one WARN per call site".
+- `private static void warnOnce(String tag, String message)` - logs the WARN exactly once per tag.
 
-Guard de classloader del probe (detalle):
-- Si `owner` fue cargado por un `PluginClassLoader` que no es el de SnLib, `probe` avisa una vez (tag `"loader:" + owner.getName()`) con el mensaje `probe de <clase> rechazado: clase cargada por un PluginClassLoader ajeno; solo clases de la API del server/JDK` y devuelve null SIN cachear.
-- Motivo (del Javadoc): un `Method` retiene su `Class` declarante y por lo tanto su `PluginClassLoader`; cachearlo en el estatico `CACHE` de SnLib leakearia el classloader del plugin consumidor a traves de reloads.
+Classloader guard of the probe (detail):
+- If `owner` was loaded by a `PluginClassLoader` other than SnLib's, `probe` warns once (tag `"loader:" + owner.getName()`) with the message `probe of <class> rejected: class loaded by a foreign PluginClassLoader; only server API/JDK classes` and returns null WITHOUT caching.
+- Reason (from the Javadoc): a `Method` retains its declaring `Class` and therefore its `PluginClassLoader`; caching it in SnLib's static `CACHE` would leak the consumer plugin's classloader across reloads.
 
-Notas y gotchas:
-- La key de cache de `probe` incluye los tipos de parametros (`owner#nombre(tipos)`), asi que dos probes del mismo nombre de metodo con firmas distintas sobre la misma clase cachean por separado y nunca colisionan.
-- El rechazo por classloader ajeno NO se cachea a proposito (solo se dedupea el WARN via `WARNED`): cada llamada re-evalua el guard y devuelve null, evitando retener referencias al loader ajeno.
-- Threading: todo el estado es `ConcurrentHashMap` / `newKeySet()`, por lo que `probe`, `since` y `warnOnce` son seguros desde cualquier thread. `Bukkit.getLogger()` tambien es thread-safe. No hay requerimiento de main thread en este modulo.
-- `since` evalua `fallback.get()` (o `modern.get()`) de forma lazy via `Supplier`, asi el branch no tomado nunca se construye.
-- `probe` solo encuentra metodos publicos (`getMethod`), nunca privados ni protected.
-- Estaticos server-wide permitidos por el contrato de SnLib: los resultados de probe describen al server, no a un consumidor.
+Notes and gotchas:
+- The `probe` cache key includes the parameter types (`owner#name(types)`), so two probes of the same method name with different signatures on the same class cache separately and never collide.
+- The foreign-classloader rejection is NOT cached on purpose (only the WARN is deduplicated via `WARNED`): every call re-evaluates the guard and returns null, avoiding retaining references to the foreign loader.
+- Threading: all state is `ConcurrentHashMap` / `newKeySet()`, so `probe`, `since` and `warnOnce` are safe from any thread. `Bukkit.getLogger()` is also thread-safe. There is no main-thread requirement in this module.
+- `since` evaluates `fallback.get()` (or `modern.get()`) lazily via `Supplier`, so the untaken branch is never constructed.
+- `probe` only finds public methods (`getMethod`), never private or protected ones.
+- Server-wide statics allowed by the SnLib contract: probe results describe the server, not a consumer.
 
-TODOs y limitaciones:
-- Ninguno (no hay TODO/FIXME/placeholder en los archivos del alcance). Limitacion de diseño ya notada arriba: `probe` limitado a metodos publicos de clases de API del server/JDK.
+TODOs and limitations:
+- None (no TODO/FIXME/placeholder in the files of this scope). Design limitation already noted above: `probe` limited to public methods of server API/JDK classes.
 
 ---
 
-## 03. Pipeline de texto
+## 03. Text pipeline
 
-El paquete `com.sn.lib.text` implementa el pipeline de renderizado de texto compartido por todos los modulos de SnLib. El orden es FIJO y no configurable: locales -> PAPI -> [small] -> [rgb] -> conversion de color legacy -> [center]. Los pasos de locales y PAPI los resuelve el llamador (los getters de SnYml) antes de invocar estos metodos; las cuatro clases de este modulo cubren el resto. `SnText` es el orquestador (tags de prefijo, conversion legacy a MiniMessage, escape de `<`, render final a `Component`); `SmallCapsUtil` sustituye letras por glifos small caps detras del tag `[small]`; `RgbGradientUtil` interpola el gradiente de 7 anclas detras del tag `[rgb]`; `CenterUtil` centra la linea midiendo pixeles con la tabla de fuente vanilla. Las cuatro clases son transformaciones puras de strings (sin estado, sin Bukkit, sin ownership por plugin): son thread-safe y pueden usarse desde main o async indistintamente.
+The `com.sn.lib.text` package implements the text rendering pipeline shared by all SnLib modules. The order is FIXED and not configurable: locals -> PAPI -> [small] -> [rgb] -> legacy color conversion -> [center]. The locals and PAPI steps are resolved by the caller (SnYml getters) before invoking these methods; the four classes in this module cover the rest. `SnText` is the orchestrator (prefix tags, legacy-to-MiniMessage conversion, `<` escaping, final render to `Component`); `SmallCapsUtil` substitutes letters with small caps glyphs behind the `[small]` tag; `RgbGradientUtil` interpolates the 7-anchor gradient behind the `[rgb]` tag; `CenterUtil` centers the line by measuring pixels with the vanilla font table. All four classes are pure string transformations (no state, no Bukkit, no per-plugin ownership): they are thread-safe and usable from main or async interchangeably.
 
 ### SnText
 `src/main/java/com/sn/lib/text/SnText.java`
 
-Clase final utilitaria (constructor privado) que orquesta el pipeline. Mantiene una instancia estatica de `MiniMessage.miniMessage()` y el mapa `MINI_TAGS` que traduce cada codigo legacy `&X` a su tag MiniMessage con nombre (`0`->`black`, `1`->`dark_blue`, `2`->`dark_green`, `3`->`dark_aqua`, `4`->`dark_red`, `5`->`dark_purple`, `6`->`gold`, `7`->`gray`, `8`->`dark_gray`, `9`->`blue`, `a`->`green`, `b`->`aqua`, `c`->`red`, `d`->`light_purple`, `e`->`yellow`, `f`->`white`, `k`->`obfuscated`, `l`->`bold`, `m`->`strikethrough`, `n`->`underlined`, `o`->`italic`, `r`->`reset`). Constantes privadas: `CENTER_TAG = "[center]"`, `RGB_TAG = "[rgb]"`, `SMALL_TAG = "[small]"`, `SECTION = (char) 0xA7`. No expone constantes publicas ni enums.
+Final utility class (private constructor) that orchestrates the pipeline. It keeps a static instance of `MiniMessage.miniMessage()` and the `MINI_TAGS` map that translates each legacy `&X` code to its named MiniMessage tag (`0`->`black`, `1`->`dark_blue`, `2`->`dark_green`, `3`->`dark_aqua`, `4`->`dark_red`, `5`->`dark_purple`, `6`->`gold`, `7`->`gray`, `8`->`dark_gray`, `9`->`blue`, `a`->`green`, `b`->`aqua`, `c`->`red`, `d`->`light_purple`, `e`->`yellow`, `f`->`white`, `k`->`obfuscated`, `l`->`bold`, `m`->`strikethrough`, `n`->`underlined`, `o`->`italic`, `r`->`reset`). Private constants: `CENTER_TAG = "[center]"`, `RGB_TAG = "[rgb]"`, `SMALL_TAG = "[small]"`, `SECTION = (char) 0xA7`. It exposes no public constants or enums.
 
-- `public static Component color(String s)` - Render completo: consume los TRES tags de prefijo `[small]`/`[rgb]`/`[center]`, convierte codigos legacy a tags MiniMessage y deserializa con MiniMessage. Input null rinde `Component.empty()`.
-- `public static Component mini(String s)` - Render solo MiniMessage: sin tags de prefijo y sin conversion legacy. Null rinde `Component.empty()`.
-- `public static String colorLegacy(String s)` - Misma fase legacy que `color(String)` pero la salida queda como string legacy con codigos de section sign (`&#RRGGBB` se convierte en la secuencia hex de bungee `§x§R§R§G§G§B§B`). Para APIs que todavia exigen strings legacy; los tags MiniMessage quedan intactos. Null devuelve null.
-- `public static String normalizePapiOutput(String s)` - Convierte la salida de PlaceholderAPI de vuelta a la forma `&` que el pipeline entiende: las secuencias hex de bungee (`§x§R§R...`) pasan a `&#RRGGBB` y los codigos `§X` pasan a `&X`, para que los valores coloreados por PAPI sobrevivan la conversion a MiniMessage. Si el string es null o no contiene section sign, se devuelve tal cual sin alocar.
-- `public static String applyLocals(String s, Ph... phs)` - Resuelve placeholders locales a partir de pares `Ph` (key/value); arma un `HashMap` y delega en la sobrecarga con resolver. Devuelve el input intacto si el string es null/vacio o no hay pares.
-- `public static String applyLocals(String s, Function<String, String> resolver)` - Escaner de una sola pasada sobre tokens `%key%` y `{key}`. Si el resolver devuelve null el token queda intacto (asi los tokens PAPI no resueltos sobreviven sin tocar); los valores de reemplazo NO se re-escanean (sin expansion recursiva).
-- `public static List<Component> colorList(List<String> lines)` - Aplica `color(String)` a cada linea; una lista null o vacia devuelve una `ArrayList` vacia nueva.
-- `public static String smallCaps(String s)` - Transformacion small caps programatica (scoreboards, tab, nombres) sin pasar por el tag `[small]`: delega en `SmallCapsUtil.applySmallTag`. Mapeo 1:1 char a char; los codigos de color legacy, las secuencias section-sign y los tags MiniMessage se saltean intactos. Null/vacio pass-through y devuelve la MISMA instancia cuando no hay cambios.
-- `public static String applyPrefixTags(String line)` - Consume los tags de prefijo `[center]`, `[rgb]` y `[small]` al inicio de la linea, en cualquier orden y case-insensitive (via `regionMatches(true, ...)`), en un loop hasta que no quede ninguno (una rama por tag). Orden interno FIJO de aplicacion: `[small]` corre primero (delega en `SmallCapsUtil.applySmallTag` sobre el contenido restante), despues `[rgb]` (delega en `RgbGradientUtil.applyRgbTag`); `[center]` se re-emite como una unica marca lider normalizada `[center]` que consume la fase legacy final. Small ANTES de rgb para que el gradiente coloree los glifos finales y la pasada small opere sobre el string corto (no sobre el string inflado 9x por los hex del gradiente); como el mapeo es 1:1 y no toca espacios, el conteo de visibles del gradiente no cambia y las 6 permutaciones de tags rinden identico. Null devuelve null.
+- `public static Component color(String s)` - Full render: consumes the THREE prefix tags `[small]`/`[rgb]`/`[center]`, converts legacy codes to MiniMessage tags and deserializes with MiniMessage. Null input yields `Component.empty()`.
+- `public static Component mini(String s)` - MiniMessage-only render: no prefix tags and no legacy conversion. Null yields `Component.empty()`.
+- `public static String colorLegacy(String s)` - Same legacy phase as `color(String)` but the output stays a legacy string with section-sign codes (`&#RRGGBB` becomes the bungee hex sequence `§x§R§R§G§G§B§B`). For APIs that still require legacy strings; MiniMessage tags stay untouched. Null returns null.
+- `public static String normalizePapiOutput(String s)` - Converts PlaceholderAPI output back to the `&` form the pipeline understands: bungee hex sequences (`§x§R§R...`) become `&#RRGGBB` and `§X` codes become `&X`, so PAPI-colored values survive the conversion to MiniMessage. If the string is null or contains no section sign, it is returned as-is without allocating.
+- `public static String applyLocals(String s, Ph... phs)` - Resolves local placeholders from `Ph` (key/value) pairs; builds a `HashMap` and delegates to the resolver overload. Returns the input untouched if the string is null/empty or there are no pairs.
+- `public static String applyLocals(String s, Function<String, String> resolver)` - Single-pass scanner over `%key%` and `{key}` tokens. If the resolver returns null the token stays untouched (so unresolved PAPI tokens survive intact); replacement values are NOT re-scanned (no recursive expansion).
+- `public static List<Component> colorList(List<String> lines)` - Applies `color(String)` to each line; a null or empty list returns a new empty `ArrayList`.
+- `public static String smallCaps(String s)` - Programmatic small caps transformation (scoreboards, tab, names) without going through the `[small]` tag: delegates to `SmallCapsUtil.applySmallTag`. 1:1 char-to-char mapping; legacy color codes, section-sign sequences and MiniMessage tags are skipped intact. Null/empty pass-through and it returns the SAME instance when nothing changed.
+- `public static String applyPrefixTags(String line)` - Consumes the `[center]`, `[rgb]` and `[small]` prefix tags at the start of the line, in any order and case-insensitive (via `regionMatches(true, ...)`), in a loop until none remain (one branch per tag). FIXED internal application order: `[small]` runs first (delegates to `SmallCapsUtil.applySmallTag` on the remaining content), then `[rgb]` (delegates to `RgbGradientUtil.applyRgbTag`); `[center]` is re-emitted as a single normalized leading `[center]` mark that the final legacy phase consumes. Small BEFORE rgb so the gradient colors the final glyphs and the small pass operates on the short string (not on the string inflated 9x by the gradient hex); since the mapping is 1:1 and does not touch spaces, the gradient's visible-count does not change and the 6 tag permutations render identically. Null returns null.
 
-#### Logica interna (metodos privados)
+#### Internal logic (private methods)
 
-- `consumeCenterMark(String line)` - Si la linea empieza con `[center]` (ya normalizado por `applyPrefixTags`), la despoja del tag y delega en `CenterUtil.center`.
-- `legacyToMini(String s)` - Conversion legacy a MiniMessage: `&#RRGGBB` se vuelve `<#RRGGBB>`, `&X` se vuelve su tag con nombre segun `MINI_TAGS`, y un `<` literal que no puede iniciar un tag se escapa como `\<`.
-- `toSectionCodes(String s)` - Contraparte para `colorLegacy`: `&#RRGGBB` se vuelve `§x` seguido de `§` + cada digito hex en minuscula, y `&X` (codigo valido) se vuelve `§x` minuscula. Lo demas pasa sin cambios.
-- `canStartTag(String s, int next)` - Heuristica de inicio de tag MiniMessage: el caracter siguiente a `<` debe ser `/` (tag de cierre), `#` (color hex), `!` (decoracion negada), `_` o una letra ASCII (a-z, A-Z). Si no, el `<` se escapa.
-- `isCodeChar(char c)` - Valida caracter de codigo legacy: `0-9`, `a-f`, `k-o`, `r` o `x`.
-- `isBungeeHex(String s, int from)` - Valida que desde `from` haya 6 pares `§` + digito hex (formato bungee de 12 chars).
-- `isHex(String s, int from)` / `isHexDigit(char c)` - Validan 6 digitos hex consecutivos / un digito hex (mayuscula o minuscula).
+- `consumeCenterMark(String line)` - If the line starts with `[center]` (already normalized by `applyPrefixTags`), strips the tag and delegates to `CenterUtil.center`.
+- `legacyToMini(String s)` - Legacy-to-MiniMessage conversion: `&#RRGGBB` becomes `<#RRGGBB>`, `&X` becomes its named tag per `MINI_TAGS`, and a literal `<` that cannot start a tag is escaped as `\<`.
+- `toSectionCodes(String s)` - Counterpart for `colorLegacy`: `&#RRGGBB` becomes `§x` followed by `§` + each hex digit lowercased, and `&X` (valid code) becomes lowercase `§x`. Everything else passes unchanged.
+- `canStartTag(String s, int next)` - MiniMessage tag-start heuristic: the character after `<` must be `/` (closing tag), `#` (hex color), `!` (negated decoration), `_` or an ASCII letter (a-z, A-Z). Otherwise the `<` gets escaped.
+- `isCodeChar(char c)` - Validates a legacy code character: `0-9`, `a-f`, `k-o`, `r` or `x`.
+- `isBungeeHex(String s, int from)` - Validates that from `from` there are 6 `§` + hex digit pairs (the 12-char bungee format).
+- `isHex(String s, int from)` / `isHexDigit(char c)` - Validate 6 consecutive hex digits / one hex digit (upper or lower case).
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El orden del pipeline es FIJO por Javadoc de clase: locales -> PAPI -> `[small]` -> `[rgb]` -> conversion de color legacy -> `[center]`. "`[center]` al final" significa al final de la FASE LEGACY, nunca despues del render a `Component`: `CenterUtil` solo sabe medir strings legacy, por eso el centrado se aplica sobre el string legacy-coloreado (con los `&#RRGGBB` del gradiente ya interpolados) justo antes de `legacyToMini` + deserializacion. `[small]` corre ANTES que ambos: el gradiente colorea los glifos finales y el centrado mide los glifos finales.
-- Legacy y MiniMessage se mezclan en el mismo string: los codigos `&X` / `&#RRGGBB` se traducen a tags MiniMessage y TODO el string pasa por MiniMessage al final, asi ambos formatos renderizan juntos. En `colorLegacy` es al reves: los tags MiniMessage quedan sin tocar dentro del string legacy.
-- Escape de `<`: solo se escapa (`\<`) cuando el caracter siguiente NO puede iniciar un tag segun `canStartTag`. Un `<` seguido de letra, `/`, `#`, `!` o `_` se deja pasar y MiniMessage intentara parsearlo como tag.
-- `applyLocals` corta la busqueda del delimitador de cierre en el primer `%`/`}` que encuentre; `%%` o `{}` (token vacio, `end == i + 1`) no se tratan como token y quedan literales.
-- El tag `[rgb]` apunta a titulos y lineas cortas: emite un codigo hex por caracter visible (muy verboso). SnLang cachea las lineas resueltas estaticamente para pagar ese costo una sola vez.
+- The pipeline order is FIXED per class Javadoc: locals -> PAPI -> `[small]` -> `[rgb]` -> legacy color conversion -> `[center]`. "`[center]` last" means at the end of the LEGACY PHASE, never after the render to `Component`: `CenterUtil` only knows how to measure legacy strings, which is why centering applies to the legacy-colored string (with the gradient's `&#RRGGBB` already interpolated) right before `legacyToMini` + deserialization. `[small]` runs BEFORE both: the gradient colors the final glyphs and centering measures the final glyphs.
+- Legacy and MiniMessage mix within the same string: `&X` / `&#RRGGBB` codes are translated to MiniMessage tags and the WHOLE string goes through MiniMessage at the end, so both formats render together. In `colorLegacy` it is the other way around: MiniMessage tags stay untouched inside the legacy string.
+- `<` escaping: it is only escaped (`\<`) when the next character CANNOT start a tag per `canStartTag`. A `<` followed by a letter, `/`, `#`, `!` or `_` is let through and MiniMessage will try to parse it as a tag.
+- `applyLocals` cuts the search for the closing delimiter at the first `%`/`}` it finds; `%%` or `{}` (empty token, `end == i + 1`) are not treated as a token and stay literal.
+- The `[rgb]` tag targets titles and short lines: it emits one hex code per visible character (very verbose). SnLang caches statically resolved lines to pay that cost only once.
 
 ### SmallCapsUtil
 `src/main/java/com/sn/lib/text/SmallCapsUtil.java`
 
-Clase final utilitaria (constructor privado). Sustitucion de letras por glifos small caps Unicode detras del tag de prefijo `[small]`. Transformacion pura de strings, sin Bukkit. El diccionario privado `SMALL` (escrito con escapes `\uXXXX`, indice = letra - 'a') mapea las 26 letras; todos los codepoints son BMP (un char de Java cada uno), asi el mapeo es SIEMPRE 1:1 char a char.
+Final utility class (private constructor). Substitution of letters with Unicode small caps glyphs behind the `[small]` prefix tag. Pure string transformation, no Bukkit. The private dictionary `SMALL` (written with `\uXXXX` escapes, index = letter - 'a') maps the 26 letters; all codepoints are BMP (one Java char each), so the mapping is ALWAYS 1:1 char to char.
 
-Diccionario completo (letra -> glifo -> codepoint):
+Full dictionary (letter -> glyph -> codepoint):
 
-| Letra | Glifo | Codepoint |
+| Letter | Glyph | Codepoint |
 |---|---|---|
 | a | ᴀ | U+1D00 |
 | b | ʙ | U+0299 |
@@ -376,3217 +375,3203 @@ Diccionario completo (letra -> glifo -> codepoint):
 | u | ᴜ | U+1D1C |
 | v | ᴠ | U+1D20 |
 | w | ᴡ | U+1D21 |
-| x | x | U+0078 (a si misma, ASCII) |
+| x | x | U+0078 (itself, ASCII) |
 | y | ʏ | U+028F |
 | z | ᴢ | U+1D22 |
 
-Semantica del mapeo (`mapChar`, privado): las mayusculas A-Z se transforman IGUAL que las minusculas (en small caps la caja no existe); las vocales acentuadas de AMBAS cajas se des-acentuan a los glifos small (a/e/i/o/u con tilde y la u con dieresis); la enye minuscula queda intacta y la enye mayuscula baja a la enye minuscula default U+00F1 (decision de disenio: el glifo small de la enye se ve mal en MC). Digitos, simbolos, espacios, glifos ya small y cualquier otro codepoint pasan intactos.
+Mapping semantics (`mapChar`, private): uppercase A-Z transforms the SAME as lowercase (case does not exist in small caps); accented vowels of BOTH cases are de-accented to the small glyphs (a/e/i/o/u with acute and the u with diaeresis); the lowercase enye stays intact and the uppercase enye lowers to the default lowercase enye U+00F1 (design decision: the small glyph for the enye looks bad in MC). Digits, symbols, spaces, already-small glyphs and any other codepoint pass through intact.
 
-- `public static String applySmallTag(String line)` - Aplica el mapeo small caps a una linea ya despojada de su prefijo `[small]`. Escaner de UNA pasada sin regex. Reglas de skip verbatim: codigos legacy `&X` / `&#RRGGBB` (helper `codeLength` duplicado de RgbGradientUtil, precedente de utils autocontenidas), codigos section-sign `§X` y la secuencia bungee completa de 14 chars (helper `sectionCodeLength`; los callers programaticos de `SnText.smallCaps` pueden pasar strings ya seccionados), y tags MiniMessage via la heuristica `canStartTag` con busqueda del `>` de cierre: si NO hay `>` en el resto de la linea el `<` se trata como literal y el texto sigue transformandose (asi `<bold>` queda intacto pero "i<3" se transforma). Los argumentos string dentro de tags (`hover:show_text:'...'`) NO se transforman porque viven entre `<` y `>`. Invariante de largo 1:1: el output SIEMPRE mide igual que el input (lo que preserva el conteo de visibles del gradiente `[rgb]`). Devuelve la MISMA instancia cuando ningun char mapeo (cero garbage en lineas que no cambian); null y vacio pass-through.
-- `static boolean isSmallGlyph(char c)` - Package-private, consumido por `CenterUtil.baseWidth`: switch O(1) que devuelve true para los 25 codepoints NO-ASCII del diccionario (todos menos la 'x').
+- `public static String applySmallTag(String line)` - Applies the small caps mapping to a line already stripped of its `[small]` prefix. SINGLE-pass scanner without regex. Verbatim skip rules: legacy codes `&X` / `&#RRGGBB` (helper `codeLength` duplicated from RgbGradientUtil, precedent of self-contained utils), section-sign codes `§X` and the full 14-char bungee sequence (helper `sectionCodeLength`; programmatic callers of `SnText.smallCaps` may pass already-sectioned strings), and MiniMessage tags via the `canStartTag` heuristic with a search for the closing `>`: if there is NO `>` in the rest of the line the `<` is treated as literal and the text keeps transforming (so `<bold>` stays intact but "i<3" transforms). String arguments inside tags (`hover:show_text:'...'`) are NOT transformed because they live between `<` and `>`. 1:1 length invariant: the output ALWAYS measures the same as the input (which preserves the `[rgb]` gradient's visible count). Returns the SAME instance when no char mapped (zero garbage on unchanged lines); null and empty pass-through.
+- `static boolean isSmallGlyph(char c)` - Package-private, consumed by `CenterUtil.baseWidth`: O(1) switch that returns true for the 25 NON-ASCII codepoints of the dictionary (all but the 'x').
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El tag `[small]` corre ANTES que `[rgb]` y que `[center]` en el pipeline (ver `SnText.applyPrefixTags`): el gradiente colorea los glifos finales y el centrado mide los glifos finales.
-- Al posicionarse despues de locales/PAPI, los VALORES de placeholders tambien salen en small caps: comportamiento deseado.
+- The `[small]` tag runs BEFORE `[rgb]` and `[center]` in the pipeline (see `SnText.applyPrefixTags`): the gradient colors the final glyphs and centering measures the final glyphs.
+- Being positioned after locals/PAPI, placeholder VALUES also come out in small caps: intended behavior.
 
 ### RgbGradientUtil
 `src/main/java/com/sn/lib/text/RgbGradientUtil.java`
 
-Clase final utilitaria (constructor privado). Gradiente RGB caracter por caracter detras del tag de prefijo `[rgb]`. Transformacion pura de strings, sin Bukkit. Constante privada `ANCHORS` con las 7 anclas de color y `SEGMENTS = ANCHORS.length - 1` (6 segmentos).
+Final utility class (private constructor). Character-by-character RGB gradient behind the `[rgb]` prefix tag. Pure string transformation, no Bukkit. Private constant `ANCHORS` with the 7 color anchors and `SEGMENTS = ANCHORS.length - 1` (6 segments).
 
-Las 7 anclas (indice 0 colorea el primer caracter visible, indice 6 el ultimo):
+The 7 anchors (index 0 colors the first visible character, index 6 the last):
 
-| Indice | Hex | Color aproximado |
+| Index | Hex | Approximate color |
 |---|---|---|
 | 0 | `0xF300F3` | magenta |
-| 1 | `0x5555FF` | azul |
+| 1 | `0x5555FF` | blue |
 | 2 | `0x55FFFF` | aqua |
-| 3 | `0x55FF55` | verde |
-| 4 | `0xFCFF21` | amarillo |
-| 5 | `0xFF9B00` | naranja |
-| 6 | `0xFF5327` | rojo anaranjado |
+| 3 | `0x55FF55` | green |
+| 4 | `0xFCFF21` | yellow |
+| 5 | `0xFF9B00` | orange |
+| 6 | `0xFF5327` | orange red |
 
-- `public static String applyRgbTag(String line)` - Aplica el gradiente a una linea ya despojada de su prefijo `[rgb]`. Con `n` caracteres visibles no-espacio, el caracter `i` recibe el color en `t = i / (n - 1)` sobre la cadena de anclas (`t = 0` si `n <= 1`), asi el primer caracter es exactamente `ANCHORS[0]` y el ultimo exactamente `ANCHORS[6]`. Devuelve la linea con un `&#RRGGBB` interpolado por caracter visible. Null o vacio se devuelve tal cual.
+- `public static String applyRgbTag(String line)` - Applies the gradient to a line already stripped of its `[rgb]` prefix. With `n` visible non-space characters, character `i` receives the color at `t = i / (n - 1)` over the anchor chain (`t = 0` if `n <= 1`), so the first character is exactly `ANCHORS[0]` and the last exactly `ANCHORS[6]`. Returns the line with one interpolated `&#RRGGBB` per visible character. Null or empty is returned as-is.
 
-#### Logica interna (algoritmo de interpolacion)
+#### Internal logic (interpolation algorithm)
 
-- `hexAt(int index, int total)` - Mapea la posicion a la cadena de anclas: `t = index / (total - 1)` (0.0 si `total <= 1`), `segment = t * 6`, `idx = min((int) segment, 5)` selecciona el segmento y `fraction = segment - idx` es el avance dentro de el. Interpola R, G y B por separado entre `ANCHORS[idx]` y `ANCHORS[idx + 1]` y formatea con `String.format("&#%02X%02X%02X", r, g, b)` (hex en mayuscula).
-- `lerp(int from, int to, double fraction)` - Interpolacion lineal por canal con `Math.round`.
-- `countVisibleNonSpace(String line)` - Cuenta los caracteres visibles no-espacio saltando los codigos legacy (usa `codeLength`).
-- `codeLength(String s, int i)` - Longitud del codigo legacy que arranca en `i`: 8 para `&#RRGGBB`, 2 para `&X` valido (`0-9`, `a-f`, `k-o`, `r`, `x`), 0 si no hay codigo.
-- `isFormatChar(char c)` - `true` para `k`-`o` (formatos: obfuscated, bold, strikethrough, underlined, italic).
-- `isHex(String s, int from)` - Valida 6 digitos hex consecutivos.
+- `hexAt(int index, int total)` - Maps the position onto the anchor chain: `t = index / (total - 1)` (0.0 if `total <= 1`), `segment = t * 6`, `idx = min((int) segment, 5)` selects the segment and `fraction = segment - idx` is the progress within it. It interpolates R, G and B separately between `ANCHORS[idx]` and `ANCHORS[idx + 1]` and formats with `String.format("&#%02X%02X%02X", r, g, b)` (uppercase hex).
+- `lerp(int from, int to, double fraction)` - Per-channel linear interpolation with `Math.round`.
+- `countVisibleNonSpace(String line)` - Counts visible non-space characters skipping legacy codes (uses `codeLength`).
+- `codeLength(String s, int i)` - Length of the legacy code starting at `i`: 8 for `&#RRGGBB`, 2 for a valid `&X` (`0-9`, `a-f`, `k-o`, `r`, `x`), 0 if there is no code.
+- `isFormatChar(char c)` - `true` for `k`-`o` (formats: obfuscated, bold, strikethrough, underlined, italic).
+- `isHex(String s, int from)` - Validates 6 consecutive hex digits.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Codigos de COLOR preexistentes (`&0`-`&f`, `&#RRGGBB`) se DESCARTAN porque el gradiente los pisa. Los codigos de FORMATO (`&l &o &n &m &k`) se acumulan en un buffer (sin duplicados) y se re-emiten despues de CADA hex interpolado, porque cada codigo de color legacy resetea el formato; `&r` vacia el formato acumulado.
-- Los espacios se copian tal cual y NO consumen posicion del gradiente: no reciben hex propio y no distorsionan la distribucion de las anclas.
-- La salida usa formato `&#RRGGBB`, que el resto del pipeline convierte despues (a `<#RRGGBB>` en `color` o a secuencia bungee en `colorLegacy`).
+- Pre-existing COLOR codes (`&0`-`&f`, `&#RRGGBB`) are DISCARDED because the gradient overrides them. FORMAT codes (`&l &o &n &m &k`) accumulate in a buffer (no duplicates) and are re-emitted after EACH interpolated hex, because every legacy color code resets formatting; `&r` empties the accumulated format.
+- Spaces copy through as-is and do NOT consume a gradient position: they receive no hex of their own and do not distort the anchor distribution.
+- The output uses the `&#RRGGBB` format, which the rest of the pipeline later converts (to `<#RRGGBB>` in `color` or to a bungee sequence in `colorLegacy`).
 
 ### CenterUtil
 `src/main/java/com/sn/lib/text/CenterUtil.java`
 
-Clase final utilitaria (constructor privado). Centrado de chat contra la semi-anchura de 154px de la ventana de chat por defecto, usando la tabla de anchos de la fuente vanilla (DefaultFontInfo). Transformacion pura de strings: mide los pixeles visibles de un string legacy-coloreado y le antepone los espacios necesarios. Constantes privadas: `CENTER_PX = 154` (mitad del ancho de la ventana de chat por defecto, en pixeles de fuente) y `SECTION = '§'`.
+Final utility class (private constructor). Chat centering against the 154px half-width of the default chat window, using the vanilla font width table (DefaultFontInfo). Pure string transformation: it measures the visible pixels of a legacy-colored string and prepends the needed spaces. Private constants: `CENTER_PX = 154` (half of the default chat window width, in font pixels) and `SECTION = '§'`.
 
-- `public static String center(String legacyColored)` - Antepone los espacios requeridos para centrar la linea en 154px. El parametro debe ser el string legacy-coloreado FINAL (con el hex del gradiente ya interpolado). Devuelve la linea centrada, o el input sin cambios si es null, vacio, o ya es mas ancho que el objetivo (`toCompensate <= 0`). Calcula `toCompensate = 154 - px / 2` y agrega espacios de a `width(' ', false)` = 4px hasta cubrirlo.
+- `public static String center(String legacyColored)` - Prepends the spaces required to center the line at 154px. The parameter must be the FINAL legacy-colored string (with the gradient hex already interpolated). Returns the centered line, or the input unchanged if it is null, empty, or already wider than the target (`toCompensate <= 0`). Computes `toCompensate = 154 - px / 2` and adds spaces of `width(' ', false)` = 4px each until covered.
 
-#### Logica interna
+#### Internal logic
 
-- `measure(String s)` - Suma el ancho en pixeles de los caracteres visibles. Salta `&#RRGGBB` (avanza 8 chars) y los codigos `&X` / `§X`; trackea el estado bold: `&l`/`§l` lo enciende y `&r`/`§r` lo apaga (los demas codigos de color NO lo apagan durante la medicion).
-- `width(char c, boolean bold)` - Avance en pixeles: ancho de tabla mas 1px de separacion de glifo; bold suma 1px extra excepto para espacios.
-- `baseWidth(char c)` - Tabla de anchos vanilla DefaultFontInfo (ver tabla abajo). En la rama `default`, ANTES del check del rango ASCII imprimible, los glifos small caps (detectados via `SmallCapsUtil.isSmallGlyph`, acceso package-private dentro de `com.sn.lib.text`) devuelven base 5 como las mayusculas, salvo U+026A (la i small, angosta) que devuelve base 3 como la 'I' mayuscula; sin esta rama caerian en el fallback de 4 y una linea `[center][small]` saldria corrida a la derecha.
-- `isCodeChar(char c)` - Valida caracter de codigo legacy (`0-9`, `a-f`, `k-o`, `r`, `x`).
-- `isHex(String s, int from)` - Valida 6 digitos hex consecutivos.
+- `measure(String s)` - Sums the pixel width of the visible characters. Skips `&#RRGGBB` (advances 8 chars) and `&X` / `§X` codes; tracks bold state: `&l`/`§l` turns it on and `&r`/`§r` turns it off (other color codes do NOT turn it off during measurement).
+- `width(char c, boolean bold)` - Pixel advance: table width plus 1px glyph gap; bold adds 1px extra except for spaces.
+- `baseWidth(char c)` - Vanilla DefaultFontInfo width table (see table below). In the `default` branch, BEFORE the printable ASCII range check, small caps glyphs (detected via `SmallCapsUtil.isSmallGlyph`, package-private access within `com.sn.lib.text`) return base 5 like uppercase letters, except U+026A (the small i, narrow) which returns base 3 like the uppercase 'I'; without this branch they would fall into the fallback of 4 and a `[center][small]` line would come out shifted right.
+- `isCodeChar(char c)` - Validates a legacy code character (`0-9`, `a-f`, `k-o`, `r`, `x`).
+- `isHex(String s, int from)` - Validates 6 consecutive hex digits.
 
-Tabla de medicion en pixeles (ancho base por glifo, ANTES de sumar el gap de 1px y el +1px de bold):
+Pixel measurement table (base width per glyph, BEFORE adding the 1px gap and the bold +1px):
 
-| Ancho base | Caracteres |
+| Base width | Characters |
 |---|---|
 | 1 | `i` `!` `:` `;` `'` `.` `,` `\|` |
 | 2 | `l` `` ` `` |
-| 3 | `I` `t` `[` `]` `"` espacio |
+| 3 | `I` `t` `[` `]` `"` space |
 | 4 | `f` `k` `(` `)` `{` `}` `<` `>` |
-| 5 | resto del rango ASCII imprimible (`!` a `~`) |
+| 5 | rest of the printable ASCII range (`!` to `~`) |
 | 6 | `@` |
-| 5 | glifos small caps del diccionario de `SmallCapsUtil` (salvo U+026A) |
-| 3 | U+026A (la i small caps, mide como la `I` mayuscula) |
-| 4 | fallback para glifos desconocidos (fuera de `!`-`~`) |
+| 5 | small caps glyphs of the `SmallCapsUtil` dictionary (except U+026A) |
+| 3 | U+026A (the small caps i, measures like uppercase `I`) |
+| 4 | fallback for unknown glyphs (outside `!`-`~`) |
 
-Los anchos de los glifos small caps (5 y 3) son aproximaciones razonables ajustables en `baseWidth` unicamente: los avances exactos dependen de los bitmaps de la fuente accented del cliente.
+The small caps glyph widths (5 and 3) are reasonable approximations adjustable in `baseWidth` only: the exact advances depend on the client's accented font bitmaps.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Solo puede medir strings LEGACY, nunca `Component`s: por eso el pipeline lo aplica como ultimo paso de la fase legacy, antes de `legacyToMini` y la deserializacion MiniMessage. Un tag MiniMessage sin convertir dentro de la linea se mediria como texto visible.
-- `measure` acepta codigos tanto con `&` como con `§`, pero la forma hex solo se salta con `&#RRGGBB` (la secuencia bungee `§x§R...` se salta igual porque cada par `§X` es un codigo valido: `x` esta en `isCodeChar`).
-- El compensado usa espacios normales de 4px (3 de tabla + 1 de gap): el centrado tiene granularidad de 4px, es una aproximacion, no pixel-perfect.
+- It can only measure LEGACY strings, never `Component`s: that is why the pipeline applies it as the last step of the legacy phase, before `legacyToMini` and MiniMessage deserialization. An unconverted MiniMessage tag inside the line would be measured as visible text.
+- `measure` accepts codes with both `&` and `§`, but the hex form is only skipped as `&#RRGGBB` (the bungee sequence `§x§R...` is still skipped because each `§X` pair is a valid code: `x` is in `isCodeChar`).
+- The compensation uses normal 4px spaces (3 from the table + 1 gap): centering has 4px granularity, it is an approximation, not pixel-perfect.
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME en los archivos del alcance. Limitaciones documentadas en el codigo:
+There are no TODO/FIXME markers in the files of this scope. Limitations documented in the code:
 
-- `[rgb]` esta pensado para titulos y lineas cortas: emite un codigo hex por caracter visible, lo que multiplica el largo del string (el `StringBuilder` reserva `line.length() * 9`). SnLang cachea las lineas resueltas estaticamente para pagar el costo una sola vez.
-- `CenterUtil` solo mide strings legacy (nunca `Component`s) y asume la ventana de chat por defecto (154px de semi-anchura) con la tabla de fuente vanilla: resource packs con fuentes custom o anchos de chat modificados no se contemplan.
-- `applyLocals` no re-escanea los valores de reemplazo: un placeholder cuyo valor contiene otro token `%key%`/`{key}` no se expande recursivamente (decision deliberada para evitar loops).
-- Los pasos de locales y PAPI son responsabilidad del llamador (getters de SnYml): `color`/`colorLegacy` no los ejecutan.
-
+- `[rgb]` is intended for titles and short lines: it emits one hex code per visible character, which multiplies the string length (the `StringBuilder` reserves `line.length() * 9`). SnLang caches statically resolved lines to pay the cost only once.
+- `CenterUtil` only measures legacy strings (never `Component`s) and assumes the default chat window (154px half-width) with the vanilla font table: resource packs with custom fonts or modified chat widths are not accounted for.
+- `applyLocals` does not re-scan replacement values: a placeholder whose value contains another `%key%`/`{key}` token does not expand recursively (deliberate decision to avoid loops).
+- The locals and PAPI steps are the caller's responsibility (SnYml getters): `color`/`colorLegacy` do not run them.
 ---
 
-## 04. YML: lectura, preprocesado y auto-update
+## 04. YML: reading, preprocessing and auto-update
 
-Modulo `com.sn.lib.yml`: toda la vida de un archivo YAML de un plugin consumidor pasa por aca. `YamlPreprocessor` repara texto YAML indentado con tabs antes de parsear (texto puro, sin tipos Bukkit). `SnYml` es la vista viva de UN archivo: getters tipados con placeholders y fallback + WARN, y guardado async coalescido con conmutacion a sync durante el shutdown. `YamlUpdater` es el updater always-merge basado en lineas (sin key de version): inserta lo que falta respecto del recurso del jar preservando valores, comentarios y keys extra del usuario, con backups pre-merge y recuperacion de archivos corruptos. `YmlManager` es el modulo `sn.yml()` del contexto: registra cada `SnYml` por path relativo al data folder y decide el modo de cada archivo (managed / managedPruning / seedOnly / data / load) en el primer mount.
+Module `com.sn.lib.yml`: the entire life of a consumer plugin's YAML file goes through here. `YamlPreprocessor` repairs tab-indented YAML text before parsing (pure text, no Bukkit types). `SnYml` is the live view of ONE file: typed getters with placeholders and fallback + WARN, and coalesced async saving that switches to sync during shutdown. `YamlUpdater` is the line-based always-merge updater (no version key): it inserts whatever is missing relative to the jar resource while preserving the user's values, comments and extra keys, with pre-merge backups and recovery of corrupt files. `YmlManager` is the context's `sn.yml()` module: it registers each `SnYml` by path relative to the data folder and decides each file's mode (managed / managedPruning / seedOnly / data / load) at first mount.
 
 ### YamlPreprocessor
 `src/main/java/com/sn/lib/yml/YamlPreprocessor.java`
 
-Preprocesador de texto puro (clase `final` con constructor privado, solo estaticos) que repara YAML indentado con tabs antes de que SnakeYAML lo rechace. Reescribe cada tab del run de whitespace inicial de una linea en DOS espacios, dejando el resto de la linea byte a byte intacto (tabs dentro de valores quoted o plain se preservan). Normaliza CRLF y CR sueltos a LF. No referencia tipos Bukkit: testeable en unit tests planos. `preprocess` nunca lanza.
+Pure text preprocessor (`final` class with private constructor, statics only) that repairs tab-indented YAML before SnakeYAML rejects it. It rewrites each tab in a line's leading whitespace run to TWO spaces, leaving the rest of the line byte-for-byte intact (tabs inside quoted or plain values are preserved). Normalizes CRLF and lone CR to LF. It references no Bukkit types: testable in plain unit tests. `preprocess` never throws.
 
-- `public record Result(String cleanText, List<Integer> fixedLines)` - resultado de `preprocess`: texto reparado con line endings LF mas la lista (copiada inmutable en el constructor compacto) de numeros de linea 1-based cuyos tabs de indentacion fueron reemplazados; vacia si no hubo reparacion.
-- `public static Result preprocess(String rawText)` - repara los tabs de indentacion; `null` se trata como vacio; nunca lanza y nunca devuelve null. Devuelve las lineas corregidas para que el caller emita UN solo warning.
-- `public static String read(Path file) throws IOException` - lee el archivo como UTF-8; las secuencias de bytes malformadas decodifican al replacement character en vez de fallar, y un BOM inicial (U+FEFF) se recorta.
+- `public record Result(String cleanText, List<Integer> fixedLines)` - result of `preprocess`: repaired text with LF line endings plus the list (copied immutable in the compact constructor) of 1-based line numbers whose indentation tabs were replaced; empty if nothing was repaired.
+- `public static Result preprocess(String rawText)` - repairs indentation tabs; `null` is treated as empty; never throws and never returns null. It returns the corrected lines so the caller can emit ONE single warning.
+- `public static String read(Path file) throws IOException` - reads the file as UTF-8; malformed byte sequences decode to the replacement character instead of failing, and a leading BOM (U+FEFF) is trimmed.
 
-#### Logica interna: maquina de block scalars
+#### Internal logic: block scalar state machine
 
-`preprocess` recorre linea por linea con dos variables de estado: `boolean enBlockScalar` y `int scalarIndent`.
+`preprocess` walks line by line with two state variables: `boolean enBlockScalar` and `int scalarIndent`.
 
-1. Estado normal: cada linea pasa por `fixIndentTabs(line, n, fixedLines)` (reemplaza cada tab del prefijo de whitespace por `"  "` y registra la linea 1-based si toco algo; el resto de la linea se copia verbatim). Despues, si la linea LIMPIA termina en un indicador de block scalar (`startsBlockScalar`), se entra al estado block scalar y `scalarIndent = indentColumns(lineaLimpia)` (el indent del HEADER, no del contenido).
-2. Estado block scalar: una linea en blanco (`isBlank`: solo espacios/tabs) o una linea con `indentColumns(line) > scalarIndent` es CONTENIDO del scalar y se copia sin tocar (los tabs ahi son contenido literal). La primera linea no blanca con indent `<= scalarIndent` cierra el estado y se procesa como linea normal (puede a su vez abrir otro block scalar).
-3. `indentColumns` mide el ancho del whitespace inicial en columnas: espacio = 1, tab = 2 (mismo ancho que el reemplazo, asi la medicion es coherente antes y despues de reparar).
-4. Deteccion del indicador (`startsBlockScalar` + `isBlockScalarIndicator`): se recorta el comentario con `stripComment` (corta en el primer `#` fuera de comillas que este al inicio de linea o precedido de espacio/tab; maneja comillas simples, dobles y escapes `\` dentro de dobles), se hace rstrip, y se toma el ultimo token (desde el ultimo espacio/tab). El token es indicador si empieza con `|` o `>` y sus modificadores son vacios o matchean `[0-9][+-]?|[+-][0-9]?` (chomping `+`/`-` y digito de indentacion en cualquier orden, un digito maximo).
+1. Normal state: each line goes through `fixIndentTabs(line, n, fixedLines)` (replaces each tab of the whitespace prefix with `"  "` and records the 1-based line if it touched anything; the rest of the line copies verbatim). Then, if the CLEAN line ends in a block scalar indicator (`startsBlockScalar`), the block scalar state is entered and `scalarIndent = indentColumns(cleanLine)` (the HEADER's indent, not the content's).
+2. Block scalar state: a blank line (`isBlank`: only spaces/tabs) or a line with `indentColumns(line) > scalarIndent` is scalar CONTENT and copies untouched (tabs there are literal content). The first non-blank line with indent `<= scalarIndent` closes the state and is processed as a normal line (which may in turn open another block scalar).
+3. `indentColumns` measures the width of the leading whitespace in columns: space = 1, tab = 2 (same width as the replacement, so the measurement is consistent before and after repairing).
+4. Indicator detection (`startsBlockScalar` + `isBlockScalarIndicator`): the comment is trimmed with `stripComment` (cuts at the first `#` outside quotes that is at the start of the line or preceded by a space/tab; handles single quotes, double quotes and `\` escapes inside doubles), the line is rstripped, and the last token is taken (from the last space/tab). The token is an indicator if it starts with `|` or `>` and its modifiers are empty or match `[0-9][+-]?|[+-][0-9]?` (chomping `+`/`-` and an indentation digit in any order, one digit max).
 
-Metodos privados: `fixIndentTabs(String, int, List<Integer>)`, `startsBlockScalar(String)`, `isBlockScalarIndicator(String)`, `stripComment(String)`, `indentColumns(String)`, `isBlank(String)`, `rstrip(String)`.
+Private methods: `fixIndentTabs(String, int, List<Integer>)`, `startsBlockScalar(String)`, `isBlockScalarIndicator(String)`, `stripComment(String)`, `indentColumns(String)`, `isBlank(String)`, `rstrip(String)`.
 
-#### Notas y gotchas
-- El digito de indentacion del indicador (`|2`, `>4`) se acepta sintacticamente pero NO se usa para calcular el indent del contenido: la pertenencia al scalar se decide solo relativo al indent del header. Es suficiente para el objetivo (no tocar contenido literal), no es un parser YAML completo.
-- Como el tab reemplaza a 2 columnas y `indentColumns` cuenta el tab como 2, la deteccion de contenido de block scalar da igual antes o despues de la reparacion.
+#### Notes and gotchas
+- The indicator's indentation digit (`|2`, `>4`) is accepted syntactically but NOT used to compute the content indent: scalar membership is decided only relative to the header's indent. It suffices for the goal (not touching literal content); it is not a full YAML parser.
+- Since a tab is replaced by 2 columns and `indentColumns` counts a tab as 2, block scalar content detection is identical before or after the repair.
 
 ### SnYml
 `src/main/java/com/sn/lib/yml/SnYml.java`
 
-Un archivo YAML poseido por un contexto consumidor (`Sn ctx`): carga tolerante a tabs, getters tipados placeholder-aware con fallback + WARN, y guardado async coalescido. Las instancias las crea el `YmlManager` del contexto, una por archivo (constructor package-private `SnYml(Sn ctx, File file)` que hace `loadFromDisk()`). El campo `yaml` es `volatile YamlConfiguration`: los getters leen el snapshot vigente desde cualquier thread.
+A YAML file owned by a consumer context (`Sn ctx`): tab-tolerant loading, placeholder-aware typed getters with fallback + WARN, and coalesced async saving. Instances are created by the context's `YmlManager`, one per file (package-private constructor `SnYml(Sn ctx, File file)` that runs `loadFromDisk()`). The `yaml` field is `volatile YamlConfiguration`: getters read the current snapshot from any thread.
 
-- `public File file()` - archivo de respaldo en disco.
-- `public String getString(String key, String def)` - string resuelto; key ausente devuelve `def` en silencio. Delega en la variante con viewer null.
-- `public String getString(String key, String def, Player viewer)` - string resuelto; los tokens PAPI se resuelven por-viewer cuando se pasa uno.
-- `public int getInt(String key, int def)` - entero; los `Number` se leen directo (`intValue()`), los strings se resuelven (viewer null) y se parsean con `Integer.parseInt(trim())`.
-- `public double getDouble(String key, double def)` - idem con `doubleValue()` / `Double.parseDouble`.
-- `public long getLong(String key, long def)` - idem con `longValue()` / `Long.parseLong`.
-- `public boolean getBoolean(String key, boolean def)` - boolean; `Boolean` directo; de un string solo parsean los literales `true`/`false` (case-insensitive, despues de resolver y trim).
-- `public List<String> getStringList(String key, List<String> def)` - lista de strings con cada elemento resuelto; key ausente devuelve `def` en silencio.
-- `public List<String> getStringList(String key, List<String> def, Player viewer)` - idem resolviendo por-viewer; un elemento null se convierte a `""` antes de resolver.
-- `public ConfigurationSection getSection(String key)` - seccion cruda o null si no existe; los valores leidos desde ella NO pasan por `resolve` (sin placeholders).
-- `public boolean isSet(String key)` - true cuando la key existe en el archivo, incluso con valor 0/false/vacio; mantiene distinguible "0 explicito" de "key ausente".
-- `public void set(String key, Object value)` - setea el valor en memoria; hay que llamar `save()` para persistir.
-- `public void save()` - persiste el estado actual (ver "save() coalescido" abajo).
-- `public void flush()` - drena cualquier guardado pendiente; lo invoca el teardown del contexto (ver abajo).
-- `public SnYml placeholder(String key, Supplier<String> value)` - registra un placeholder local que se resuelve ANTES de cualquier lookup PAPI; fluido (devuelve `this`).
-- `public SnYml placeholders(Map<String, Supplier<String>> values)` - registro en lote de placeholders locales.
-- `public void onReload(Runnable hook)` - registra un hook que se dispara despues de cada `reload()`.
-- `public void reload()` - relee el archivo de disco (preprocesando tabs) y dispara los hooks de reload; un hook que lanza `Throwable` solo loguea WARN "Hook de reload fallo para <file>: <t>" y no corta a los demas.
+- `public File file()` - the backing file on disk.
+- `public String getString(String key, String def)` - resolved string; a missing key returns `def` silently. Delegates to the null-viewer variant.
+- `public String getString(String key, String def, Player viewer)` - resolved string; PAPI tokens resolve per-viewer when one is passed.
+- `public int getInt(String key, int def)` - integer; `Number`s are read directly (`intValue()`), strings are resolved (null viewer) and parsed with `Integer.parseInt(trim())`.
+- `public double getDouble(String key, double def)` - same with `doubleValue()` / `Double.parseDouble`.
+- `public long getLong(String key, long def)` - same with `longValue()` / `Long.parseLong`.
+- `public boolean getBoolean(String key, boolean def)` - boolean; `Boolean` directly; from a string only the literals `true`/`false` parse (case-insensitive, after resolving and trimming).
+- `public List<String> getStringList(String key, List<String> def)` - string list with each element resolved; a missing key returns `def` silently.
+- `public List<String> getStringList(String key, List<String> def, Player viewer)` - same, resolving per-viewer; a null element is converted to `""` before resolving.
+- `public ConfigurationSection getSection(String key)` - raw section or null if it does not exist; values read through it do NOT go through `resolve` (no placeholders).
+- `public boolean isSet(String key)` - true when the key exists in the file, even with a 0/false/empty value; keeps "explicit 0" distinguishable from "missing key".
+- `public void set(String key, Object value)` - sets the value in memory; `save()` must be called to persist.
+- `public void save()` - persists the current state (see "coalesced save()" below).
+- `public void flush()` - drains any pending save; invoked by the context teardown (see below).
+- `public SnYml placeholder(String key, Supplier<String> value)` - registers a local placeholder resolved BEFORE any PAPI lookup; fluent (returns `this`).
+- `public SnYml placeholders(Map<String, Supplier<String>> values)` - batch registration of local placeholders.
+- `public void onReload(Runnable hook)` - registers a hook fired after each `reload()`.
+- `public void reload()` - re-reads the file from disk (preprocessing tabs) and fires the reload hooks; a hook throwing `Throwable` only logs WARN "Reload hook failed for <file>: <t>" and does not stop the others.
 
-#### Tabla de resolucion por tipo de los getters
+#### Per-type resolution table of the getters
 
-Todos los getters comparten el mismo esqueleto sobre `Object raw = yaml.get(key)`:
+All getters share the same skeleton over `Object raw = yaml.get(key)`:
 
-| Caso | getString | getInt / getLong / getDouble | getBoolean | getStringList |
+| Case | getString | getInt / getLong / getDouble | getBoolean | getStringList |
 |---|---|---|---|---|
-| `raw == null` y `!isSet(key)` (key ausente) | `def` en silencio | `def` en silencio | `def` en silencio | `def` en silencio |
-| `raw == null` pero `isSet(key)` (key con valor null explicito) | WARN + `def` | WARN + `def` | WARN + `def` | WARN + `def` |
-| Tipo nativo esperado | `String` -> `resolve(s, viewer)` | `Number` -> `intValue()/longValue()/doubleValue()` (sin resolve) | `Boolean` -> directo | `List<?>` -> cada elemento `String.valueOf` + `resolve` (null -> `""`) |
-| `String` (para tipos no-string) | n/a | `resolve(s, null).trim()` + parse; `NumberFormatException` -> WARN + `def` | `resolve(s, null).trim()`; solo `"true"`/`"false"` ignore-case; otro -> WARN + `def` | n/a (un string NO es lista: WARN + `def`) |
-| Otro tipo | WARN + devuelve `resolve(String.valueOf(raw), viewer)` (NO `def`) | WARN + `def` | WARN + `def` | WARN + `def` |
+| `raw == null` and `!isSet(key)` (missing key) | `def` silently | `def` silently | `def` silently | `def` silently |
+| `raw == null` but `isSet(key)` (key with explicit null value) | WARN + `def` | WARN + `def` | WARN + `def` | WARN + `def` |
+| Expected native type | `String` -> `resolve(s, viewer)` | `Number` -> `intValue()/longValue()/doubleValue()` (no resolve) | `Boolean` -> direct | `List<?>` -> each element `String.valueOf` + `resolve` (null -> `""`) |
+| `String` (for non-string types) | n/a | `resolve(s, null).trim()` + parse; `NumberFormatException` -> WARN + `def` | `resolve(s, null).trim()`; only `"true"`/`"false"` ignore-case; anything else -> WARN + `def` | n/a (a string is NOT a list: WARN + `def`) |
+| Other type | WARN + returns `resolve(String.valueOf(raw), viewer)` (NOT `def`) | WARN + `def` | WARN + `def` | WARN + `def` |
 
-El WARN es siempre `warnInvalid`: `"Valor invalido en <file> -> '<key>': se recibio '<value>', usando default '<def>'"` (en el caso especial de getString con tipo incorrecto el mensaje dice "usando default" pero el metodo devuelve el valor stringificado y resuelto, no `def`).
+The WARN is always `warnInvalid`: `"Invalid value in <file> -> '<key>': received '<value>', using default '<def>'"` (in the special getString wrong-type case the message says "using default" but the method returns the stringified, resolved value, not `def`).
 
-Resolucion de placeholders (`resolve(String s, Player viewer)`, privado): primero locals via `SnText.applyLocals(s, this::localValue)`; despues, solo si queda algun `%` en el texto, PAPI: en el primary thread delega en `ctx.papi().apply(viewer, out)` (identidad si el servicio papi todavia es null durante la construccion del contexto); FUERA del main thread los tokens PAPI quedan intactos y el skip se registra por `ctx.debug()` (si no es null): "PAPI omitido fuera del main thread en <file>; tokens intactos: <texto>". Los getters sin viewer resuelven PAPI contra el server (player null). Los getters numericos y boolean resuelven siempre con viewer null.
+Placeholder resolution (`resolve(String s, Player viewer)`, private): locals first via `SnText.applyLocals(s, this::localValue)`; then, only if any `%` remains in the text, PAPI: on the primary thread it delegates to `ctx.papi().apply(viewer, out)` (identity if the papi service is still null during context construction); OUTSIDE the main thread PAPI tokens stay intact and the skip is recorded through `ctx.debug()` (if non-null): "PAPI skipped off the main thread in <file>; tokens untouched: <text>". Viewerless getters resolve PAPI against the server (null player). Numeric and boolean getters always resolve with a null viewer.
 
-#### save() async coalescido + conmutacion sync + guard anti stale-write
+#### Coalesced async save() + sync switch + anti stale-write guard
 
-Estado: `saveLock` protege `pendingSnapshot`, `pendingSeq`, `pendingWrite`, `writeScheduled` y el contador `saveSeq`; `ioLock` protege la escritura fisica y `lastAttemptedSeq`.
+State: `saveLock` protects `pendingSnapshot`, `pendingSeq`, `pendingWrite`, `writeScheduled` and the `saveSeq` counter; `ioLock` protects the physical write and `lastAttemptedSeq`.
 
-1. `save()` toma el snapshot serializado (`yaml.saveToString()`) EN el thread llamador: lo que se persiste es el estado al momento del save, no al momento de la escritura.
-2. Si `ctx.isShuttingDown()`: bajo `saveLock` se descarta `pendingSnapshot` (queda cubierto por este snapshot mas nuevo), se toma `seq = ++saveSeq`, y se escribe SINCRONO en el thread llamador via `writeToDisk` - nunca por el scheduler (que ya puede estar rechazando tareas).
-3. Runtime normal: bajo `saveLock` se reemplaza `pendingSnapshot`/`pendingSeq` (coalescing: a lo sumo UNA escritura pendiente por archivo; un save mas nuevo pisa el snapshot pendiente) y, si no hay drain agendado (`!writeScheduled`), se agenda `ctx.scheduler().supplyAsync(this::drainPendingWrites)` y se guarda el future en `pendingWrite`. Un `whenComplete` resetea `writeScheduled = false` SOLO si el future termino con error (si el async nunca corrio, un save posterior puede reagendar); en el camino feliz lo resetea el propio drain.
-4. `drainPendingWrites()` (corre en el pool async): loop que bajo `saveLock` roba el snapshot pendiente y lo limpia; si no hay nada, apaga `writeScheduled` y termina; si hay, escribe fuera del lock via `writeToDisk` y vuelve a iterar (asi consume saves que llegaron mientras escribia).
-5. `writeToDisk(String content, long seq)`: bajo `ioLock`, guard de secuencia - si `seq <= lastAttemptedSeq` retorna sin escribir. El comentario del codigo lo dice literal: un snapshot mas viejo que uno ya intentado JAMAS pisa el estado nuevo (carrera drain async vs save sincrono de teardown). Despues crea los directorios padre si hace falta y escribe UTF-8; una `IOException` solo loguea WARN "No se pudo guardar <file>: <msg>".
+1. `save()` takes the serialized snapshot (`yaml.saveToString()`) ON the calling thread: what persists is the state at save time, not at write time.
+2. If `ctx.isShuttingDown()`: under `saveLock` the `pendingSnapshot` is discarded (covered by this newer snapshot), `seq = ++saveSeq` is taken, and it writes SYNCHRONOUSLY on the calling thread via `writeToDisk` - never through the scheduler (which may already be rejecting tasks).
+3. Normal runtime: under `saveLock` it replaces `pendingSnapshot`/`pendingSeq` (coalescing: at most ONE pending write per file; a newer save overwrites the pending snapshot) and, if no drain is scheduled (`!writeScheduled`), schedules `ctx.scheduler().supplyAsync(this::drainPendingWrites)` and stores the future in `pendingWrite`. A `whenComplete` resets `writeScheduled = false` ONLY if the future ended with an error (if the async never ran, a later save can reschedule); on the happy path the drain itself resets it.
+4. `drainPendingWrites()` (runs on the async pool): a loop that under `saveLock` steals the pending snapshot and clears it; if there is nothing, it turns off `writeScheduled` and finishes; if there is, it writes outside the lock via `writeToDisk` and iterates again (thus consuming saves that arrived while it was writing).
+5. `writeToDisk(String content, long seq)`: under `ioLock`, sequence guard - if `seq <= lastAttemptedSeq` it returns without writing. The code comment states it literally: a snapshot older than one already attempted NEVER overwrites the newer state (async drain vs synchronous teardown save race). It then creates the parent directories if needed and writes UTF-8; an `IOException` only logs WARN "Could not save <file>: <msg>".
 
-`flush()`: copia `pendingWrite` bajo `saveLock` y si existe le hace `get(10, TimeUnit.SECONDS)` (una `InterruptedException` re-asserta el interrupt; cualquier otra excepcion o timeout se ignora porque el sobrante se maneja abajo). Despues, bajo `saveLock`, roba el `pendingSnapshot` sobrante (caso: el scheduler rechazo o cancelo el async y nunca corrio) y lo escribe sincrono con su `pendingSeq`. Lo invoca el teardown del contexto (via `YmlManager.flushAll()`) para que ningun write coalescido se pierda.
+`flush()`: copies `pendingWrite` under `saveLock` and if present does `get(10, TimeUnit.SECONDS)` (an `InterruptedException` re-asserts the interrupt; any other exception or timeout is ignored because the remainder is handled below). Then, under `saveLock`, it steals the leftover `pendingSnapshot` (case: the scheduler rejected or cancelled the async and it never ran) and writes it synchronously with its `pendingSeq`. Invoked by the context teardown (via `YmlManager.flushAll()`) so no coalesced write is ever lost.
 
-#### Notas y gotchas
-- `loadFromDisk()` con archivo inexistente deja un `YamlConfiguration` vacio; con `IOException`/`InvalidConfigurationException` NO pisa el estado: WARN "No se pudo leer <file>: <msg>; se mantiene el contenido anterior" y el yaml previo sigue vigente.
-- Si el preprocesador reparo lineas, se emite UN warning: "Tabs de indentacion corregidos en <file> (lineas [...])".
-- `locales` es `ConcurrentHashMap` y `reloadHooks` es `CopyOnWriteArrayList`: registro seguro desde cualquier thread.
+#### Notes and gotchas
+- `loadFromDisk()` with a nonexistent file leaves an empty `YamlConfiguration`; on `IOException`/`InvalidConfigurationException` it does NOT overwrite the state: WARN "Could not read <file>: <msg>; keeping the previous content" and the previous yaml stays current.
+- If the preprocessor repaired lines, ONE warning is emitted: "Indentation tabs corrected in <file> (lines [...])".
+- `locales` is a `ConcurrentHashMap` and `reloadHooks` is a `CopyOnWriteArrayList`: safe registration from any thread.
 
 ### YamlUpdater
 `src/main/java/com/sn/lib/yml/YamlUpdater.java`
 
-Updater YAML always-merge basado en LINEAS (clase `final`, constructor privado, todo estatico). Inserta keys/secciones presentes en el recurso del jar pero ausentes del archivo en disco, preservando valores del usuario, comentarios, contenido de listas y keys extra que el usuario agrego. NO hay key de version (`config-version`): el recurso se compara estructuralmente contra el disco EN CADA arranque. Por defecto nunca borra nada ni reformatea lineas existentes; el borrado de keys ausentes del recurso solo ocurre con prune explicito. I/O sincrona por diseño: `update` corre solo dentro de onEnable y del comando reload, nunca durante gameplay (excepcion documentada a la regla de I/O async de la lib).
+LINE-based always-merge YAML updater (`final` class, private constructor, all static). It inserts keys/sections present in the jar resource but absent from the file on disk, preserving user values, comments, list content and extra keys the user added. There is NO version key (`config-version`): the resource is compared structurally against disk ON EVERY startup. By default it never deletes anything or reformats existing lines; deleting keys absent from the resource only happens with explicit prune. Synchronous I/O by design: `update` runs only inside onEnable and the reload command, never during gameplay (documented exception to the lib's async-I/O rule).
 
-Constantes (privadas): `BACKUP_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")`, `BACKUPS_KEPT = 3`.
+Constants (private): `BACKUP_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")`, `BACKUPS_KEPT = 3`.
 
-- `public static List<String> merge(List<String> resourceLines, List<String> diskLines)` - entrada pura del merge: devuelve una copia de `diskLines` con cada bloque faltante (keys mas sus comentarios adjuntos) insertado en su posicion anclada. Sin I/O, testeable en unit tests planos.
-- `public static boolean isParseable(String yamlText)` - true cuando el texto parsea como YAML (`null` se trata como vacio); se usa para detectar archivos de disco corruptos antes de un merge. Pura.
-- `public static void update(JavaPlugin plugin, String resourcePath, File diskFile, boolean prune)` - mergea el recurso del jar en el archivo de disco, seedeandolo si falta y respaldandolo si esta corrupto. El gate `update-configs` se lee del `config.yml` del data folder; cuando `diskFile` ES ese config, queda exento del gate y mergea siempre.
-- `static void update(JavaPlugin plugin, String resourcePath, File diskFile, boolean prune, @Nullable File gateFile, boolean gateExempt)` - variante gate-aware (package-private) usada por `YmlManager`, que conoce el archivo de config REAL declarado en el spec del consumidor (puede no llamarse `config.yml`).
-- `public static boolean updateFromLines(JavaPlugin plugin, List<String> referenceLines, File diskFile, @Nullable File gateFile)` - variante cuya referencia vive en memoria en vez del jar (ej: una traduccion mergeada contra el `messages_en.yml` de DISCO). Misma semantica: seed si falta, backup-N + reseed si corrupto, backup pre-merge keep-last-3 y gate leido de `gateFile` (`null` saltea el gate). Devuelve true cuando el archivo de disco cambio (seedeado, regenerado o mergeado). No soporta prune.
-- `static void seedIfMissing(JavaPlugin plugin, String resourcePath, File diskFile)` - (package-private) seedea el archivo desde el recurso del jar SOLO cuando no existe; nunca mergea.
-- `static boolean readUpdateConfigsGate(@Nullable File gateFile)` - (package-private) lee el gate maestro parseando el config directo de DISCO antes de cualquier merge; gateFile null, archivo ausente, key ausente o contenido ilegible cuentan todos como `true`.
-- `public static List<String> prune(List<String> resourceLines, List<String> lines)` - entrada pura del prune: devuelve una copia de `lines` con cada bloque cuyo key-path no existe en el recurso removido, comentarios incluidos. Opt-in unicamente (via `managedPruning`). Sin I/O.
+- `public static List<String> merge(List<String> resourceLines, List<String> diskLines)` - pure entry point of the merge: returns a copy of `diskLines` with each missing block (keys plus their attached comments) inserted at its anchored position. No I/O, testable in plain unit tests.
+- `public static boolean isParseable(String yamlText)` - true when the text parses as YAML (`null` treated as empty); used to detect corrupt disk files before a merge. Pure.
+- `public static void update(JavaPlugin plugin, String resourcePath, File diskFile, boolean prune)` - merges the jar resource into the disk file, seeding it if missing and backing it up if corrupt. The `update-configs` gate is read from the data folder's `config.yml`; when `diskFile` IS that config, it is exempt from the gate and always merges.
+- `static void update(JavaPlugin plugin, String resourcePath, File diskFile, boolean prune, @Nullable File gateFile, boolean gateExempt)` - gate-aware variant (package-private) used by `YmlManager`, which knows the REAL config file declared in the consumer's spec (it may not be named `config.yml`).
+- `public static boolean updateFromLines(JavaPlugin plugin, List<String> referenceLines, File diskFile, @Nullable File gateFile)` - variant whose reference lives in memory instead of the jar (e.g. a translation merged against the on-DISK `messages_en.yml`). Same semantics: seed if missing, backup-N + reseed if corrupt, keep-last-3 pre-merge backup and gate read from `gateFile` (`null` skips the gate). Returns true when the disk file changed (seeded, regenerated or merged). It does not support prune.
+- `static void seedIfMissing(JavaPlugin plugin, String resourcePath, File diskFile)` - (package-private) seeds the file from the jar resource ONLY when it does not exist; never merges.
+- `static boolean readUpdateConfigsGate(@Nullable File gateFile)` - (package-private) reads the master gate by parsing the config straight from DISK before any merge; a null gateFile, missing file, missing key or unreadable content all count as `true`.
+- `public static List<String> prune(List<String> resourceLines, List<String> lines)` - pure entry point of the prune: returns a copy of `lines` with every block whose key-path does not exist in the resource removed, comments included. Opt-in only (via `managedPruning`). No I/O.
 
-#### Logica interna: algoritmo Node / insertions
+#### Internal logic: Node / insertions algorithm
 
-Parser propio (`parse(List<String>)`) que construye un arbol de `Node` (clase interna privada: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `children`, y `findChild(String)` que compara keys normalizadas via `unquoteKey`: una key envuelta en comillas balanceadas `'...'` o `"..."` cuenta igual que la misma sin comillas). Recorre linea a linea con un stack:
+A custom parser (`parse(List<String>)`) builds a tree of `Node` (private inner class: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `children`, and `findChild(String)` that compares normalized keys via `unquoteKey`: a key wrapped in balanced quotes `'...'` or `"..."` counts the same as the unquoted one). It walks line by line with a stack:
 
-- Lineas vacias o de comentario acumulan `pendingCommentStart`: los comentarios que preceden a una key forman parte de su bloque (`blockStart`), y tambien marcan el limite (`boundary`) al cerrar bloques anteriores, asi un comentario "cuelga" de la key que le sigue y no de la anterior.
-- Items de lista (`- ` o `-` solo) se saltean: son parte del VALOR del nodo actual; los comentarios encima quedan adjuntos a lo que originalmente encabezaban (tipicamente la key padre).
-- Una linea sin dos-puntos "unquoted" (`findUnquotedColon`: colon fuera de comillas seguido de whitespace o fin de linea; un `#` fuera de comillas aborta) se trata como continuacion de scalar multilinea y se saltea.
-- Al encontrar una key: se cierran del stack todos los nodos con `indent >= indent` de la nueva (asignandoles `blockEnd = boundary - 1`), se crea el nodo hijo del tope y se pushea.
+- Empty or comment lines accumulate `pendingCommentStart`: comments preceding a key belong to its block (`blockStart`), and they also mark the boundary when closing earlier blocks, so a comment "hangs" from the key that follows it, not the previous one.
+- List items (`- ` or lone `-`) are skipped: they are part of the current node's VALUE; comments above them stay attached to whatever they originally headed (typically the parent key).
+- A line without an "unquoted" colon (`findUnquotedColon`: colon outside quotes followed by whitespace or end of line; a `#` outside quotes aborts) is treated as a multiline scalar continuation and skipped.
+- On finding a key: all nodes with `indent >= indent` of the new one are popped from the stack (assigning them `blockEnd = boundary - 1`), the child node of the top is created and pushed.
 
-Planificacion (`planInsertions`): parsea recurso y disco, y `collectInsertions` recorre recursivamente los hijos del recurso; un hijo ausente en disco produce una `Insertion` (clase interna privada: `position`, `sequence`, `lines`) cuyo bloque son las lineas `blockStart..blockEnd` del RECURSO (comentarios lider incluidos) y cuya posicion la da `computeInsertPosition`; un hijo presente recursiona para insertar solo lo faltante dentro.
+Planning (`planInsertions`): parses resource and disk, and `collectInsertions` walks the resource's children recursively; a child absent from disk produces an `Insertion` (private inner class: `position`, `sequence`, `lines`) whose block is the RESOURCE's `blockStart..blockEnd` lines (leading comments included) and whose position comes from `computeInsertPosition`; a present child recurses to insert only what is missing inside.
 
-Anclado (`computeInsertPosition`): 1) el hermano PRECEDENTE mas cercano que exista en recurso y disco -> insertar justo despues de su `blockEnd`; 2) si no hay, el hermano SIGUIENTE compartido mas cercano -> insertar justo antes de su `blockStart` (preservando sus comentarios lider); 3) sin hermanos en disco -> final del padre (raiz `indent < 0` -> `diskLines.size()`; padre con hijos -> `blockEnd + 1` del ultimo hijo; si no -> `blockEnd + 1` del padre).
+Anchoring (`computeInsertPosition`): 1) the closest PRECEDING sibling that exists in both resource and disk -> insert right after its `blockEnd`; 2) if none, the closest shared FOLLOWING sibling -> insert right before its `blockStart` (preserving its leading comments); 3) no siblings on disk -> end of the parent (root `indent < 0` -> `diskLines.size()`; parent with children -> `blockEnd + 1` of the last child; otherwise -> `blockEnd + 1` of the parent).
 
-Aplicacion: las insertions se ordenan por `position` descendente y, a igualdad, por `sequence` (el `blockStart` en el recurso) descendente; `applyInsertions` hace `addAll(pos, lines)` con `pos` acotado a `lines.size()`. Insertar de abajo hacia arriba evita recalcular offsets, y el desempate por sequence hace que varios bloques en la misma posicion queden en el orden del recurso.
+Application: insertions sort by `position` descending and, on ties, by `sequence` (the `blockStart` in the resource) descending; `applyInsertions` does `addAll(pos, lines)` with `pos` clamped to `lines.size()`. Inserting bottom-up avoids recomputing offsets, and the sequence tiebreak makes multiple blocks at the same position land in resource order.
 
-Prune (`collectRemovals`): espejo del merge - cada hijo del DISCO ausente del recurso aporta un rango `[blockStart, blockEnd]` (comentarios incluidos); los rangos se ordenan por inicio descendente y se remueven linea a linea de atras hacia adelante, con `end` acotado al tamaño de la lista.
+Prune (`collectRemovals`): mirror of the merge - each DISK child absent from the resource contributes a `[blockStart, blockEnd]` range (comments included); ranges sort by start descending and are removed line by line from back to front, with `end` clamped to the list size.
 
-#### Flujo de `update` (gate, backups, corrupcion)
+#### `update` flow (gate, backups, corruption)
 
-1. `readResource`: si el recurso no esta en el jar -> WARN "[update-configs] Recurso <path> ausente del jar; <file> no se puede actualizar" y retorna.
-2. Archivo de disco inexistente -> `seed` (crea directorios padre y escribe las lineas del recurso UTF-8) y retorna.
-3. Corrupcion: se lee el disco con `YamlPreprocessor.read` + `preprocess` y se valida con `isParseable`; si NO parsea -> `backupCorrupt` MUEVE el archivo a `<name>.backup-N` (N = primer entero libre desde 1, nunca pisa un backup previo), se reseedea desde el jar y se loguea WARN "[update-configs] <file> no parsea como YAML: respaldado en <backup> y regenerado desde el jar". Nunca crashea al caller.
-4. Merge en memoria: `planInsertions` + `applyInsertions` sobre las lineas de disco; con `prune=true` se aplica ademas `prune`. Si el resultado es identico al disco, retorna sin tocar nada (ni backup ni gate ni log).
-5. Gate: solo si hubo cambios y `!gateExempt`, se lee `readUpdateConfigsGate(gateFile)` (parse fresco de DISCO, para que un merge previo del propio config ya cuente); en `false` se loguea WARN y NO se escribe: "faltan N keys en <file>" cuando hay insertions, o "prune pendiente en <file>" cuando el cambio era solo de prune.
-6. Escritura: `backupBeforeMerge` COPIA el archivo actual a `old-<base>-<yyyyMMdd-HHmmss>.yml` al lado (timestamp exacto con `BACKUP_STAMP`), y `pruneOldBackups` borra los mas viejos dejando solo los ultimos `BACKUPS_KEPT = 3`; el match es EXACTO por regex `old-<base>-\d{8}-\d{6}\.yml` (el comentario del codigo explica el porque: un prefijo suelto mezclaria los backups de otro archivo cuyo nombre extiende la base, ej `config` vs `config-extra`). Un backup viejo que no se puede borrar nunca bloquea el merge. Finalmente se escriben las lineas resultantes UTF-8.
-7. Errores: `IOException` -> SEVERE "[update-configs] Fallo actualizando <file>: <msg>"; `RuntimeException` (parseo) -> SEVERE "[update-configs] Error de parseo mergeando <resource> en <file>: <msg>". Nunca propaga.
+1. `readResource`: if the resource is not in the jar -> WARN "[update-configs] Resource <path> missing from the jar; <file> cannot be updated" and return.
+2. Nonexistent disk file -> `seed` (creates parent directories and writes the resource lines UTF-8) and return.
+3. Corruption: the disk is read with `YamlPreprocessor.read` + `preprocess` and validated with `isParseable`; if it does NOT parse -> `backupCorrupt` MOVES the file to `<name>.backup-N` (N = first free integer from 1, never overwrites a previous backup), it reseeds from the jar and logs WARN "[update-configs] <file> does not parse as YAML: backed up at <backup> and regenerated from the jar". It never crashes the caller.
+4. In-memory merge: `planInsertions` + `applyInsertions` over the disk lines; with `prune=true` `prune` is applied as well. If the result is identical to disk, it returns without touching anything (no backup, no gate, no log).
+5. Gate: only if there were changes and `!gateExempt`, `readUpdateConfigsGate(gateFile)` is read (fresh parse from DISK, so a previous merge of the config itself already counts); when `false` it logs a WARN and does NOT write: "N keys missing in <file>" when there are insertions, or "prune pending in <file>" when the change was prune-only.
+6. Write: `backupBeforeMerge` COPIES the current file to `old-<base>-<yyyyMMdd-HHmmss>.yml` next to it (exact timestamp with `BACKUP_STAMP`), and `pruneOldBackups` deletes the oldest keeping only the last `BACKUPS_KEPT = 3`; the match is EXACT by regex `old-<base>-\d{8}-\d{6}\.yml` (the code comment explains why: a loose prefix would mix in the backups of another file whose name extends the base, e.g. `config` vs `config-extra`). An old backup that cannot be deleted never blocks the merge. Finally the resulting lines are written UTF-8.
+7. Errors: `IOException` -> SEVERE "[update-configs] Failed updating <file>: <msg>"; `RuntimeException` (parsing) -> SEVERE "[update-configs] Parse error merging <resource> into <file>: <msg>". Never propagates.
 
-`updateFromLines` sigue el mismo flujo con tres diferencias: la referencia son lineas en memoria (no hay paso 1), corta temprano con `false` si no hay insertions (sin prune), y devuelve boolean indicando si el disco cambio.
+`updateFromLines` follows the same flow with three differences: the reference is in-memory lines (no step 1), it returns early with `false` if there are no insertions (no prune), and it returns a boolean indicating whether the disk changed.
 
-#### Notas y gotchas
-- Sin `config-version`: la comparacion es estructural contra el recurso en cada arranque; agregar una key al recurso del jar alcanza para que llegue a todos los servers.
-- El gate se chequea DESPUES de calcular el resultado y solo si difiere: un arranque sin cambios no loguea nada aunque el gate este en false.
-- La exencion del config propio existe para que la key `update-configs` misma pueda llegar por merge en el primer arranque post-upgrade.
-- `findChild` compara keys normalizando el quoting (`unquoteKey`): `foo`, `'foo'` y `"foo"` cuentan como la misma key tanto en el plan de inserciones como en el prune. La normalizacion es SOLO para comparar: al insertar se copia verbatim la forma textual del recurso y las lineas existentes en disco jamas se reformatean.
-- Limitacion documentada en el Javadoc: la indentacion se asume con espacios y consistente entre recurso y disco (ambos salen del mismo baseline del plugin).
+#### Notes and gotchas
+- No `config-version`: the comparison is structural against the resource on every startup; adding a key to the jar resource is enough for it to reach every server.
+- The gate is checked AFTER computing the result and only if it differs: a startup without changes logs nothing even with the gate off.
+- The own-config exemption exists so the `update-configs` key itself can arrive by merge on the first post-upgrade startup.
+- `findChild` compares keys normalizing quoting (`unquoteKey`): `foo`, `'foo'` and `"foo"` count as the same key both in the insertion plan and in the prune. Normalization is ONLY for comparison: when inserting, the resource's textual form is copied verbatim and existing disk lines are never reformatted.
+- Limitation documented in the Javadoc: indentation is assumed to be spaces and consistent between resource and disk (both come from the same plugin baseline).
 
 ### YmlManager
 `src/main/java/com/sn/lib/yml/YmlManager.java`
 
-Modulo yml de un contexto consumidor, alcanzado via `sn.yml()`. Es dueño de todos los `SnYml` del plugin, keyeados por path relativo al data folder en un `LinkedHashMap` (orden de mount preservado), y monta el config principal managed EN LA CONSTRUCCION. Todo acceso al mapa esta sincronizado sobre `entries`; las iteraciones (`reloadAll`, `flushAll`) trabajan sobre un `snapshot()` copiado bajo lock. I/O sincrona por diseño: mount y `reloadAll()` corren solo en onEnable y en el comando reload.
+Yml module of a consumer context, reached via `sn.yml()`. It owns all the plugin's `SnYml`s, keyed by path relative to the data folder in a `LinkedHashMap` (mount order preserved), and mounts the managed main config AT CONSTRUCTION. All map access is synchronized on `entries`; iterations (`reloadAll`, `flushAll`) work over a `snapshot()` copied under the lock. Synchronous I/O by design: mount and `reloadAll()` run only in onEnable and in the reload command.
 
-Constantes (privadas): `GATE_KEY = "update-configs"`, `GATE_COMMENT = "# Master gate of the always-merge updater: false skips every yml merge except this file."`. Enum interno privado `Mode { MANAGED, SEED_ONLY, PLAIN }` y record interno privado `Entry(SnYml yml, String resourcePath, Mode mode, boolean prune, boolean isConfig)`.
+Constants (private): `GATE_KEY = "update-configs"`, `GATE_COMMENT = "# Master gate of the always-merge updater: false skips every yml merge except this file."`. Private internal enum `Mode { MANAGED, SEED_ONLY, PLAIN }` and private internal record `Entry(SnYml yml, String resourcePath, Mode mode, boolean prune, boolean isConfig)`.
 
-- `public YmlManager(Sn ctx, String configName)` - crea el manager y monta el config principal managed; `configName` es el archivo de config declarado en el spec (ej `config.yml`). Lo instancia el contexto.
-- `public SnYml config()` - config principal managed; la key maestra `update-configs` se seedea si falta.
-- `public SnYml managed(String path)` - archivo managed: seedeado si falta, always-merged desde el recurso del jar, nunca pruneado.
-- `public SnYml managedPruning(String path)` - managed con prune opt-in: las keys removidas del recurso del jar se borran del disco. Es el UNICO modo que borra.
-- `public SnYml seedOnly(String path)` - seedeado desde el jar si falta; el contenido existente nunca se mergea ni se toca.
-- `public SnYml data(String path)` - archivo de datos de runtime totalmente del plugin: nunca seedeado, nunca mergeado.
-- `public SnYml load(String path)` - yml arbitrario bajo el data folder, leido as-is: nunca seedeado, nunca mergeado. (Misma implementacion que `data`: ambos montan en `Mode.PLAIN`; la distincion es semantica.)
-- `public void reloadAll()` - re-corre el merge de cada archivo managed (el config PRIMERO, por orden de insercion, asi el gate esta fresco para los demas) y el seed de los seedOnly faltantes, y despues recarga cada archivo montado de disco disparando sus hooks de reload.
-- `public void flushAll()` - drena la escritura coalescida pendiente de cada archivo montado; lo usa el teardown del contexto.
+- `public YmlManager(Sn ctx, String configName)` - creates the manager and mounts the managed main config; `configName` is the config file declared in the spec (e.g. `config.yml`). Instantiated by the context.
+- `public SnYml config()` - managed main config; the master `update-configs` key is seeded if missing.
+- `public SnYml managed(String path)` - managed file: seeded if missing, always-merged from the jar resource, never pruned.
+- `public SnYml managedPruning(String path)` - managed with opt-in prune: keys removed from the jar resource are deleted from disk. It is the ONLY mode that deletes.
+- `public SnYml seedOnly(String path)` - seeded from the jar if missing; existing content is never merged or touched.
+- `public SnYml data(String path)` - runtime data file fully owned by the plugin: never seeded, never merged.
+- `public SnYml load(String path)` - arbitrary yml under the data folder, read as-is: never seeded, never merged. (Same implementation as `data`: both mount in `Mode.PLAIN`; the distinction is semantic.)
+- `public void reloadAll()` - re-runs the merge of every managed file (the config FIRST, by insertion order, so the gate is fresh for the rest) and the seeding of missing seedOnly files, then reloads every mounted file from disk firing its reload hooks.
+- `public void flushAll()` - drains the pending coalesced write of every mounted file; used by the context teardown.
 
-#### Logica interna
-- `mountConfig()` (privado): llama `YamlUpdater.update(plugin, configPath, disk, false, null, true)` - gate null y `gateExempt=true`: el config propio SIEMPRE mergea. Despues `ensureGateKey(disk)` y registra la entry con `isConfig=true`.
-- `mount(String rawPath, Mode mode, boolean prune)` (privado): normaliza el path y, bajo lock, si ya existe una entry para ese path devuelve su `SnYml` SIN re-ejecutar nada: el modo lo decide el PRIMER mount de cada path. Un mount posterior con otro modo (o distinto prune) devuelve la instancia existente y loguea un WARN unico por path (`yml '<path>' ya montado en modo <MODO>; se ignora el modo <MODO>`, con nombres `MANAGED`/`MANAGED_PRUNING`/`SEED_ONLY`/`PLAIN` via el helper `describe`, dedup en el set `modeConflictWarned` accedido bajo el lock de `entries`). Para MANAGED corre `YamlUpdater.update(..., prune, gateFile(), false)` (sujeto al gate), para SEED_ONLY `seedIfMissing`, para PLAIN nada.
-- `ensureGateKey(File disk)` (privado): garantiza que `update-configs` exista en el config de DISCO. Si el archivo no existe, lo crea con solo el comentario y `update-configs: true`. Si existe, lo parsea (preprocesado); si la key ya esta, no toca nada; si falta, APPENDEA al final una linea en blanco (solo si la ultima linea no esta vacia), el `GATE_COMMENT` y `update-configs: true`. Errores de I/O o parseo -> WARN "No se pudo seedear la key update-configs en <file>: <msg>".
-- `gateFile()` / `fileFor(String)` (privados): resuelven archivos contra `ctx.plugin().getDataFolder()`; el gate es el config declarado en el spec, no un `config.yml` hardcodeado.
-- `normalize(String)` (privado estatico): backslashes a `/` y recorta slashes iniciales, para que `"gui\\menu.yml"` y `"/gui/menu.yml"` keyeen igual.
-- `snapshot()` (privado): copia de las entries bajo lock para iterar sin retener el monitor.
+#### Internal logic
+- `mountConfig()` (private): calls `YamlUpdater.update(plugin, configPath, disk, false, null, true)` - null gate and `gateExempt=true`: the config itself ALWAYS merges. Then `ensureGateKey(disk)` and registers the entry with `isConfig=true`.
+- `mount(String rawPath, Mode mode, boolean prune)` (private): normalizes the path and, under the lock, if an entry for that path already exists it returns its `SnYml` WITHOUT re-running anything: the mode is decided by the FIRST mount of each path. A later mount with a different mode (or different prune) returns the existing instance and logs a single per-path WARN (`yml '<path>' already mounted in mode <MODE>; ignoring mode <MODE>`, with names `MANAGED`/`MANAGED_PRUNING`/`SEED_ONLY`/`PLAIN` via the `describe` helper, deduped in the `modeConflictWarned` set accessed under the `entries` lock). For MANAGED it runs `YamlUpdater.update(..., prune, gateFile(), false)` (subject to the gate), for SEED_ONLY `seedIfMissing`, for PLAIN nothing.
+- `ensureGateKey(File disk)` (private): guarantees `update-configs` exists in the DISK config. If the file does not exist, it creates it with just the comment and `update-configs: true`. If it exists, it parses it (preprocessed); if the key is already there, nothing is touched; if it is missing, it APPENDS at the end a blank line (only if the last line is not empty), the `GATE_COMMENT` and `update-configs: true`. I/O or parse errors -> WARN "Could not seed the update-configs key in <file>: <msg>".
+- `gateFile()` / `fileFor(String)` (private): resolve files against `ctx.plugin().getDataFolder()`; the gate is the config declared in the spec, not a hardcoded `config.yml`.
+- `normalize(String)` (private static): backslashes to `/` and trims leading slashes, so `"gui\\menu.yml"` and `"/gui/menu.yml"` key the same.
+- `snapshot()` (private): a copy of the entries under the lock to iterate without holding the monitor.
 
-#### Notas y gotchas
-- El modo de un archivo queda clavado en el primer mount: pedir `managed("x.yml")` y despues `data("x.yml")` devuelve el mismo `SnYml` managed, con un WARN unico por path que hace visible el conflicto (el comportamiento no cambia: el primer mount manda).
-- En `reloadAll` el merge del config corre antes que el de los demas archivos porque `entries` es `LinkedHashMap` y el config se inserta en el constructor: el valor fresco de `update-configs` (incluso recien mergeado) gobierna el resto del ciclo.
-- `ensureGateKey` escribe el archivo directo (append de lineas), no via `SnYml.save()`: ocurre antes de crear el `SnYml` del config.
+#### Notes and gotchas
+- A file's mode is nailed at the first mount: asking for `managed("x.yml")` and later `data("x.yml")` returns the same managed `SnYml`, with a single per-path WARN that makes the conflict visible (behavior does not change: the first mount rules).
+- In `reloadAll` the config's merge runs before the other files because `entries` is a `LinkedHashMap` and the config is inserted in the constructor: the fresh value of `update-configs` (even freshly merged) governs the rest of the cycle.
+- `ensureGateKey` writes the file directly (line append), not via `SnYml.save()`: it happens before the config's `SnYml` is created.
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME/XXX en los archivos del alcance. Limitaciones documentadas en el codigo/Javadoc:
+There are no TODO/FIXME/XXX markers in the files of this scope. Limitations documented in code/Javadoc:
 
-- `YamlUpdater`: asume indentacion con espacios y consistente entre recurso y disco (ambos provienen del mismo baseline del plugin); no maneja tabs en el algoritmo de merge (eso lo cubre el preprocesador en la LECTURA, no en el merge de lineas).
-- `YamlUpdater.parse`: los items de lista se tratan como valor del nodo actual, por lo que los comentarios encima de un item de lista quedan adjuntos a la key padre; las keys se comparan normalizando el quoting balanceado (quoted vs unquoted cuentan igual).
-- `YamlPreprocessor`: el digito de indentacion de un block scalar (`|2`) se acepta pero no se usa para calcular el indent del contenido; la deteccion es relativa al indent de la linea header.
-- `YamlUpdater.update` / `YmlManager.mount` / `reloadAll`: I/O sincrona por diseño, valida solo en onEnable y en el comando reload (excepcion documentada a la regla de I/O async).
-- `YmlManager.mount`: el modo queda fijado por el primer mount del path; mounts posteriores con otro modo no re-ejecutan merges (advierten con un WARN unico por path).
-
+- `YamlUpdater`: assumes space indentation consistent between resource and disk (both come from the same plugin baseline); it does not handle tabs in the merge algorithm (the preprocessor covers that at READ time, not in the line merge).
+- `YamlUpdater.parse`: list items are treated as the current node's value, so comments above a list item stay attached to the parent key; keys are compared normalizing balanced quoting (quoted vs unquoted count the same).
+- `YamlPreprocessor`: a block scalar's indentation digit (`|2`) is accepted but not used to compute the content indent; detection is relative to the header line's indent.
+- `YamlUpdater.update` / `YmlManager.mount` / `reloadAll`: synchronous I/O by design, valid only in onEnable and the reload command (documented exception to the async-I/O rule).
+- `YmlManager.mount`: the mode is fixed by the first mount of the path; later mounts with a different mode do not re-run merges (they warn with a single per-path WARN).
 ---
 
-## 05. Lang y Debug
+## 05. Lang and Debug
 
-Este modulo agrupa dos servicios por contexto de consumidor: `SnLang` (mensajeria localizable, alcanzada via `sn.lang()`) y `SnDebug` (logging de debug toggleable en runtime, alcanzado via `sn.debug()`). SnLang administra los archivos `lang/messages_<code>.yml` del plugin consumidor: seedea el ingles desde el jar, mergea las keys compartidas `snlib.*` que viajan dentro de SnLib.jar, mergea traducciones contra el ingles de disco, resuelve fallback por key con un WARN unico y cachea pre-renderizados los mensajes estaticos. SnDebug ofrece niveles de verbosidad, categorias con filtro, `Supplier` lazy para no construir strings en vano y persistencia de cada toggle en el config principal. Todo el I/O de carga es sincronico por diseño: corre solo en onEnable y en el comando de reload, nunca durante gameplay.
+This module groups two per-consumer-context services: `SnLang` (localizable messaging, reached via `sn.lang()`) and `SnDebug` (runtime-toggleable debug logging, reached via `sn.debug()`). SnLang manages the consumer plugin's `lang/messages_<code>.yml` files: it seeds the English from the jar, merges the shared `snlib.*` keys that travel inside SnLib.jar, merges translations against the on-disk English, resolves per-key fallback with a single WARN and caches static messages pre-rendered. SnDebug offers verbosity levels, filtered categories, lazy `Supplier`s so strings are not built in vain, and persistence of every toggle to the main config. All load I/O is synchronous by design: it runs only in onEnable and the reload command, never during gameplay.
 
 ### SnLang
 
 `src/main/java/com/sn/lib/lang/SnLang.java`
 
-Modulo de idioma de un contexto consumidor (clase `public final`). Se instancia desde el contexto cuando el spec declara `lang()`; los consumidores lo alcanzan via `sn.lang()`. Los archivos viven bajo `lang/` en la data folder del consumidor. En cada carga: seedea `lang/messages_en.yml` desde el jar del consumidor, mergea encima el recurso `snlib-messages.yml` de SnLib.jar, y si el config pide otro idioma carga y mergea la traduccion. Los archivos de lang NO llevan marcador de version: el merge es estructural y always-on.
+Language module of a consumer context (`public final` class). Instantiated by the context when the spec declares `lang()`; consumers reach it via `sn.lang()`. Files live under `lang/` in the consumer's data folder. On every load: it seeds `lang/messages_en.yml` from the consumer's jar, merges the `snlib-messages.yml` resource of SnLib.jar on top, and if the config asks for another language it loads and merges the translation. Lang files carry NO version marker: the merge is structural and always-on.
 
-Metodos publicos:
+Public methods:
 
-- `public SnLang(Sn ctx, @Nullable SnYml config)` - Constructor: guarda el contexto y el config principal montado (que aporta las keys `lang` y `update-configs`, o null si el modulo config no fue declarado), registra en `QuitCleanupListener` el callback que cancela el actionbar persistente del jugador que se va (idempotente ante kick+quit, patron BossBarUtil) y ejecuta `load()` inmediatamente (seed + merges + caches).
-- `public String language()` - Codigo de idioma activo; devuelve `en` cuando el idioma configurado cayo al fallback.
-- `public void send(Player target, String key, Ph... phs)` - Envia el mensaje a un jugador; los valores de una sola linea reciben el prefix prepended. Delega en la sobrecarga de `CommandSender`.
-- `public void send(CommandSender target, String key, Ph... phs)` - Envia el mensaje a cualquier sender; PAPI se resuelve por viewer cuando el sender es un `Player`. Null-safe: target o key null es no-op.
-- `public void broadcast(String key, Ph... phs)` - Broadcast a todo el server via `Bukkit.getServer()` como Audience; PAPI resuelve contra el server (viewer null).
-- `public Component get(String key, Ph... phs)` - Primera linea renderizada del mensaje, SIN prefix. Sin placeholders usa el cache pre-renderizado si existe. Key inexistente rinde `<missing:key>`.
-- `public String getLegacy(String key, Ph... phs)` - Primera linea como string legacy con section codes (via `SnText.colorLegacy`), para APIs que todavia exigen texto legacy; misma resolucion y fallback que `get`. Key inexistente devuelve el string `<missing:key>` (y dispara el WARN unico).
-- `public List<Component> getList(String key, Ph... phs)` - Todas las lineas del mensaje renderizadas en orden; keys inexistentes producen una lista con la linea marker. Sin placeholders devuelve copia del cache pre-renderizado.
-- `public void actionbar(Player target, String key, Ph... phs)` - Muestra la primera linea en la action bar del jugador; linea vacia o key vacia es no-op, key inexistente manda el marker a la action bar.
-- `public void actionbar(Player target, String key, Duration hold, Ph... phs)` - Overload persistente (v1.1). Ciclo de vida: la linea se renderiza UNA sola vez al momento de la llamada (PAPI/locales congelados; para contenido dinamico el consumidor re-llama, que reemplaza), se envia de inmediato y se re-envia cada 40 ticks (`ACTIONBAR_REFRESH_TICKS`; la actionbar vanilla dura ~2-3s) hasta agotar `hold` (deadline por `System.nanoTime()`); al vencer envia `Component.empty()` para limpiarla. `hold` null, cero o negativo delega en la sobrecarga de 3 args; key inexistente manda el marker UNA vez sin timer. Un actionbar nuevo con hold para el mismo jugador reemplaza y cancela el anterior (un `TaskHandle` por jugador en el mapa `persistentBars`); el timer se cancela al quit via el callback de `QuitCleanupListener` y el `scheduler.cancelAll()` de `Sn.shutdown()` barre los handles restantes. Un actionbar simple enviado durante un hold sera pisado en el proximo refresh de 40 ticks.
-- `public void title(Player target, String key, Ph... phs)` - Muestra el mensaje como title. La primera linea se parsea como `title;subtitle;fadeIn;stay;fadeOut` (tiempos en ticks, defaults 10;70;20, convertidos a millis multiplicando por 50); las partes omitidas o no numericas caen a su default.
-- `public void reload()` - Re-ejecuta el seed, los merges y la relectura de ambos archivos de idioma desde disco, reconstruyendo todos los caches. Se invoca solo desde onEnable y el comando reload.
+- `public SnLang(Sn ctx, @Nullable SnYml config)` - Constructor: stores the context and the mounted main config (which provides the `lang` and `update-configs` keys, or null if the config module was not declared), registers in `QuitCleanupListener` the callback that cancels the departing player's persistent actionbar (idempotent against kick+quit, BossBarUtil pattern) and runs `load()` immediately (seed + merges + caches).
+- `public String language()` - Active language code; returns `en` when the configured language fell back.
+- `public void send(Player target, String key, Ph... phs)` - Sends the message to a player; single-line values get the prefix prepended. Delegates to the `CommandSender` overload.
+- `public void send(CommandSender target, String key, Ph... phs)` - Sends the message to any sender; PAPI resolves per-viewer when the sender is a `Player`. Null-safe: a null target or key is a no-op.
+- `public void broadcast(String key, Ph... phs)` - Broadcast to the whole server via `Bukkit.getServer()` as an Audience; PAPI resolves against the server (null viewer).
+- `public Component get(String key, Ph... phs)` - First rendered line of the message, WITHOUT prefix. With no placeholders it uses the pre-rendered cache if present. A missing key yields `<missing:key>`.
+- `public String getLegacy(String key, Ph... phs)` - First line as a legacy string with section codes (via `SnText.colorLegacy`), for APIs that still require legacy text; same resolution and fallback as `get`. A missing key returns the string `<missing:key>` (and fires the single WARN).
+- `public List<Component> getList(String key, Ph... phs)` - All lines of the message rendered in order; missing keys produce a list with the marker line. With no placeholders it returns a copy of the pre-rendered cache.
+- `public void actionbar(Player target, String key, Ph... phs)` - Shows the first line in the player's action bar; an empty line or empty key is a no-op, a missing key sends the marker to the action bar.
+- `public void actionbar(Player target, String key, Duration hold, Ph... phs)` - Persistent overload (v1.1). Lifecycle: the line is rendered exactly ONCE at call time (PAPI/locals frozen; for dynamic content the consumer re-calls, which replaces), sent immediately and re-sent every 40 ticks (`ACTIONBAR_REFRESH_TICKS`; the vanilla actionbar lasts ~2-3s) until `hold` runs out (deadline via `System.nanoTime()`); on expiry it sends `Component.empty()` to clear it. A null, zero or negative `hold` delegates to the 3-arg overload; a missing key sends the marker ONCE without a timer. A new actionbar with hold for the same player replaces and cancels the previous one (one `TaskHandle` per player in the `persistentBars` map); the timer is cancelled on quit via the `QuitCleanupListener` callback and the `scheduler.cancelAll()` of `Sn.shutdown()` sweeps the remaining handles. A plain actionbar sent during a hold will be overwritten on the next 40-tick refresh.
+- `public void title(Player target, String key, Ph... phs)` - Shows the message as a title. The first line parses as `title;subtitle;fadeIn;stay;fadeOut` (times in ticks, defaults 10;70;20, converted to millis by multiplying by 50); omitted or non-numeric parts fall back to their default.
+- `public void reload()` - Re-runs the seed, the merges and the re-read of both language files from disk, rebuilding all caches. Invoked only from onEnable and the reload command.
 
-Constantes: no expone constantes publicas ni enums. Internamente usa las constantes privadas `LANG_DIR = "lang"`, `FALLBACK_CODE = "en"`, `CONSUMER_RESOURCE = "lang/messages_en.yml"`, `SNLIB_RESOURCE = "snlib-messages.yml"` y `ACTIONBAR_REFRESH_TICKS = 40` (periodo de re-envio del actionbar persistente). Estado por instancia del actionbar persistente: `Map<UUID, TaskHandle> persistentBars` (ConcurrentHashMap, un timer por jugador).
+Constants: it exposes no public constants or enums. Internally it uses the private constants `LANG_DIR = "lang"`, `FALLBACK_CODE = "en"`, `CONSUMER_RESOURCE = "lang/messages_en.yml"`, `SNLIB_RESOURCE = "snlib-messages.yml"` and `ACTIONBAR_REFRESH_TICKS = 40` (re-send period of the persistent actionbar). Per-instance state of the persistent actionbar: `Map<UUID, TaskHandle> persistentBars` (ConcurrentHashMap, one timer per player).
 
-#### Logica interna
+#### Internal logic
 
-Metodos privados, en el orden del flujo de carga:
+Private methods, in load-flow order:
 
-- `private void load()` - Orquesta la carga: limpia `warnedKeys`, seedea el ingles, mergea las keys snlib, parsea el fallback, decide el codigo deseado (si es `en`, active = fallback; si no, carga la traduccion), cachea el prefix y reconstruye los caches.
-- `private void seedEnglish(File dir, File enFile)` - Seed de `lang/messages_en.yml` desde el jar del consumidor via `YamlUpdater.update(plugin, CONSUMER_RESOURCE, enFile, false)` (always-merge, gated por `update-configs`). Si el jar del consumidor NO incluye el recurso y el archivo no existe, crea un archivo minimo de dos lineas de comentario y emite un WARN ("El jar de X no incluye lang/messages_en.yml; se creo un archivo minimo").
-- `private void mergeSnlibKeys(File enFile)` - Mergea el recurso `snlib-messages.yml` de SnLib.jar dentro del `messages_en.yml` de disco via `YamlUpdater.merge(resource, disk)`. Siempre activo y EXENTO del gate `update-configs`: las keys `snlib.*` son el contrato de mensajes propio de la libreria. Si el disco no parsea como YAML (check con `YamlUpdater.isParseable` sobre el texto preprocesado) omite el merge con WARN; si el merge no cambia nada, no reescribe el archivo. Recurso ausente de SnLib.jar produce WARN y no mergea.
-- `private void loadTranslation(File dir, File enFile, String code)` - Carga una traduccion no inglesa: si `messages_<code>.yml` no existe, WARN y fallback a ingles (activeCode vuelve a `en`); si existe, mergea contra el ingles de disco, parsea, y si quedo vacio o corrupto tambien cae a ingles con WARN.
-- `private void mergeTranslation(File enFile, File langFile)` - Mergea keys faltantes usando el `messages_en.yml` de DISCO como referencia via `YamlUpdater.updateFromLines(plugin, reference, langFile, config.file())` (gated por `update-configs`). Si hubo cambios loguea INFO "[update-configs] Keys nuevas de messages_en.yml agregadas a lang/<file>; traducirlas cuando convenga".
-- `private String desiredCode()` - Lee la key `lang` del config principal; null, blank o config ausente devuelven `en`; el valor se trimea y pasa a lowercase con `Locale.ROOT`.
-- `private YamlConfiguration parseFile(File file)` - Parse tab-tolerante via `YamlPreprocessor`: los tabs de indentacion corregidos se reportan con WARN indicando las lineas; contenido ilegible produce configuracion vacia mas WARN.
-- `private void cachePrefix()` - Cachea el valor top-level `prefix` como string crudo: primero del idioma activo, si no del fallback (solo si son objetos distintos); ausente queda `""`.
-- `private void buildCaches()` - Limpia y reconstruye `templates` (lineas crudas por key, fallback ya resuelto) y `rendered` (Components pre-renderizados para keys cuyas lineas no tienen tokens). Recorre la union de leaf keys de fallback y active (LinkedHashSet, fallback primero).
-- `private static Set<String> leafKeys(YamlConfiguration cfg)` - Keys hoja (no secciones) del yml, en orden de aparicion.
-- `private @Nullable List<String> linesFor(String key)` - Idioma activo primero; una key presente solo en ingles cae al fallback con UN solo WARN por key ("Key 'X' falta en messages_<code>.yml; usando el valor de messages_en.yml"), deduplicado via `warnedKeys` con la marca `fallback:<key>`.
-- `private static @Nullable List<String> readLines(YamlConfiguration cfg, String key)` - Lista YAML tal cual, string como lista de un elemento, otro tipo devuelve null.
-- `private static boolean isStatic(List<String> lines)` - Estatico significa renderizable una sola vez: ninguna linea contiene `%` (tokens PAPI) ni `{` (placeholders locales).
-- `private void deliver(Audience audience, @Nullable Player viewer, String key, Ph... phs)` - Entrega comun de send/broadcast: key inexistente manda el marker; mensaje de una linea recibe prefix (y usa el cache pre-renderizado solo si no hay prefix ni placeholders); mensajes multilinea se envian linea por linea SIN prefix.
-- `private String withPrefix(String line)` - Inserta el prefix configurado DESPUES de cualquier tag inicial `[center]`/`[rgb]`/`[small]` (matching case-insensitive, en loop, soporta tags encadenados; `[small]` se saltea con sus 7 chars): un mensaje con prefix mantiene sus tags en la posicion 0 para que sigan renderizando. El prefix insertado despues del tag queda DENTRO del alcance de `[small]` y sale en small caps, consistente con `[rgb]` (que le aplica gradiente al prefix).
-- `private Component renderLine(String line, @Nullable Player viewer, Ph... phs)` - Pipeline fijo: `SnText.color(resolveLine(...))`.
-- `private String resolveLine(String line, @Nullable Player viewer, Ph... phs)` - Locals via `SnText.applyLocals`, luego PAPI por viewer via `ctx.papi().apply`, luego `SnText.normalizePapiOutput`.
-- `private Component missing(String key)` - Devuelve `Component.text("<missing:" + key + ">")` y emite UN solo WARN por key ("Key de mensaje 'X' no existe en lang/messages_en.yml"), deduplicado con la marca `missing:<key>` en `warnedKeys`.
-- `private static long ticksPart(String[] parts, int index, long def)` - Parte numerica del formato de title; ausente, blank o no numerica devuelve el default.
-- `private @Nullable List<String> snlibResourceLines()` - Lee `/snlib-messages.yml` del classpath de SnLib como lineas UTF-8; recurso ausente o IOException devuelven null.
+- `private void load()` - Orchestrates the load: clears `warnedKeys`, seeds the English, merges the snlib keys, parses the fallback, decides the desired code (if it is `en`, active = fallback; otherwise it loads the translation), caches the prefix and rebuilds the caches.
+- `private void seedEnglish(File dir, File enFile)` - Seeds `lang/messages_en.yml` from the consumer's jar via `YamlUpdater.update(plugin, CONSUMER_RESOURCE, enFile, false)` (always-merge, gated by `update-configs`). If the consumer's jar does NOT include the resource and the file does not exist, it creates a minimal two-comment-line file and emits a WARN ("The X jar does not include lang/messages_en.yml; a minimal file was created").
+- `private void mergeSnlibKeys(File enFile)` - Merges SnLib.jar's `snlib-messages.yml` resource into the on-disk `messages_en.yml` via `YamlUpdater.merge(resource, disk)`. Always on and EXEMPT from the `update-configs` gate: the `snlib.*` keys are the library's own message contract. If the disk does not parse as YAML (checked with `YamlUpdater.isParseable` over the preprocessed text) it skips the merge with a WARN; if the merge changes nothing, it does not rewrite the file. A resource missing from SnLib.jar produces a WARN and no merge.
+- `private void loadTranslation(File dir, File enFile, String code)` - Loads a non-English translation: if `messages_<code>.yml` does not exist, WARN and fallback to English (activeCode returns to `en`); if it exists, it merges against the on-disk English, parses, and if it ended up empty or corrupt it also falls back to English with a WARN.
+- `private void mergeTranslation(File enFile, File langFile)` - Merges missing keys using the on-DISK `messages_en.yml` as reference via `YamlUpdater.updateFromLines(plugin, reference, langFile, config.file())` (gated by `update-configs`). If there were changes it logs INFO "[update-configs] New keys from messages_en.yml added to lang/<file>; translate them when convenient".
+- `private String desiredCode()` - Reads the main config's `lang` key; null, blank or absent config return `en`; the value is trimmed and lowercased with `Locale.ROOT`.
+- `private YamlConfiguration parseFile(File file)` - Tab-tolerant parse via `YamlPreprocessor`: corrected indentation tabs are reported with a WARN naming the lines; unreadable content produces an empty configuration plus a WARN.
+- `private void cachePrefix()` - Caches the top-level `prefix` value as a raw string: first from the active language, otherwise from the fallback (only if they are different objects); absent leaves `""`.
+- `private void buildCaches()` - Clears and rebuilds `templates` (raw lines per key, fallback already resolved) and `rendered` (pre-rendered Components for keys whose lines have no tokens). It walks the union of leaf keys of fallback and active (LinkedHashSet, fallback first).
+- `private static Set<String> leafKeys(YamlConfiguration cfg)` - Leaf keys (not sections) of the yml, in order of appearance.
+- `private @Nullable List<String> linesFor(String key)` - Active language first; a key present only in English falls back with ONE single WARN per key ("Key 'X' missing from messages_<code>.yml; using the messages_en.yml value"), deduplicated via `warnedKeys` with the mark `fallback:<key>`.
+- `private static @Nullable List<String> readLines(YamlConfiguration cfg, String key)` - A YAML list as-is, a string as a one-element list, any other type returns null.
+- `private static boolean isStatic(List<String> lines)` - Static means renderable once: no line contains `%` (PAPI tokens) or `{` (local placeholders).
+- `private void deliver(Audience audience, @Nullable Player viewer, String key, Ph... phs)` - Common delivery of send/broadcast: a missing key sends the marker; a single-line message gets the prefix (and uses the pre-rendered cache only when there is no prefix and no placeholders); multiline messages send line by line WITHOUT prefix.
+- `private String withPrefix(String line)` - Inserts the configured prefix AFTER any leading `[center]`/`[rgb]`/`[small]` tag (case-insensitive matching, in a loop, supports chained tags; `[small]` is skipped with its 7 chars): a prefixed message keeps its tags at position 0 so they keep rendering. The prefix inserted after the tag falls INSIDE the scope of `[small]` and comes out in small caps, consistent with `[rgb]` (which applies the gradient to the prefix).
+- `private Component renderLine(String line, @Nullable Player viewer, Ph... phs)` - Fixed pipeline: `SnText.color(resolveLine(...))`.
+- `private String resolveLine(String line, @Nullable Player viewer, Ph... phs)` - Locals via `SnText.applyLocals`, then per-viewer PAPI via `ctx.papi().apply`, then `SnText.normalizePapiOutput`.
+- `private Component missing(String key)` - Returns `Component.text("<missing:" + key + ">")` and emits ONE single WARN per key ("Message key 'X' does not exist in lang/messages_en.yml"), deduplicated with the mark `missing:<key>` in `warnedKeys`.
+- `private static long ticksPart(String[] parts, int index, long def)` - Numeric part of the title format; absent, blank or non-numeric returns the default.
+- `private @Nullable List<String> snlibResourceLines()` - Reads `/snlib-messages.yml` from SnLib's classpath as UTF-8 lines; a missing resource or IOException return null.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Semantica de fallback en dos niveles: key ausente del idioma activo cae a ingles con un WARN por key; key ausente TAMBIEN de ingles renderiza como `<missing:key>` con otro WARN por key. Ambos WARNs se emiten una sola vez por key por carga (el set `warnedKeys` se limpia en cada `load()`/`reload()`).
-- El prefix se aplica SOLO en `send`/`broadcast` y SOLO a mensajes de una linea; `get`, `getLegacy`, `getList`, `actionbar` y `title` nunca lo agregan, y los mensajes lista se envian linea por linea tal cual.
-- El cache `rendered` paga una sola vez la interpolacion `[rgb]` en la carga. En `deliver`, el cache solo se usa cuando no hay prefix configurado y no llegaron placeholders; con prefix el render es siempre por llamada.
-- El merge de `snlib.*` es a nivel de LINEAS de texto (`YamlUpdater.merge`) sobre el archivo de disco, preservando valores existentes: los admins pueden restilizar cualquier linea y sus cambios sobreviven updates.
-- Las traducciones se mergean contra el `messages_en.yml` de DISCO (no el del jar), por eso tambien reciben las keys `snlib.*` y cualquier key que el consumidor agregue despues.
-- Un valor string vacio en la key produce no-op en `send`/`actionbar`/`title` y `Component.empty()` en `get`; distinto de key inexistente, que produce el marker.
-- Threading: los campos mutables son `volatile` o colecciones concurrentes (lectura segura desde cualquier hilo), pero la carga y el merge son I/O sincronico deliberado, confinado a onEnable y al comando reload.
-- `title` parsea con `split(";", -1)`, asi que `;` literales dentro del titulo no son escapables; los tiempos son ticks convertidos a `Duration.ofMillis(ticks * 50)`.
+- Two-level fallback semantics: a key absent from the active language falls back to English with one WARN per key; a key ALSO absent from English renders as `<missing:key>` with another per-key WARN. Both WARNs are emitted once per key per load (the `warnedKeys` set clears on every `load()`/`reload()`).
+- The prefix applies ONLY in `send`/`broadcast` and ONLY to single-line messages; `get`, `getLegacy`, `getList`, `actionbar` and `title` never add it, and list messages send line by line as-is.
+- The `rendered` cache pays the `[rgb]` interpolation once at load. In `deliver`, the cache is only used when there is no configured prefix and no placeholders arrived; with a prefix the render is always per-call.
+- The `snlib.*` merge is at the text-LINE level (`YamlUpdater.merge`) over the disk file, preserving existing values: admins can restyle any line and their changes survive updates.
+- Translations merge against the on-DISK `messages_en.yml` (not the jar's), which is why they also receive the `snlib.*` keys and any key the consumer adds later.
+- An empty string value on a key produces a no-op in `send`/`actionbar`/`title` and `Component.empty()` in `get`; different from a missing key, which produces the marker.
+- Threading: mutable fields are `volatile` or concurrent collections (safe reads from any thread), but loading and merging are deliberate synchronous I/O, confined to onEnable and the reload command.
+- `title` parses with `split(";", -1)`, so literal `;` inside the title are not escapable; the times are ticks converted to `Duration.ofMillis(ticks * 50)`.
 
 ### snlib-messages.yml
 
 `src/main/resources/snlib-messages.yml`
 
-Recurso empaquetado dentro de SnLib.jar con las keys de mensaje compartidas `snlib.*`. El updater always-merge inserta en cada arranque toda key que falte en el `lang/messages_en.yml` de cada consumidor; los valores existentes nunca se sobreescriben. Cada key lleva un comentario explicando cuando se envia. Keys y placeholders (formato `{token}`, resueltos como locals por el pipeline de SnLang):
+Resource packaged inside SnLib.jar with the shared `snlib.*` message keys. The always-merge updater inserts on every startup any key missing from each consumer's `lang/messages_en.yml`; existing values are never overwritten. Each key carries a comment explaining when it is sent. Keys and placeholders (`{token}` format, resolved as locals by the SnLang pipeline):
 
-| Key | Placeholders | Uso |
+| Key | Placeholders | Usage |
 |---|---|---|
-| `snlib.no-permission` | (ninguno) | Enviada cuando el sender no tiene el permiso requerido por un comando o subcomando. |
-| `snlib.usage` | `{usage}` | Enviada ante argumentos faltantes o malformados; `{usage}` es la sintaxis correcta. |
-| `snlib.invalid-number` | `{value}` | Enviada cuando un argumento esperaba un numero; `{value}` es el input rechazado. |
-| `snlib.invalid-value` | `{value}` | Enviada cuando un valor no es una de las opciones aceptadas; `{value}` es el input rechazado. |
-| `snlib.out-of-range` | `{min}`, `{max}`, `{value}` | Enviada cuando un argumento numerico cae fuera de su rango permitido. |
-| `snlib.player-not-found` | `{value}` | Enviada cuando un argumento esperaba un jugador online. |
-| `snlib.unknown-subcommand` | `{value}` | Enviada cuando el subcomando dado no existe. |
-| `snlib.reload-done` | (ninguno) | Enviada al sender tras un reload exitoso. |
-| `snlib.help.header` | (ninguno) | Linea de encabezado impresa antes de las entradas de help generadas. |
-| `snlib.help.entry` | `{usage}`, `{permission}` | Una linea por subcomando visible para el sender. |
-| `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Impresa despues de las entradas solo cuando el help abarca varias paginas; `{command}` es el nombre del comando raiz. |
-| `snlib.selection.pos1-set` | `{x}`, `{y}`, `{z}`, `{world}` | Enviada cuando una wand de seleccion setea la posicion 1 (v1.1, seccion 18). |
-| `snlib.selection.pos2-set` | `{x}`, `{y}`, `{z}`, `{world}` | Enviada cuando una wand de seleccion setea la posicion 2 (v1.1, seccion 18). |
-| `snlib.selection.different-worlds` | (ninguno) | Enviada cuando las dos posiciones de una seleccion quedan en mundos distintos (v1.1, seccion 18). |
-| `snlib.selection.too-big` | `{volume}`, `{max}` | Enviada cuando el cuboide seleccionado excede el `maxVolume` del spec (v1.1, seccion 18). |
-| `snlib.selection.no-permission` | (ninguno) | Enviada cuando el jugador no tiene el permiso de la wand de seleccion (v1.1, seccion 18). |
-| `snlib.selection.timeout` | (ninguno) | Enviada cuando una sesion de seleccion expira por el timeout del spec (v1.1, seccion 18). |
+| `snlib.no-permission` | (none) | Sent when the sender lacks the permission required by a command or subcommand. |
+| `snlib.usage` | `{usage}` | Sent on missing or malformed arguments; `{usage}` is the correct syntax. |
+| `snlib.invalid-number` | `{value}` | Sent when an argument expected a number; `{value}` is the rejected input. |
+| `snlib.invalid-value` | `{value}` | Sent when a value is not one of the accepted options; `{value}` is the rejected input. |
+| `snlib.out-of-range` | `{min}`, `{max}`, `{value}` | Sent when a numeric argument falls outside its allowed range. |
+| `snlib.player-not-found` | `{value}` | Sent when an argument expected an online player. |
+| `snlib.unknown-subcommand` | `{value}` | Sent when the given subcommand does not exist. |
+| `snlib.reload-done` | (none) | Sent to the sender after a successful reload. |
+| `snlib.help.header` | (none) | Header line printed before the generated help entries. |
+| `snlib.help.entry` | `{usage}`, `{permission}` | One line per subcommand visible to the sender. |
+| `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Printed after the entries only when the help spans multiple pages; `{command}` is the root command name. |
+| `snlib.selection.pos1-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 1 (v1.1, section 18). |
+| `snlib.selection.pos2-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 2 (v1.1, section 18). |
+| `snlib.selection.different-worlds` | (none) | Sent when the two positions of a selection end up in different worlds (v1.1, section 18). |
+| `snlib.selection.too-big` | `{volume}`, `{max}` | Sent when the selected cuboid exceeds the spec's `maxVolume` (v1.1, section 18). |
+| `snlib.selection.no-permission` | (none) | Sent when the player lacks the selection wand's permission (v1.1, section 18). |
+| `snlib.selection.timeout` | (none) | Sent when a selection session expires via the spec's timeout (v1.1, section 18). |
 
-Los valores default usan color codes legacy `&` (ej. `&cYou do not have permission to use this command.`).
+Default values use legacy `&` color codes (e.g. `&cYou do not have permission to use this command.`).
 
 ### SnDebug
 
 `src/main/java/com/sn/lib/debug/SnDebug.java`
 
-Servicio de debug en runtime de un contexto consumidor (clase `public final`), alcanzado via `sn.debug()`: toggleable sin restart, con categorias string, suppliers lazy y persistencia de cada toggle. El output va al logger del server prefijado por canal: `info` emite con `[<PluginName>][INFO] `, `log` con `[<PluginName>][DEBUG] ` y `trace` con `[<PluginName>][TRACE] `.
+Runtime debug service of a consumer context (`public final` class), reached via `sn.debug()`: toggleable without restart, with string categories, lazy suppliers and persistence of every toggle. Output goes to the server logger prefixed by channel: `info` emits with `[<PluginName>][INFO] `, `log` with `[<PluginName>][DEBUG] ` and `trace` with `[<PluginName>][TRACE] `.
 
-Enum publico:
+Public enum:
 
-- `public enum Level { OFF, INFO, DEBUG, TRACE }` - Umbral de verbosidad, escalera creciente `OFF < INFO < DEBUG < TRACE`. Cada canal emite desde su escalon: `info` desde `INFO`, `log` desde `DEBUG` y `trace` solo en `TRACE`; `OFF` silencia todos los canales.
+- `public enum Level { OFF, INFO, DEBUG, TRACE }` - Verbosity threshold, ascending ladder `OFF < INFO < DEBUG < TRACE`. Each channel emits from its rung: `info` from `INFO`, `log` from `DEBUG` and `trace` only at `TRACE`; `OFF` silences all channels.
 
-Metodos publicos:
+Public methods:
 
-- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: arma los tres prefijos (`[Plugin][INFO] `/`[Plugin][DEBUG] `/`[Plugin][TRACE] `) y, si hay yml de respaldo (el config principal montado), restaura `debug.enabled` (default false), `debug.level` (default `DEBUG`; valor invalido loguea WARN "Valor invalido en debug.level: 'X', usando DEBUG" y usa `DEBUG`) y `debug.categories` (normalizadas a lowercase trim). Con storage null los toggles viven solo en memoria.
-- `public void info(String message)` - Loguea en el canal INFO cuando el master toggle esta encendido y el nivel es al menos `INFO`.
-- `public void info(Supplier<String> message)` - Variante lazy del canal INFO (el supplier no se evalua si el canal no emite).
-- `public void log(String message)` - Loguea el mensaje cuando el output de debug esta habilitado.
-- `public void log(Supplier<String> message)` - Construye y loguea el mensaje lazy, SOLO si el output esta habilitado (el supplier no se evalua si esta apagado).
-- `public void log(String category, Supplier<String> message)` - Construye y loguea lazy bajo una categoria, honrando el filtro de categorias; el output se prefija ademas con `[<categoria normalizada>] `.
-- `public void trace(Supplier<String> message)` - Variante lazy del canal TRACE: emite solo con master toggle encendido y nivel `TRACE`.
-- `public void trace(String category, Supplier<String> message)` - Canal TRACE bajo categoria, honrando el MISMO filtro de categorias que `log(category, ...)` (filtro vacio deja pasar todo); el output se prefija ademas con `[<categoria normalizada>] `.
-- `public boolean enabled()` - True mientras se emite output: master toggle encendido y nivel al menos `DEBUG` (comparacion por `ordinal()`).
-- `public boolean tracing()` - True mientras el canal TRACE emite: master toggle encendido y nivel `TRACE` (analogo a `enabled()`).
-- `public boolean enabled(String category)` - True cuando la categoria pasa: `enabled()` y filtro vacio o conteniendo la categoria (normalizada).
-- `public boolean toggle()` - Invierte el master toggle, lo persiste y devuelve el nuevo estado.
-- `public boolean toggle(String category)` - Agrega la categoria al filtro, o la quita si ya estaba, y persiste. Devuelve true cuando la categoria quedo dentro del filtro; un filtro vacio deja pasar toda categoria.
-- `public void setLevel(Level level)` - Setea el umbral de verbosidad y lo persiste; null se trata como `OFF`, que silencia todo.
-- `public Level level()` - Umbral de verbosidad actual.
+- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: builds the three prefixes (`[Plugin][INFO] `/`[Plugin][DEBUG] `/`[Plugin][TRACE] `) and, if there is a backing yml (the mounted main config), restores `debug.enabled` (default false), `debug.level` (default `DEBUG`; an invalid value logs WARN "Invalid value in debug.level: 'X', using DEBUG" and uses `DEBUG`) and `debug.categories` (normalized to lowercase trim). With a null storage the toggles live in memory only.
+- `public void info(String message)` - Logs on the INFO channel when the master toggle is on and the level is at least `INFO`.
+- `public void info(Supplier<String> message)` - Lazy variant of the INFO channel (the supplier is not evaluated if the channel does not emit).
+- `public void log(String message)` - Logs the message when debug output is enabled.
+- `public void log(Supplier<String> message)` - Builds and logs the message lazily, ONLY if output is enabled (the supplier is not evaluated when off).
+- `public void log(String category, Supplier<String> message)` - Builds and logs lazily under a category, honoring the category filter; the output is additionally prefixed with `[<normalized category>] `.
+- `public void trace(Supplier<String> message)` - Lazy variant of the TRACE channel: emits only with the master toggle on and level `TRACE`.
+- `public void trace(String category, Supplier<String> message)` - TRACE channel under a category, honoring the SAME category filter as `log(category, ...)` (an empty filter lets everything through); the output is additionally prefixed with `[<normalized category>] `.
+- `public boolean enabled()` - True while output emits: master toggle on and level at least `DEBUG` (compared by `ordinal()`).
+- `public boolean tracing()` - True while the TRACE channel emits: master toggle on and level `TRACE` (analogous to `enabled()`).
+- `public boolean enabled(String category)` - True when the category passes: `enabled()` and an empty filter or one containing the (normalized) category.
+- `public boolean toggle()` - Inverts the master toggle, persists it and returns the new state.
+- `public boolean toggle(String category)` - Adds the category to the filter, or removes it if it was already there, and persists. Returns true when the category ended up inside the filter; an empty filter lets every category through.
+- `public void setLevel(Level level)` - Sets the verbosity threshold and persists it; null is treated as `OFF`, which silences everything.
+- `public Level level()` - Current verbosity threshold.
 
-#### Logica interna
+#### Internal logic
 
-- `private void print(String prefix, String message)` - Emite via `Bukkit.getLogger().info(prefix + message)`: el logger GLOBAL del server, no el logger del plugin, y siempre a severidad INFO de java.util.logging (el "INFO"/"DEBUG"/"TRACE" es parte del prefijo textual del canal).
-- `private boolean infoEnabled()` - Gate interno del canal INFO: master toggle encendido y nivel al menos `INFO`.
-- `private void persist()` - No-op sin storage. Con storage escribe `debug.enabled`, `debug.level` (nombre del enum) y `debug.categories` (lista ordenada alfabeticamente) via `SnYml.set` mas `SnYml.save()`. Segun el Javadoc de la clase, el save es coalesced async en runtime y sincronico cuando el contexto dueño esta en shutdown.
-- `private Level parseLevel(String raw)` - `Level.valueOf` sobre el valor trim + uppercase `Locale.ROOT`; invalido cae a `DEBUG` con WARN en el logger del plugin.
-- `private static String normalize(String category)` - Trim + lowercase `Locale.ROOT`; se aplica en toda entrada y consulta de categorias.
+- `private void print(String prefix, String message)` - Emits via `Bukkit.getLogger().info(prefix + message)`: the server's GLOBAL logger, not the plugin's, and always at java.util.logging INFO severity (the "INFO"/"DEBUG"/"TRACE" is part of the channel's textual prefix).
+- `private boolean infoEnabled()` - Internal gate of the INFO channel: master toggle on and level at least `INFO`.
+- `private void persist()` - No-op without storage. With storage it writes `debug.enabled`, `debug.level` (enum name) and `debug.categories` (alphabetically sorted list) via `SnYml.set` plus `SnYml.save()`. Per the class Javadoc, the save is coalesced async at runtime and synchronous when the owning context is shutting down.
+- `private Level parseLevel(String raw)` - `Level.valueOf` over the trimmed + `Locale.ROOT`-uppercased value; invalid falls to `DEBUG` with a WARN in the plugin's logger.
+- `private static String normalize(String category)` - Trim + lowercase `Locale.ROOT`; applied to every category input and query.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Tres canales con umbrales reales: `info` emite desde `INFO`, `log` desde `DEBUG` y `trace` solo en `TRACE`. En nivel `INFO` solo emite `info`; en `DEBUG` emiten `info` y `log`; en `TRACE` emiten los tres; `OFF` silencia todo.
-- El filtro de categorias vacio significa "todo pasa"; agregar la primera categoria con `toggle(String)` ANGOSTA el output a solo las filtradas.
-- Las categorias se normalizan (trim + lowercase) tanto al persistir/togglear como al consultar, asi que el matching es case-insensitive.
-- Estado thread-safe: `enabled` y `level` son `volatile`, las categorias viven en un set concurrente (`ConcurrentHashMap.newKeySet()`); `log` puede llamarse desde cualquier hilo, y `persist()` delega el costo de I/O al save coalesced de `SnYml`.
-- Sin modulo config declarado (storage null) los toggles funcionan pero NO sobreviven un restart.
+- Three channels with real thresholds: `info` emits from `INFO`, `log` from `DEBUG` and `trace` only at `TRACE`. At level `INFO` only `info` emits; at `DEBUG` `info` and `log` emit; at `TRACE` all three do; `OFF` silences everything.
+- An empty category filter means "everything passes"; adding the first category with `toggle(String)` NARROWS the output to only the filtered ones.
+- Categories normalize (trim + lowercase) both when persisting/toggling and when querying, so matching is case-insensitive.
+- Thread-safe state: `enabled` and `level` are `volatile`, categories live in a concurrent set (`ConcurrentHashMap.newKeySet()`); `log` can be called from any thread, and `persist()` delegates the I/O cost to SnYml's coalesced save.
+- Without a declared config module (null storage) the toggles work but do NOT survive a restart.
 
-#### TODOs y limitaciones
+#### TODOs and limitations
 
-Ninguno. No hay marcadores TODO/FIXME/placeholder en `SnLang.java`, `SnDebug.java` ni `snlib-messages.yml`. Limitacion documentada en el propio codigo: el I/O sincronico de SnLang es deliberado (confinado a onEnable/reload).
-
+None. There are no TODO/FIXME/placeholder markers in `SnLang.java`, `SnDebug.java` or `snlib-messages.yml`. Limitation documented in the code itself: SnLang's synchronous I/O is deliberate (confined to onEnable/reload).
 ---
 
-# (Seccion generada automaticamente - estado actual de SnLib v1.1.0)
+# (Automatically generated section - current state of SnLib v1.1.0)
 
-## 06. Scheduler, SoftDependency y Cron
+## 06. Scheduler, SoftDependency and Cron
 
-Este modulo agrupa tres piezas de infraestructura de SnLib: `SnScheduler` (scheduler Folia-aware con una instancia por contexto `Sn`, mas su handle uniforme `TaskHandle`), el sistema de hooks reactivos `SoftDependency` (con su listener compartido `HookListener` y el comparador de versiones `SemverComparator`), y el scheduler de calendario `SnCron` (con su parser puro `CronExpr`). El claim de Folia es honesto y acotado: deteccion mas no-crash (las tareas van por los schedulers global region y async cuando `SnVersion.isFolia()` es true), pero NO es un port region-aware completo; los modulos de GUI e items siguen siendo solo Paper. Tanto los hooks como los jobs cron viven en registries por plugin dueño (`TenantRegistry`), de modo que el disable de un consumidor barre sus recursos sin tocar a los demas.
+This module groups three pieces of SnLib infrastructure: `SnScheduler` (Folia-aware scheduler with one instance per `Sn` context, plus its uniform `TaskHandle`), the reactive hook system `SoftDependency` (with its shared listener `HookListener` and the version comparator `SemverComparator`), and the calendar scheduler `SnCron` (with its pure parser `CronExpr`). The Folia claim is honest and bounded: detection plus no-crash (tasks go through the global region and async schedulers when `SnVersion.isFolia()` is true), but it is NOT a complete region-aware port; the GUI and items modules remain Paper-only. Both hooks and cron jobs live in per-owner registries (`TenantRegistry`), so a consumer's disable sweeps its resources without touching the others.
 
 ### SnScheduler
 `src/main/java/com/sn/lib/scheduler/SnScheduler.java`
 
-Scheduler de tareas Folia-aware ligado a UN plugin dueño (una instancia por contexto `Sn`). Cada metodo bifurca segun `SnVersion.isFolia()`: en Folia usa `Bukkit.getGlobalRegionScheduler()` (sync) o `Bukkit.getAsyncScheduler()` (async); en Paper usa `Bukkit.getScheduler()`. Los delays/periodos en ticks se fuerzan a minimo 1; en los metodos async de Folia los ticks se convierten a milisegundos (`ticks * 50L`, `TimeUnit.MILLISECONDS`). Devuelve siempre un `TaskHandle` (records internos `FoliaHandle` sobre `ScheduledTask` y `BukkitHandle` sobre `BukkitTask`).
+Folia-aware task scheduler bound to ONE owning plugin (one instance per `Sn` context). Every method forks on `SnVersion.isFolia()`: on Folia it uses `Bukkit.getGlobalRegionScheduler()` (sync) or `Bukkit.getAsyncScheduler()` (async); on Paper it uses `Bukkit.getScheduler()`. Delays/periods in ticks are forced to a minimum of 1; in Folia's async methods ticks convert to milliseconds (`ticks * 50L`, `TimeUnit.MILLISECONDS`). Always returns a `TaskHandle` (internal records `FoliaHandle` over `ScheduledTask` and `BukkitHandle` over `BukkitTask`).
 
-- `public SnScheduler(JavaPlugin plugin)` - construye el scheduler ligado al plugin dueño; todas las tareas se agendan a nombre de ese plugin.
-- `public TaskHandle sync(Runnable task)` - corre en el main thread (global region en Folia).
-- `public TaskHandle async(Runnable task)` - corre fuera del main thread (`runNow` del async scheduler en Folia).
-- `public TaskHandle syncLater(long delayTicks, Runnable task)` - corre en el main thread despues de `delayTicks` (minimo 1).
-- `public TaskHandle asyncLater(long delayTicks, Runnable task)` - corre fuera del main thread despues de `delayTicks` (minimo 1; en Folia el delay va en ms).
-- `public TaskHandle timer(long delayTicks, long periodTicks, Runnable task)` - repetitiva en el main thread; delay y periodo en ticks (minimo 1 cada uno).
-- `public TaskHandle timerAsync(long delayTicks, long periodTicks, Runnable task)` - repetitiva fuera del main thread; en Folia delay y periodo se convierten a ms.
-- `public <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier)` - computa un valor fuera del main thread; una falla del supplier (o agendar contra un plugin ya deshabilitado, `IllegalPluginAccessException`) completa el future excepcionalmente en vez de tirar.
-- `public <T> void thenSync(CompletableFuture<T> future, Consumer<T> consumer)` - consume el valor del future saltando al main thread; el hop se saltea si el plugin dueño ya esta deshabilitado, la race de disable dentro del scheduler se absorbe atrapando `IllegalPluginAccessException`, y una completacion excepcional loguea UN WARN ("Tarea async termino con error: ...") y nunca llega al consumer. El WARN del hop descartado es "Hop al main descartado: plugin deshabilitado durante el scheduling".
-- `public void cancelAll()` - cancela todas las tareas agendadas por el plugin dueño (en Folia cancela en el global region scheduler Y en el async scheduler; en Paper via `Bukkit.getScheduler().cancelTasks(plugin)`).
+- `public SnScheduler(JavaPlugin plugin)` - builds the scheduler bound to the owning plugin; all tasks schedule on that plugin's behalf.
+- `public TaskHandle sync(Runnable task)` - runs on the main thread (global region on Folia).
+- `public TaskHandle async(Runnable task)` - runs off the main thread (`runNow` of the async scheduler on Folia).
+- `public TaskHandle syncLater(long delayTicks, Runnable task)` - runs on the main thread after `delayTicks` (minimum 1).
+- `public TaskHandle asyncLater(long delayTicks, Runnable task)` - runs off the main thread after `delayTicks` (minimum 1; on Folia the delay is in ms).
+- `public TaskHandle timer(long delayTicks, long periodTicks, Runnable task)` - repeating on the main thread; delay and period in ticks (minimum 1 each).
+- `public TaskHandle timerAsync(long delayTicks, long periodTicks, Runnable task)` - repeating off the main thread; on Folia delay and period convert to ms.
+- `public <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier)` - computes a value off the main thread; a supplier failure (or scheduling against an already disabled plugin, `IllegalPluginAccessException`) completes the future exceptionally instead of throwing.
+- `public <T> void thenSync(CompletableFuture<T> future, Consumer<T> consumer)` - consumes the future's value hopping to the main thread; the hop is skipped if the owning plugin is already disabled, the disable race inside the scheduler is absorbed catching `IllegalPluginAccessException`, and an exceptional completion logs ONE WARN ("Async task finished with an error: ...") and never reaches the consumer. The discarded-hop WARN is "Hop to main discarded: plugin disabled during scheduling".
+- `public void cancelAll()` - cancels all tasks scheduled by the owning plugin (on Folia it cancels in the global region scheduler AND in the async scheduler; on Paper via `Bukkit.getScheduler().cancelTasks(plugin)`).
 
-Clases internas (privadas):
-- `private record FoliaHandle(ScheduledTask task) implements TaskHandle` - `cancel()` delega en `task.cancel()`; `isCancelled()` en `task.isCancelled()`.
-- `private record BukkitHandle(BukkitTask task) implements TaskHandle` - mismo par de delegaciones sobre `BukkitTask`.
+Internal (private) classes:
+- `private record FoliaHandle(ScheduledTask task) implements TaskHandle` - `cancel()` delegates to `task.cancel()`; `isCancelled()` to `task.isCancelled()`.
+- `private record BukkitHandle(BukkitTask task) implements TaskHandle` - the same pair of delegations over `BukkitTask`.
 
-#### Notas y gotchas
-- Claim honesto de Folia (Javadoc literal): el soporte es "detection plus no-crash"; cuando `SnVersion.isFolia()` es true las tareas van por el global region scheduler y el async scheduler para que agendar nunca tire. NO es un port region-aware completo: no hay scheduling por region ni por entidad, y los modulos de GUI e items siguen siendo Paper-only.
-- La conversion tick a ms en Folia async asume 50 ms por tick fijo.
-- `supplyAsync`/`thenSync` son el patron recomendado para el ciclo async-compute + main-thread-apply sin fugas de excepciones ni acceso a Bukkit fuera del main.
+#### Notes and gotchas
+- Honest Folia claim (literal Javadoc): support is "detection plus no-crash"; when `SnVersion.isFolia()` is true, tasks go through the global region scheduler and the async scheduler so scheduling never throws. It is NOT a complete region-aware port: there is no per-region or per-entity scheduling, and the GUI and items modules remain Paper-only.
+- The tick-to-ms conversion in Folia async assumes a fixed 50 ms per tick.
+- `supplyAsync`/`thenSync` are the recommended pattern for the async-compute + main-thread-apply cycle without exception leaks or Bukkit access off main.
 
 ### TaskHandle
 `src/main/java/com/sn/lib/scheduler/TaskHandle.java`
 
-Handle cancelable sobre una tarea agendada, uniforme entre el scheduler de Bukkit y los de Folia. Interface de dos metodos.
+Cancelable handle over a scheduled task, uniform across the Bukkit scheduler and Folia's. Two-method interface.
 
-- `void cancel()` - cancela la tarea si sigue pendiente o repitiendo.
-- `boolean isCancelled()` - true cuando la tarea fue cancelada.
+- `void cancel()` - cancels the task if still pending or repeating.
+- `boolean isCancelled()` - true when the task was cancelled.
 
 ### SoftDependency
 `src/main/java/com/sn/lib/hook/SoftDependency.java`
 
-Hook reactivo de dependencia blanda parametrizado en `T` (el tipo del adapter que produce la factory), keyed por su plugin dueño. Resuelve lazy contra el plugin target (presente + habilitado + gate semver + clase requerida opcional) y se activa/desactiva en vivo via `HookListener` cuando el target se habilita o deshabilita. Cada instancia se registra bajo su owner en un `TenantRegistry<SoftDependency<?>>` estatico (static server-wide justificado: el registry en si; el contenido va keyed por plugin dueño), cuyo callback de sweep es `SoftDependency::forceDisable`: el disable de un consumidor remueve sus hooks y los fuerza-deshabilita sin tocar los de otros consumidores. Estado interno: `instance`, `resolved` y `disabled` son `volatile`; la resolucion (`resolve()`) es `synchronized` e idempotente.
+Reactive soft-dependency hook parameterized on `T` (the adapter type the factory produces), keyed by its owning plugin. It resolves lazily against the target plugin (present + enabled + semver gate + optional required class) and activates/deactivates live via `HookListener` when the target enables or disables. Each instance registers under its owner in a static `TenantRegistry<SoftDependency<?>>` (justified server-wide static: the registry itself; the content is keyed by owning plugin), whose sweep callback is `SoftDependency::forceDisable`: a consumer's disable removes its hooks and force-disables them without touching other consumers'. Internal state: `instance`, `resolved` and `disabled` are `volatile`; resolution (`resolve()`) is `synchronized` and idempotent.
 
-Metodos estaticos:
-- `public static <T> SoftDependency<T> of(JavaPlugin owner, String pluginName, Supplier<T> factory)` - crea un hook de `owner` contra el plugin llamado `pluginName` y lo inscribe en el registry por owner. La factory debe ser el UNICO codigo que referencia clases del target, para que un target ausente nunca dispare `NoClassDefFoundError` fuera del boundary aislado de instanciacion.
-- `public static void forEachRegistered(Consumer<SoftDependency<?>> action)` - aplica la accion a todos los hooks registrados de todos los owners; es la fuente de iteracion de `HookListener`.
-- `public static void targetDisabled(String pluginName)` - "estaciona" (deactivate) todos los hooks de cualquier owner que apunten a `pluginName`; notificacion usada por el sweeper. La comparacion de nombres es case-insensitive.
+Static methods:
+- `public static <T> SoftDependency<T> of(JavaPlugin owner, String pluginName, Supplier<T> factory)` - creates a hook from `owner` against the plugin named `pluginName` and enrolls it in the per-owner registry. The factory must be the ONLY code referencing target classes, so an absent target never triggers a `NoClassDefFoundError` outside the isolated instantiation boundary.
+- `public static void forEachRegistered(Consumer<SoftDependency<?>> action)` - applies the action to every registered hook of every owner; it is `HookListener`'s iteration source.
+- `public static void targetDisabled(String pluginName)` - "parks" (deactivates) every hook of any owner pointing at `pluginName`; notification used by the sweeper. Name comparison is case-insensitive.
 
-Metodos de instancia:
-- `public SoftDependency<T> minVersion(String version)` - exige que la version del target sea al menos `version` (gate semver via `SemverComparator`, con precedencia de pre-release: un target `-SNAPSHOT` instalado NO satisface la release pelada); invalida la resolucion actual y devuelve `this` (fluido).
-- `public SoftDependency<T> requiresClass(String className)` - exige que `className` sea cargable desde el classloader del plugin target (`Class.forName(name, false, loader)`, sin inicializar); tambien invalida y devuelve `this`.
-- `public JavaPlugin owner()` - plugin dueño del hook; usado para la inscripcion diferida en el registry por owner.
-- `public String pluginName()` - nombre del plugin target al que este hook se liga.
-- `public boolean isAvailable()` - true cuando el hook esta activo (resolviendolo primero si hace falta); equivale a `get().isPresent()`.
-- `public Optional<T> get()` - el adapter activo, resolviendo primero si hace falta; empty cuando no esta disponible o el hook esta `disabled`.
-- `public void invalidate()` - descarta el adapter actual (`instance = null`, `resolved = false`); el proximo `get()` vuelve a resolver.
-- `public void forceDisable()` - deshabilita el hook PERMANENTEMENTE (teardown del consumidor): `disabled = true`, `instance = null`, `resolved = true`; nunca vuelve a resolver.
+Instance methods:
+- `public SoftDependency<T> minVersion(String version)` - requires the target's version to be at least `version` (semver gate via `SemverComparator`, with pre-release precedence: an installed `-SNAPSHOT` target does NOT satisfy the bare release); invalidates the current resolution and returns `this` (fluent).
+- `public SoftDependency<T> requiresClass(String className)` - requires `className` to be loadable from the target plugin's classloader (`Class.forName(name, false, loader)`, without initializing); also invalidates and returns `this`.
+- `public JavaPlugin owner()` - the hook's owning plugin; used for deferred enrollment in the per-owner registry.
+- `public String pluginName()` - name of the target plugin this hook binds to.
+- `public boolean isAvailable()` - true when the hook is active (resolving it first if needed); equivalent to `get().isPresent()`.
+- `public Optional<T> get()` - the active adapter, resolving first if needed; empty when unavailable or the hook is `disabled`.
+- `public void invalidate()` - discards the current adapter (`instance = null`, `resolved = false`); the next `get()` re-resolves.
+- `public void forceDisable()` - disables the hook PERMANENTLY (consumer teardown): `disabled = true`, `instance = null`, `resolved = true`; it never resolves again.
 
-Metodos package-private (llamados por `HookListener`):
-- `void refresh()` - re-resuelve inmediatamente (`invalidate()` + `resolve()`); llamado al habilitarse el target.
-- `void deactivate()` - estaciona el hook como no disponible SIN re-resolucion lazy (`instance = null`, `resolved = true`); llamado al deshabilitarse el target, cuando el target todavia puede reportar `isEnabled()` durante su propio `PluginDisableEvent`.
+Package-private methods (called by `HookListener`):
+- `void refresh()` - re-resolves immediately (`invalidate()` + `resolve()`); called when the target enables.
+- `void deactivate()` - parks the hook as unavailable WITHOUT lazy re-resolution (`instance = null`, `resolved = true`); called when the target disables, when the target can still report `isEnabled()` during its own `PluginDisableEvent`.
 
-#### Logica interna
-- `resolve()` (privado, `synchronized`): si no esta `disabled` ni `resolved`, busca el target via `Bukkit.getPluginManager().getPlugin(pluginName)`; solo instancia si el target existe, esta habilitado, pasa `versionOk` y pasa `classOk`. Siempre deja `resolved = true` (resultado negativo cacheado hasta un `invalidate`/`refresh`).
-- `versionOk(Plugin)`: sin `minVersion` pasa siempre; si `SemverComparator.compareVersions(instalada, requerida) < 0` loguea WARN en el logger del OWNER: "Hook '<target>' requiere version >= X (instalada: Y); hook deshabilitado". La comparacion aplica la precedencia semver de pre-release: un target `2.0.0-SNAPSHOT` instalado ya NO pasa un `minVersion("2.0.0")` (cambio de comportamiento documentado para el changelog de 1.1.0).
-- `classOk(Plugin)`: atrapa `ClassNotFoundException` y `LinkageError`; en falla loguea WARN "Hook '<target>': clase requerida <clase> no encontrada; hook deshabilitado".
-- `instantiate()`: boundary aislado de instanciacion; la factory corre SOLO aca y cualquier `Throwable` (incluido `NoClassDefFoundError` de un adapter compilado contra una API ausente) se atrapa con WARN "Hook '<target>' fallo al instanciar: ..." devolviendo null, asi un hook roto nunca se propaga al caller.
+#### Internal logic
+- `resolve()` (private, `synchronized`): if neither `disabled` nor `resolved`, it looks up the target via `Bukkit.getPluginManager().getPlugin(pluginName)`; it only instantiates if the target exists, is enabled, passes `versionOk` and passes `classOk`. It always leaves `resolved = true` (negative result cached until an `invalidate`/`refresh`).
+- `versionOk(Plugin)`: without `minVersion` it always passes; if `SemverComparator.compareVersions(installed, required) < 0` it logs a WARN in the OWNER's logger: "Hook '<target>' requires version >= X (installed: Y); hook disabled". The comparison applies semver pre-release precedence: an installed `2.0.0-SNAPSHOT` target no longer passes a `minVersion("2.0.0")` (behavior change documented for the 1.1.0 changelog).
+- `classOk(Plugin)`: catches `ClassNotFoundException` and `LinkageError`; on failure it logs WARN "Hook '<target>': required class <class> not found; hook disabled".
+- `instantiate()`: isolated instantiation boundary; the factory runs ONLY here and any `Throwable` (including a `NoClassDefFoundError` from an adapter compiled against an absent API) is caught with WARN "Hook '<target>' failed to instantiate: ..." returning null, so a broken hook never propagates to the caller.
 
-#### Notas y gotchas
-- Ciclo de vida completo: `of` (crea + registra por owner) -> configuracion fluida `minVersion`/`requiresClass` (cada una invalida) -> `get`/`isAvailable` (resolucion lazy cacheada) -> `refresh`/`deactivate` en vivo via `HookListener` -> `invalidate` manual si el consumidor quiere forzar re-resolucion -> `forceDisable` terminal via sweep del `TenantRegistry` al deshabilitarse el owner.
-- `deactivate` existe separado de `invalidate` a proposito: durante el `PluginDisableEvent` del target este todavia puede reportar `isEnabled() == true`, asi que una re-resolucion lazy inmediata re-engancharia un plugin moribundo; `deactivate` deja `resolved = true` con instancia null para evitarlo.
-- Los WARNs salen por el logger del plugin OWNER (no el del target ni el de SnLib), asi cada consumidor ve sus propios diagnosticos.
+#### Notes and gotchas
+- Full lifecycle: `of` (creates + registers per owner) -> fluent configuration `minVersion`/`requiresClass` (each invalidates) -> `get`/`isAvailable` (cached lazy resolution) -> live `refresh`/`deactivate` via `HookListener` -> manual `invalidate` if the consumer wants to force re-resolution -> terminal `forceDisable` via the `TenantRegistry` sweep when the owner disables.
+- `deactivate` exists separately from `invalidate` on purpose: during the target's `PluginDisableEvent` it can still report `isEnabled() == true`, so an immediate lazy re-resolution would re-hook a dying plugin; `deactivate` leaves `resolved = true` with a null instance to avoid that.
+- WARNs go through the OWNER plugin's logger (not the target's nor SnLib's), so each consumer sees its own diagnostics.
 
 ### HookListener
 `src/main/java/com/sn/lib/hook/HookListener.java`
 
-Listener compartido que activa/desactiva en vivo cada `SoftDependency` registrado cuando su plugin target se habilita o deshabilita. La fuente de iteracion se inyecta por constructor (unit-testable sin registry); la instancia de produccion inscripta en el ListenerHub se puentea a `SoftDependency::forEachRegistered`.
+Shared listener that live-activates/deactivates each registered `SoftDependency` when its target plugin enables or disables. The iteration source is injected via constructor (unit-testable without the registry); the production instance enrolled in the ListenerHub bridges to `SoftDependency::forEachRegistered`.
 
-- `public HookListener(Consumer<Consumer<SoftDependency<?>>> forEachDependency)` - recibe la funcion que aplica una accion a cada SoftDependency registrado de cada owner.
-- `public void onPluginEnable(PluginEnableEvent event)` - (`@EventHandler`) llama `refresh()` en cada hook cuyo `pluginName()` iguala (case-insensitive) el nombre del plugin habilitado.
-- `public void onPluginDisable(PluginDisableEvent event)` - (`@EventHandler`) llama `deactivate()` en cada hook cuyo target coincide con el plugin deshabilitado.
+- `public HookListener(Consumer<Consumer<SoftDependency<?>>> forEachDependency)` - receives the function that applies an action to every registered SoftDependency of every owner.
+- `public void onPluginEnable(PluginEnableEvent event)` - (`@EventHandler`) calls `refresh()` on every hook whose `pluginName()` equals (case-insensitive) the enabled plugin's name.
+- `public void onPluginDisable(PluginDisableEvent event)` - (`@EventHandler`) calls `deactivate()` on every hook whose target matches the disabled plugin.
 
-#### Notas y gotchas
-- Nota de wiring literal del Javadoc: este listener se define aca unit-testable y se INSCRIBE en el ListenerHub; la llamada a `registerEvents` sucede UNICAMENTE en el bootstrap de SnLibPlugin (paso 31). Nunca registrarlo en otro lado.
+#### Notes and gotchas
+- Literal wiring note from the Javadoc: this listener is defined here unit-testable and ENROLLED in the ListenerHub; the `registerEvents` call happens SOLELY in the SnLibPlugin bootstrap (step 31). Never register it anywhere else.
 
 ### SemverComparator
 `src/main/java/com/sn/lib/hook/SemverComparator.java`
 
-Comparador de versiones puro para los gates de version de plugins, con precedencia semver de pre-release. Sin dependencia de Bukkit. Implementa `Comparator<String>`.
+Pure version comparator for plugin version gates, with semver pre-release precedence. No Bukkit dependency. Implements `Comparator<String>`.
 
-- `public int compare(String left, String right)` - delega en `compareVersions` (permite usarlo como `Comparator`).
-- `public static int compareVersions(String left, String right)` - negativo cuando `left` es mas vieja que `right`, cero cuando son equivalentes, positivo cuando es mas nueva. Ignora build metadata (`+...`) en ambos lados.
+- `public int compare(String left, String right)` - delegates to `compareVersions` (allows using it as a `Comparator`).
+- `public static int compareVersions(String left, String right)` - negative when `left` is older than `right`, zero when equivalent, positive when newer. Ignores build metadata (`+...`) on both sides.
 
-#### Logica interna
-- Build metadata: todo desde el primer `+` se ignora (`1.0.0+build.5` == `1.0.0`, item 10 de semver.org).
-- El core se compara segmento a segmento como NUMEROS (cualquier cantidad de digitos por segmento, entonces `1.10 > 1.9`); segmentos finales faltantes cuentan como 0 (`1.2 == 1.2.0`).
-- Con cores empatados, una version CON pre-release (todo desde el primer `-`) PRECEDE a la release pelada: `2.0.0-SNAPSHOT < 2.0.0`. Un pre-release vacio tras el `-` (`"1.0.0-"`) cuenta lenientemente como sin calificador.
-- Dos pre-releases comparan por identificadores separados por `.` de izquierda a derecha: ambos all-digits -> comparacion numerica sin overflow (por largo del string sin ceros a la izquierda y despues lexicografica); numerico < alfanumerico; ambos alfanumericos -> orden ASCII case-sensitive (`String.compareTo`). Si todos los identificadores compartidos empatan, gana el que tiene MAS identificadores (`1.0.0-alpha < 1.0.0-alpha.1`).
-- Escalera completa de semver.org cubierta por test: `1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0`.
-- Parsing tolerante: `null` se trata como cadena vacia; de cada segmento del core se toma solo el prefijo numerico (`leadingNumber`), y un segmento sin prefijo numerico cuenta como 0. Nunca tira excepcion.
+#### Internal logic
+- Build metadata: everything from the first `+` is ignored (`1.0.0+build.5` == `1.0.0`, semver.org item 10).
+- The core compares segment by segment as NUMBERS (any digit count per segment, so `1.10 > 1.9`); missing trailing segments count as 0 (`1.2 == 1.2.0`).
+- With tied cores, a version WITH a pre-release (everything from the first `-`) PRECEDES the bare release: `2.0.0-SNAPSHOT < 2.0.0`. An empty pre-release after the `-` (`"1.0.0-"`) leniently counts as no qualifier.
+- Two pre-releases compare by `.`-separated identifiers left to right: both all-digits -> numeric comparison without overflow (by string length without leading zeros and then lexicographic); numeric < alphanumeric; both alphanumeric -> case-sensitive ASCII order (`String.compareTo`). If all shared identifiers tie, the one with MORE identifiers wins (`1.0.0-alpha < 1.0.0-alpha.1`).
+- The full semver.org ladder is covered by test: `1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0`.
+- Tolerant parsing: `null` is treated as an empty string; from each core segment only the numeric prefix is taken (`leadingNumber`), and a segment without a numeric prefix counts as 0. It never throws.
 
 ### SnCron
 `src/main/java/com/sn/lib/cron/SnCron.java`
 
-Scheduler de calendario de un contexto consumidor, alcanzado via `sn.cron()`. Cada job empareja un id con un `CronExpr` (subset de cron de 5 campos o los atajos `daily`/`hourly`) y una tarea que corre EN EL MAIN THREAD en cada instante que matchea: el delay al proximo run se calcula y agenda a traves del scheduler Folia-aware del contexto (`ctx.scheduler().syncLater(...)`), y el job se re-agenda a si mismo despues de cada run, asi el drift de wall-clock nunca se acumula. Los jobs viven en un `TenantRegistry<Job>` estatico keyed por plugin dueño (static server-wide justificado; sweep = `SnCron::sweep`): un disable los barre aunque el owner nunca los haya cancelado. Constantes privadas: `DATA_FILE = "cron-data.yml"`, `LAST_RUN_PREFIX = "last-run."`.
+Calendar scheduler of a consumer context, reached via `sn.cron()`. Each job pairs an id with a `CronExpr` (5-field cron subset or the `daily`/`hourly` shortcuts) and a task that runs ON THE MAIN THREAD at every matching instant: the delay to the next run is computed and scheduled through the context's Folia-aware scheduler (`ctx.scheduler().syncLater(...)`), and the job reschedules itself after every run, so wall-clock drift never accumulates. Jobs live in a static `TenantRegistry<Job>` keyed by owning plugin (justified server-wide static; sweep = `SnCron::sweep`): a disable sweeps them even if the owner never cancelled. Private constants: `DATA_FILE = "cron-data.yml"`, `LAST_RUN_PREFIX = "last-run."`.
 
-- `public SnCron(Sn ctx)` - construye el cron del contexto; toda la vida del modulo cuelga de ese `Sn` (scheduler, logger, yml, flag de shutdown).
-- `public void schedule(String id, String expr, Runnable task)` - agenda `task` bajo `id` en cada instante que matchea `expr`, reemplazando cualquier job previo con el mismo id; una expresion invalida hace WARN ("Job cron '<id>' no agendado: <motivo>") y no agenda nada. Equivale a `create(id, expr).schedule(task)`.
-- `public Builder create(String id, String expr)` - inicia una definicion de job; nada se agenda hasta `Builder.schedule`.
-- `public void cancel(String id)` - cancela el job y olvida su id (lo remueve del registry por owner y lo barre); ids desconocidos son no-op.
+- `public SnCron(Sn ctx)` - builds the context's cron; the module's entire life hangs off that `Sn` (scheduler, logger, yml, shutdown flag).
+- `public void schedule(String id, String expr, Runnable task)` - schedules `task` under `id` at every instant matching `expr`, replacing any previous job with the same id; an invalid expression WARNs ("Cron job '<id>' not scheduled: <reason>") and schedules nothing. Equivalent to `create(id, expr).schedule(task)`.
+- `public Builder create(String id, String expr)` - starts a job definition; nothing schedules until `Builder.schedule`.
+- `public void cancel(String id)` - cancels the job and forgets its id (removes it from the per-owner registry and sweeps it); unknown ids are a no-op.
 
-Clase interna publica `SnCron.Builder` (builder de definicion de job, devuelto por `create`):
-- `public Builder catchUp(boolean catchUp)` - persiste el last-run y dispara UNA vez el run perdido al re-agendar (default false).
-- `public void schedule(Runnable task)` - registra y arma el job, reemplazando cualquier job previo con el mismo id.
+Public inner class `SnCron.Builder` (job definition builder, returned by `create`):
+- `public Builder catchUp(boolean catchUp)` - persists the last-run and fires the missed run ONCE on reschedule (default false).
+- `public void schedule(Runnable task)` - registers and arms the job, replacing any previous job with the same id.
 
-Clase interna privada `SnCron.Job`: struct del job (`id`, `expr`, `task`, `catchUp` finales; `cancelled` y `handle` volatile). Sin metodos.
+Private inner class `SnCron.Job`: job struct (`id`, `expr`, `task`, `catchUp` final; `cancelled` and `handle` volatile). No methods.
 
-#### Logica interna
-- `scheduleJob(...)`: parsea la expresion (WARN y return en `IllegalArgumentException`), reemplaza atomico en el mapa `byId` (el job previo se remueve del registry y se barre), inscribe el nuevo en `JOBS` bajo `ctx.plugin()`, corre el catch-up si aplica y arma el primer run.
-- `scheduleNext(Job)`: si el job no esta cancelado y el contexto no esta en shutdown, calcula `nextRun(now)` y agenda con `syncLater` un delay en ticks de `max(1, (millis + 49) / 50)` (redondeo hacia arriba a ticks). Un `IllegalPluginAccessException` (owner deshabilitado mientras se armaba) se traga: el job simplemente para.
-- `runJob(Job)`: chequea cancelado/shutdown, registra el run (si catchUp), ejecuta la tarea atrapando `Throwable` (WARN "Job cron '<id>' lanzo un error: ...") y se re-agenda. La excepcion de la tarea NO frena el ciclo.
-- Catch-up (`catchUpIfMissed`): con `catchUp(true)`, el last-run se persiste en `cron-data.yml` del plugin dueño. Al agendar de nuevo (tipicamente el proximo startup), si el last-run persistido ya tenia un instante debido en el pasado (`!expr.nextRun(last).isAfter(now)`), dispara UNA vez inmediatamente via `sync` (`runMissed`, con su propio WARN "... lanzo un error en el catch-up: ..."). Un job SIN last-run persistido solo registra el instante actual como baseline: una instalacion fresca nunca dispara retroactivamente.
-- `recordRun(Job)`: solo con catchUp; escribe `last-run.<id> = System.currentTimeMillis()` y llama `SnYml.save()`, que flipea a escritura sincronica durante el teardown del contexto, asi un run registrado mientras se apaga nunca se pierde.
-- `dataFile()`: monta lazy el data file bajo `dataLock`; si el modulo yml esta ausente (`UnsupportedOperationException` de `ctx.yml()`), marca `dataUnavailable` y WARNea UNA sola vez: "catchUp(true) requiere el modulo yml (SnSpec.builder().config(...)): el last-run no persiste". El job igual corre, solo que sin persistencia.
-- `sweep(Job)` (estatico): release completo de un job; marca `cancelled = true` y cancela el handle pendiente atrapando cualquier `Throwable` (scheduler ya desaparecido durante shutdown).
+#### Internal logic
+- `scheduleJob(...)`: parses the expression (WARN and return on `IllegalArgumentException`), atomically replaces in the `byId` map (the previous job is removed from the registry and swept), enrolls the new one in `JOBS` under `ctx.plugin()`, runs the catch-up if applicable and arms the first run.
+- `scheduleNext(Job)`: if the job is not cancelled and the context is not shutting down, computes `nextRun(now)` and schedules with `syncLater` a tick delay of `max(1, (millis + 49) / 50)` (rounded up to ticks). An `IllegalPluginAccessException` (owner disabled while arming) is swallowed: the job simply stops.
+- `runJob(Job)`: checks cancelled/shutdown, records the run (if catchUp), runs the task catching `Throwable` (WARN "Cron job '<id>' threw an error: ...") and reschedules itself. A task exception does NOT stop the cycle.
+- Catch-up (`catchUpIfMissed`): with `catchUp(true)`, the last-run persists to the owning plugin's `cron-data.yml`. When scheduling again (typically the next startup), if the persisted last-run already had a due instant in the past (`!expr.nextRun(last).isAfter(now)`), it fires ONCE immediately via `sync` (`runMissed`, with its own WARN "... threw an error in the catch-up: ..."). A job WITHOUT a persisted last-run only records the current instant as baseline: a fresh install never fires retroactively.
+- `recordRun(Job)`: only with catchUp; writes `last-run.<id> = System.currentTimeMillis()` and calls `SnYml.save()`, which flips to synchronous writing during the context teardown, so a run recorded while shutting down is never lost.
+- `dataFile()`: mounts the data file lazily under `dataLock`; if the yml module is absent (`UnsupportedOperationException` from `ctx.yml()`), it marks `dataUnavailable` and WARNs exactly ONCE: "catchUp(true) requires the yml module (SnSpec.builder().config(...)): the last-run does not persist". The job still runs, just without persistence.
+- `sweep(Job)` (static): full release of a job; marks `cancelled = true` and cancels the pending handle catching any `Throwable` (scheduler already gone during shutdown).
 
-#### Notas y gotchas
-- Todos los jobs corren en el MAIN THREAD (via `syncLater`/`sync` del scheduler del contexto); una tarea pesada debe delegar ella misma a async.
-- El re-agendado post-run recalcula contra el reloj real en cada iteracion, por eso no acumula drift (a diferencia de un timer de periodo fijo).
-- `catchUp` dispara a lo sumo UN run perdido, no uno por cada instante saltado.
-- Las zonas horarias salen de `ZonedDateTime.now()` (zona default del sistema).
+#### Notes and gotchas
+- All jobs run on the MAIN THREAD (via the context scheduler's `syncLater`/`sync`); a heavy task must delegate to async itself.
+- The post-run reschedule recomputes against the real clock on every iteration, which is why it does not accumulate drift (unlike a fixed-period timer).
+- `catchUp` fires at most ONE missed run, not one per skipped instant.
+- Time zones come from `ZonedDateTime.now()` (system default zone).
 
 ### CronExpr
 `src/main/java/com/sn/lib/cron/CronExpr.java`
 
-Expresion de calendario parseada: un subset de cron de 5 campos mas dos atajos. Matematica de tiempo pura sobre `java.time`, sin Bukkit. Estado interno: arrays booleanos por campo (`minutes[60]`, `hours[24]`, `daysOfMonth[32]`, `months[13]`, `daysOfWeek[7]`) mas los flags `anyDayOfMonth`/`anyDayOfWeek` (true cuando el campo fue literalmente `"*"`). Constante privada `MAX_ADJUSTMENTS = 5000` (cota de ajustes por busqueda; solo la alcanzan expresiones que nunca matchean).
+Parsed calendar expression: a 5-field cron subset plus two shortcuts. Pure time math over `java.time`, no Bukkit. Internal state: per-field boolean arrays (`minutes[60]`, `hours[24]`, `daysOfMonth[32]`, `months[13]`, `daysOfWeek[7]`) plus the `anyDayOfMonth`/`anyDayOfWeek` flags (true when the field was literally `"*"`). Private constant `MAX_ADJUSTMENTS = 5000` (adjustment bound per search; only reached by expressions that never match).
 
-- `public static CronExpr parse(String expr)` - parsea una expresion cron de 5 campos o uno de los atajos `daily`/`hourly`; tira `IllegalArgumentException` cuando la expresion esta malformada o un valor cae fuera del rango de su campo (mensajes en español: "Expresion cron vacia", "se esperaban 5 campos...", "fuera de rango", "paso invalido", "no es un numero", etc.).
-- `public ZonedDateTime nextRun(ZonedDateTime from)` - proximo instante que matchea ESTRICTAMENTE despues de `from`, en la zona de `from`; tira `IllegalStateException` cuando la expresion nunca matchea (por ejemplo 31 de febrero): "Expresion cron '<expr>' sin proxima ejecucion alcanzable".
-- `public String toString()` - texto original de la expresion desde la que se parseo esta instancia.
+- `public static CronExpr parse(String expr)` - parses a 5-field cron expression or one of the `daily`/`hourly` shortcuts; throws `IllegalArgumentException` when the expression is malformed or a value falls outside its field's range (messages such as "Empty cron expression", "expected 5 fields...", "out of range", "invalid step", "is not a number", etc.).
+- `public ZonedDateTime nextRun(ZonedDateTime from)` - next instant matching STRICTLY after `from`, in `from`'s zone; throws `IllegalStateException` when the expression never matches (for example February 31): "Cron expression '<expr>' has no reachable next run".
+- `public String toString()` - the original expression text this instance was parsed from.
 
-#### Gramatica soportada
-Campos en orden `minuto hora dia-del-mes mes dia-de-semana` (rangos 0-59, 0-23, 1-31, 1-12, 0-7):
-- `*` (cualquiera), listas `1,15`, rangos `1-5` y pasos `*/10` (tambien sobre rangos, `10-30/5`), combinables por campo (lista de atomos separados por coma, cada atomo con paso opcional). Un valor suelto con paso (`5/10`) se expande de ese valor al maximo del campo.
-- Dia de semana 0-7 donde 0 Y 7 significan domingo (7 colapsa sobre 0). Cuando dia-del-mes Y dia-de-semana estan AMBOS restringidos, un dia que matchea CUALQUIERA de los dos corre (semantica OR del cron estandar); si solo uno esta restringido, manda ese.
-- Atajo `daily HH:mm` (hora opcional, default 00:00) y atajo `hourly :mm` (minuto opcional, default :00; tambien acepta `mm` sin los dos puntos). Case-insensitive.
-- NO soportado: campo de segundos, nombres (`JAN`, `MON`), macros `@daily`/`@yearly`, `L`/`W`/`#` de Quartz.
+#### Supported grammar
+Fields in order `minute hour day-of-month month day-of-week` (ranges 0-59, 0-23, 1-31, 1-12, 0-7):
+- `*` (any), lists `1,15`, ranges `1-5` and steps `*/10` (also over ranges, `10-30/5`), combinable per field (comma-separated list of atoms, each atom with an optional step). A single value with a step (`5/10`) expands from that value to the field maximum.
+- Day of week 0-7 where BOTH 0 and 7 mean Sunday (7 collapses onto 0). When day-of-month AND day-of-week are BOTH restricted, a day matching EITHER runs (standard cron OR semantics); if only one is restricted, that one rules.
+- `daily HH:mm` shortcut (time optional, default 00:00) and `hourly :mm` shortcut (minute optional, default :00; also accepts `mm` without the colon). Case-insensitive.
+- NOT supported: seconds field, names (`JAN`, `MON`), `@daily`/`@yearly` macros, Quartz's `L`/`W`/`#`.
 
-#### DST y fin de mes (nextRun)
-`nextRun` trunca a minuto, suma 1 minuto (estrictamente despues) e itera por campo sobre `ZonedDateTime`, de mayor a menor (mes -> dia -> hora -> minuto), reseteando los campos menores en cada salto (`plusMonths`/`plusDays` con `atStartOfDay(zone)`, `plusHours(...).withMinute(0)`, `plusMinutes(1)`). Como todo el avance pasa por las reglas de la zona:
-- Una hora de wall-clock borrada por un gap de DST se SALTEA al proximo dia que matchee (nunca dispara en un instante inexistente).
-- Un dia ausente de un mes (el 31 en un mes de 30 dias, el 29 de febrero fuera de año bisiesto) espera al proximo mes que lo tenga.
-- La cota `MAX_ADJUSTMENTS = 5000` corta la busqueda de expresiones imposibles con `IllegalStateException` en vez de loopear infinito.
+#### DST and end of month (nextRun)
+`nextRun` truncates to the minute, adds 1 minute (strictly after) and iterates field by field over `ZonedDateTime`, from largest to smallest (month -> day -> hour -> minute), resetting the smaller fields on each jump (`plusMonths`/`plusDays` with `atStartOfDay(zone)`, `plusHours(...).withMinute(0)`, `plusMinutes(1)`). Since all advancement goes through the zone rules:
+- A wall-clock hour erased by a DST gap is SKIPPED to the next matching day (it never fires at a nonexistent instant).
+- A day absent from a month (the 31st in a 30-day month, February 29 outside a leap year) waits for the next month that has it.
+- The `MAX_ADJUSTMENTS = 5000` bound cuts the search for impossible expressions with `IllegalStateException` instead of looping forever.
 
-#### Logica interna
-- `fill(boolean[] field, String spec, int min, int max, String name)` (estatico privado): llena un campo desde su spec; valida paso >= 1 y rangos `min <= lo <= hi <= max`.
-- `fillDayOfWeek(String spec)` (privado): parsea sobre 0-7 en un array crudo de 8 y colapsa 7 en domingo (0) con `% 7`; el match usa `dayOfWeek.getValue() % 7` (ISO lunes=1..domingo=7 -> domingo=0).
-- `dayMatches(ZonedDateTime)` (privado): implementa la semantica OR/AND descripta arriba usando `anyDayOfMonth`/`anyDayOfWeek`.
-- `parseClock` / `parseHourlyMinute` / `parseInt` (estaticos privados): parsers de los atajos y de enteros con mensajes de error contextuales.
+#### Internal logic
+- `fill(boolean[] field, String spec, int min, int max, String name)` (private static): fills a field from its spec; validates step >= 1 and ranges `min <= lo <= hi <= max`.
+- `fillDayOfWeek(String spec)` (private): parses over 0-7 into a raw array of 8 and collapses 7 onto Sunday (0) with `% 7`; matching uses `dayOfWeek.getValue() % 7` (ISO Monday=1..Sunday=7 -> Sunday=0).
+- `dayMatches(ZonedDateTime)` (private): implements the OR/AND semantics described above using `anyDayOfMonth`/`anyDayOfWeek`.
+- `parseClock` / `parseHourlyMinute` / `parseInt` (private statics): parsers for the shortcuts and for integers with contextual error messages.
 
-### TODOs y limitaciones
-No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitaciones documentadas en el propio codigo:
-- Folia: el soporte de `SnScheduler` es solo deteccion + no-crash (global region y async schedulers); NO es un port region-aware completo y los modulos de GUI e items siguen siendo Paper-only (Javadoc de `SnScheduler`).
-- `SnCron` con `catchUp(true)` requiere el modulo yml del contexto (`SnSpec.builder().config(...)`); sin el, el job corre igual pero WARNea una vez y el last-run no persiste.
-- El catch-up dispara a lo sumo UN run perdido por re-agendado, no repone cada instante saltado.
-- `CronExpr` es un subset: sin segundos, sin nombres de mes/dia, sin macros `@...` ni extensiones Quartz (`L`/`W`/`#`); expresiones que nunca matchean cortan por `MAX_ADJUSTMENTS = 5000` con `IllegalStateException`.
-- `SemverComparator` aplica la precedencia semver de pre-release (un `-SNAPSHOT` compara MENOR que la release pelada; cambio de comportamiento respecto de 1.0.0: el gate `minVersion` ahora rechaza un target `-SNAPSHOT` cuando el hook exige la release) e ignora el build metadata (`+...`); los segmentos no numericos del core siguen contando como 0 (comparador tolerante, no un validador semver estricto).
-
+### TODOs and limitations
+There are no TODO/FIXME/placeholder markers in this module's files. Limitations documented in the code itself:
+- Folia: `SnScheduler`'s support is detection + no-crash only (global region and async schedulers); it is NOT a complete region-aware port and the GUI and items modules remain Paper-only (`SnScheduler` Javadoc).
+- `SnCron` with `catchUp(true)` requires the context's yml module (`SnSpec.builder().config(...)`); without it, the job still runs but WARNs once and the last-run does not persist.
+- The catch-up fires at most ONE missed run per reschedule; it does not replay every skipped instant.
+- `CronExpr` is a subset: no seconds, no month/day names, no `@...` macros or Quartz extensions (`L`/`W`/`#`); expressions that never match cut off via `MAX_ADJUSTMENTS = 5000` with `IllegalStateException`.
+- `SemverComparator` applies semver pre-release precedence (a `-SNAPSHOT` compares LOWER than the bare release; behavior change relative to 1.0.0: the `minVersion` gate now rejects a `-SNAPSHOT` target when the hook requires the release) and ignores build metadata (`+...`); non-numeric core segments still count as 0 (a tolerant comparator, not a strict semver validator).
 ---
 
 ## 07. Utils
 
-El paquete `com.sn.lib.util` agrupa 13 clases utilitarias estaticas (todas `final` con constructor privado, salvo `WeightedRandomPool` que es una clase inmutable instanciable via builder). Casi la mitad son puras (sin dependencia de Bukkit): `SlotParser`, `TimeUtil`, `NumberFormatter`, `WeightedRandomPool` y `MathUtil`; `PlayerLookup` (v1.1) tampoco toca Bukkit pero hace HTTP async contra Mojang; el resto toca API de Bukkit/Paper (`LocationSerializer`, `Experience`, `SoundUtil`, `HeadUtil`, `ArmourUtil`, `TagIo`, `InvUtil`). Tres clases (`SoundUtil`, `HeadUtil` y `PlayerLookup`) mantienen estado estatico server-wide, justificado explicitamente por el contrato de SnLib: cachean hechos del servidor (resolucion de ids de sonido, perfiles de textura content-addressed, mapeo nombre->UUID de Mojang) que son identicos para todo consumidor. La filosofia general del modulo es "nunca crashear al consumidor": entradas invalidas producen no-ops, nulls o WARNs delegables/deduplicados en lugar de excepciones (con las excepciones documentadas caso por caso: `NumberFormatter.parseFormatted`, `MathUtil.convertToRoman`, `WeightedRandomPool.pick` sobre pool vacio).
+The `com.sn.lib.util` package groups 13 static utility classes (all `final` with a private constructor, except `WeightedRandomPool` which is an immutable class instantiable via builder). Almost half are pure (no Bukkit dependency): `SlotParser`, `TimeUtil`, `NumberFormatter`, `WeightedRandomPool` and `MathUtil`; `PlayerLookup` (v1.1) does not touch Bukkit either but does async HTTP against Mojang; the rest touch Bukkit/Paper API (`LocationSerializer`, `Experience`, `SoundUtil`, `HeadUtil`, `ArmourUtil`, `TagIo`, `InvUtil`). Three classes (`SoundUtil`, `HeadUtil` and `PlayerLookup`) keep server-wide static state, explicitly justified by the SnLib contract: they cache facts about the server (sound id resolution, content-addressed texture profiles, Mojang name->UUID mapping) that are identical for every consumer. The module's general philosophy is "never crash the consumer": invalid inputs produce no-ops, nulls or delegable/deduplicated WARNs instead of exceptions (with the documented exceptions case by case: `NumberFormatter.parseFormatted`, `MathUtil.convertToRoman`, `WeightedRandomPool.pick` on an empty pool).
 
 ### SlotParser
 
 `src/main/java/com/sn/lib/util/SlotParser.java`
 
-Parsea definiciones de slots de inventario provenientes de YML a indices `int[]`. Acepta un int suelto, un string numerico, un rango (`"0-8"`), una mezcla separada por comas (`"0,2,4-6"`) o una lista (cualquier `Iterable`) que combine todo lo anterior (se procesa recursivamente). Clase pura: no toca Bukkit; los warnings se delegan a un sink que provee el caller.
+Parses inventory slot definitions coming from YML into `int[]` indices. Accepts a lone int, a numeric string, a range (`"0-8"`), a comma-separated mix (`"0,2,4-6"`) or a list (any `Iterable`) combining all of the above (processed recursively). Pure class: it does not touch Bukkit; warnings delegate to a sink the caller provides.
 
-- `public static int[] parse(Object raw)` - parsea descartando warnings (delega en la sobrecarga con `warn = null`).
-- `public static int[] parse(Object raw, Consumer<String> warn)` - parsea `raw` a indices de slot distintos, en orden de primera aparicion (respaldado por `LinkedHashSet`). Devuelve array vacio cuando no se encontro nada valido; `warn` puede ser null.
+- `public static int[] parse(Object raw)` - parses discarding warnings (delegates to the overload with `warn = null`).
+- `public static int[] parse(Object raw, Consumer<String> warn)` - parses `raw` into distinct slot indices, in first-seen order (backed by a `LinkedHashSet`). Returns an empty array when nothing valid was found; `warn` may be null.
 
-Logica interna:
+Internal logic:
 
-- `Number` se convierte con `Math.toIntExact(longValue())`; `Iterable` se recorre recursivamente; cualquier otro objeto se pasa a `toString()`, se trimea y se separa por comas.
-- Un token con guion a partir del indice 1 (`indexOf('-', 1)`, para no confundir el signo negativo inicial) se interpreta como rango; `from` y `to` se pueden dar en cualquier orden (se normalizan con min/max).
-- Constante privada `MAX_RANGE_SPAN = 10_000`: un rango cuyo span supere ese limite se rechaza entero con WARN ("exceeds 10000 slots; ignored"), como proteccion contra typos tipo `"0-999999"`.
-- Slots negativos se ignoran con WARN ("Negative slot N ignored"); tokens no numericos generan WARN ("Invalid slot token '...'" / "Invalid slot range '...'"); `null` y string vacio tambien avisan ("Slot definition is null" / "is empty").
+- `Number` converts with `Math.toIntExact(longValue())`; `Iterable` recurses; any other object goes through `toString()`, gets trimmed and splits by commas.
+- A token with a hyphen from index 1 onward (`indexOf('-', 1)`, so as not to confuse a leading minus sign) is interpreted as a range; `from` and `to` may come in any order (normalized with min/max).
+- Private constant `MAX_RANGE_SPAN = 10_000`: a range whose span exceeds that limit is rejected whole with a WARN ("exceeds 10000 slots; ignored"), as protection against typos like `"0-999999"`.
+- Negative slots are ignored with a WARN ("Negative slot N ignored"); non-numeric tokens generate a WARN ("Invalid slot token '...'" / "Invalid slot range '...'"); `null` and empty string also warn ("Slot definition is null" / "is empty").
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Los duplicados se deduplican silenciosamente (es un `Set`), pero el orden de salida es first-seen, no ordenado numericamente.
-- Tokens vacios entre comas (`"1,,3"`) se saltan sin WARN.
+- Duplicates deduplicate silently (it is a `Set`), but the output order is first-seen, not numerically sorted.
+- Empty tokens between commas (`"1,,3"`) skip without a WARN.
 
 ### TimeUtil
 
 `src/main/java/com/sn/lib/util/TimeUtil.java`
 
-Parseo y humanizacion de duraciones (pura, sin Bukkit). Parsea strings compactos como `"1d 2h 30m 15s"` y renderiza milisegundos de vuelta a texto, con etiquetas inyectables para i18n.
+Duration parsing and humanization (pure, no Bukkit). Parses compact strings like `"1d 2h 30m 15s"` and renders milliseconds back to text, with injectable labels for i18n.
 
-Enum publico `Unit`: `DAY, HOUR, MINUTE, SECOND` (los componentes que renderizan `humanize`/`humanizeShort`).
+Public enum `Unit`: `DAY, HOUR, MINUTE, SECOND` (the components `humanize`/`humanizeShort` render).
 
-Interfaz publica `Labels` (proveedor de etiquetas para i18n):
+Public interface `Labels` (label provider for i18n):
 
-- `String longLabel(Unit unit, boolean plural)` - etiqueta larga, ej. `"day"`/`"days"`.
-- `String shortLabel(Unit unit)` - sufijo compacto, ej. `"d"`.
+- `String longLabel(Unit unit, boolean plural)` - long label, e.g. `"day"`/`"days"`.
+- `String shortLabel(Unit unit)` - compact suffix, e.g. `"d"`.
 
-Constante publica: `Labels ENGLISH` - implementacion default en ingles (day/hour/minute/second y d/h/m/s).
+Public constant: `Labels ENGLISH` - default English implementation (day/hour/minute/second and d/h/m/s).
 
-- `public static long parseTicks(String text)` - parsea a ticks de servidor (20 por segundo); es `parseMillis(text) / 50`.
-- `public static long parseMillis(String text)` - parsea a milisegundos. Lee cada par `<numero><unidad>` tolerando espacios, comas y palabras completas (`"1 day 2 hours"`). Unidades desconocidas y basura se saltan; null o input no parseable devuelve 0.
-- `public static String humanize(long millis)` - render largo en ingles, ej. `"1 day 2 hours 30 minutes 15 seconds"`.
-- `public static String humanize(long millis, Labels labels)` - render largo con etiquetas inyectables; los componentes en cero se omiten; si todo es cero devuelve `"0 <segundos en plural>"`.
-- `public static String humanizeShort(long millis)` - render compacto en ingles, ej. `"1d 2h 30m 15s"`.
-- `public static String humanizeShort(long millis, Labels labels)` - render compacto con etiquetas inyectables; cero total devuelve `"0s"` (con la etiqueta corta de segundos).
+- `public static long parseTicks(String text)` - parses to server ticks (20 per second); it is `parseMillis(text) / 50`.
+- `public static long parseMillis(String text)` - parses to milliseconds. Reads each `<number><unit>` pair tolerating spaces, commas and full words (`"1 day 2 hours"`). Unknown units and garbage are skipped; null or unparseable input returns 0.
+- `public static String humanize(long millis)` - long English render, e.g. `"1 day 2 hours 30 minutes 15 seconds"`.
+- `public static String humanize(long millis, Labels labels)` - long render with injectable labels; zero components are omitted; if everything is zero it returns `"0 <plural seconds>"`.
+- `public static String humanizeShort(long millis)` - compact English render, e.g. `"1d 2h 30m 15s"`.
+- `public static String humanizeShort(long millis, Labels labels)` - compact render with injectable labels; a total of zero returns `"0s"` (with the short seconds label).
 
-Formato aceptado por el parser:
+Format accepted by the parser:
 
-- Unidades por primera letra (case-insensitive): `d` = dias, `h` = horas, `m` = minutos, `s` = segundos, `t` = ticks (50 ms); la excepcion es cualquier palabra que empiece con `ms` = milisegundos (chequeada antes que la primera letra, asi `"500ms"` no se lee como minutos).
-- Numeros decimales permitidos (`"1.5h"`); el resultado de cada par se redondea con `Math.round(value * unitMillis)`.
-- Numero sin unidad = segundos (`"90"` -> 90000 ms).
-- El resultado total se clampea a minimo 0.
+- Units by first letter (case-insensitive): `d` = days, `h` = hours, `m` = minutes, `s` = seconds, `t` = ticks (50 ms); the exception is any word starting with `ms` = milliseconds (checked before the first letter, so `"500ms"` does not read as minutes).
+- Decimal numbers allowed (`"1.5h"`); each pair's result rounds with `Math.round(value * unitMillis)`.
+- A number without a unit = seconds (`"90"` -> 90000 ms).
+- The total result clamps to a minimum of 0.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Como la unidad se resuelve por primera letra, palabras completas funcionan (`"minutes"`, `"days"`), pero tambien cualquier palabra que arranque igual (`"month"` se leeria como minutos).
-- `humanize`/`humanizeShort` truncan a segundos enteros: los millis sobrantes se descartan (no hay componente de ms en la salida).
+- Since the unit resolves by first letter, full words work (`"minutes"`, `"days"`), but so does any word starting the same (`"month"` would read as minutes).
+- `humanize`/`humanizeShort` truncate to whole seconds: leftover millis are discarded (there is no ms component in the output).
 
 ### NumberFormatter
 
 `src/main/java/com/sn/lib/util/NumberFormatter.java`
 
-Formateo de numeros abreviado (sufijos `K/M/B/T/Qa/Qi` en potencias de 1000) y agrupado con comas (pura, sin Bukkit). Array privado de sufijos: `{"", "K", "M", "B", "T", "Qa", "Qi"}` (hasta 10^18).
+Abbreviated number formatting (`K/M/B/T/Qa/Qi` suffixes in powers of 1000) and comma grouping (pure, no Bukkit). Private suffix array: `{"", "K", "M", "B", "T", "Qa", "Qi"}` (up to 10^18).
 
-- `public static String format(double value)` - formatea con el sufijo mas grande que aplique y hasta 2 decimales con ceros finales eliminados (`1500 -> "1.5K"`, redondeo `HALF_UP` via `BigDecimal`). Valores no finitos (`NaN`, infinitos) se devuelven como `String.valueOf(value)`. El signo negativo se preserva.
-- `public static String formatComma(double value)` - (v1.1) numero completo con agrupacion de miles por coma: redondea `HALF_UP` a 2 decimales y elimina ceros finales (mismo contrato que `format`; `toPlainString` evita la notacion cientifica de `1000.00 -> 1E+3`) y agrupa la parte entera de a 3 digitos desde la derecha con `,`, preservando signo `-` y decimales con `.` (`1234567 -> "1,234,567"`, `1234.567 -> "1,234.57"`, `1000.10 -> "1,000.1"`, `-1234567.5 -> "-1,234,567.5"`, `999 -> "999"`). NaN/infinitos como `String.valueOf(value)`. Locale-independiente por composicion manual con StringBuilder: PROHIBIDO `DecimalFormat` (no thread-safe, el bug de ManticFormatter) y `String.format` con locale de la JVM.
-- `public static double parseFormatted(String text)` - inversa tolerante de `format`: sufijos case-insensitive (`"1.5k"` funciona) y acepta tanto coma como punto como separador decimal o de agrupacion. Lanza `NumberFormatException` con null, vacio, sufijo desconocido o numero no parseable.
+- `public static String format(double value)` - formats with the largest applicable suffix and up to 2 decimals with trailing zeros removed (`1500 -> "1.5K"`, `HALF_UP` rounding via `BigDecimal`). Non-finite values (`NaN`, infinities) return as `String.valueOf(value)`. The negative sign is preserved.
+- `public static String formatComma(double value)` - (v1.1) full number with comma thousand grouping: rounds `HALF_UP` to 2 decimals and removes trailing zeros (same contract as `format`; `toPlainString` avoids the scientific notation of `1000.00 -> 1E+3`) and groups the integer part in 3s from the right with `,`, preserving the `-` sign and decimals with `.` (`1234567 -> "1,234,567"`, `1234.567 -> "1,234.57"`, `1000.10 -> "1,000.1"`, `-1234567.5 -> "-1,234,567.5"`, `999 -> "999"`). NaN/infinities as `String.valueOf(value)`. Locale-independent through manual composition with StringBuilder: `DecimalFormat` is FORBIDDEN (not thread-safe, the ManticFormatter bug) as is `String.format` with the JVM locale.
+- `public static double parseFormatted(String text)` - tolerant inverse of `format`: case-insensitive suffixes (`"1.5k"` works) and accepts both comma and dot as decimal or grouping separator. Throws `NumberFormatException` on null, empty, unknown suffix or unparseable number.
 
-Logica interna:
+Internal logic:
 
-- `format` tiene una segunda pasada de escala: si tras redondear a 2 decimales el valor llega a 1000 (ej. `999999 -> 1000.00K`), sube un sufijo mas y re-escala (`-> "1M"`), evitando salidas tipo `"1000K"`.
-- El sufijo de `parseFormatted` se toma como el run final de letras del string; el multiplicador es `1000^i` segun la posicion en el array de sufijos.
-- Heuristica de separadores en `normalizeSeparators`: si hay coma y punto, el ultimo de los dos es el decimal y el otro es agrupacion; si hay solo comas, una unica coma seguida de exactamente 3 digitos cuenta como agrupacion (`"1,500" -> 1500`) mientras que `"1,5" -> 1.5`; varias comas siempre son agrupacion. Espacios internos se eliminan. Si quedan varios puntos, solo el ultimo sobrevive como decimal.
+- `format` has a second scaling pass: if after rounding to 2 decimals the value reaches 1000 (e.g. `999999 -> 1000.00K`), it climbs one more suffix and rescales (`-> "1M"`), avoiding outputs like `"1000K"`.
+- `parseFormatted`'s suffix is taken as the string's trailing run of letters; the multiplier is `1000^i` per its position in the suffix array.
+- Separator heuristic in `normalizeSeparators`: if both comma and dot exist, the later of the two is the decimal and the other is grouping; with commas only, a single comma followed by exactly 3 digits counts as grouping (`"1,500" -> 1500`) while `"1,5" -> 1.5`; multiple commas are always grouping. Internal spaces are removed. If several dots remain, only the last survives as the decimal.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- La ambiguedad `"1,500"` se resuelve a favor de agrupacion (1500), no de decimal (1.5): es una decision deliberada documentada en el Javadoc de la clase.
+- The `"1,500"` ambiguity resolves in favor of grouping (1500), not decimal (1.5): a deliberate decision documented in the class Javadoc.
 
 ### LocationSerializer
 
 `src/main/java/com/sn/lib/util/LocationSerializer.java`
 
-Serializa `Location` de Bukkit a la forma compacta `world;x;y;z;yaw;pitch` y viceversa.
+Serializes Bukkit `Location`s to the compact form `world;x;y;z;yaw;pitch` and back.
 
-- `public static String serialize(Location location)` - serializa a `world;x;y;z;yaw;pitch`; location null o sin mundo devuelve null. Los numeros usan `Double.toString`/`Float.toString`, que son locale-independientes, asi el round-trip es estable en cualquier locale de JVM.
-- `public static Location deserialize(String raw)` - inversa null-safe. Acepta 6 partes, o 4 partes (`world;x;y;z`) con yaw y pitch en 0. Devuelve null ante cualquier fallo: input null/blank, cantidad de partes distinta de 4 o 6, mundo no cargado (`Bukkit.getWorld` null) o numero mal formado. Nunca lanza.
+- `public static String serialize(Location location)` - serializes to `world;x;y;z;yaw;pitch`; a null location or one without a world returns null. Numbers use `Double.toString`/`Float.toString`, which are locale-independent, so the round-trip is stable under any JVM locale.
+- `public static Location deserialize(String raw)` - null-safe inverse. Accepts 6 parts, or 4 parts (`world;x;y;z`) with yaw and pitch at 0. Returns null on any failure: null/blank input, a part count other than 4 or 6, an unloaded world (`Bukkit.getWorld` null) or a malformed number. Never throws.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- `deserialize` requiere que el mundo este cargado en el momento de la llamada; si el mundo todavia no cargo (ej. deserializacion muy temprana en el arranque) el resultado es null silencioso.
-- Cada parte se trimea individualmente, asi que `"world ; 1 ; 2 ; 3"` tambien parsea.
+- `deserialize` requires the world to be loaded at call time; if the world has not loaded yet (e.g. very early deserialization at startup) the result is a silent null.
+- Each part is trimmed individually, so `"world ; 1 ; 2 ; 3"` also parses.
 
 ### WeightedRandomPool
 
 `src/main/java/com/sn/lib/util/WeightedRandomPool.java`
 
-Selector aleatorio ponderado inmutable (puro, sin Bukkit), generico en `T`. Respaldado por un `TreeMap` de pesos acumulados: `pick` sortea `r` uniforme en `[0, totalWeight)` y resuelve la entrada en O(log n) via `ceilingEntry(r)`. Los pesos son `double` de punta a punta (nunca se truncan a int), asi los pesos fraccionarios conservan sus probabilidades relativas exactas. Se construye con `builder()`.
+Immutable weighted random selector (pure, no Bukkit), generic in `T`. Backed by a `TreeMap` of cumulative weights: `pick` draws `r` uniform in `[0, totalWeight)` and resolves the entry in O(log n) via `ceilingEntry(r)`. Weights are `double` end to end (never truncated to int), so fractional weights keep their exact relative probabilities. Built with `builder()`.
 
-- `public static <T> Builder<T> builder()` - crea un builder vacio.
-- `public T pick(Random random)` - pick ponderado con la fuente de aleatoriedad dada; lanza `NoSuchElementException` si el pool esta vacio. Si `ceilingEntry` devolviera null (borde de punto flotante en `r == totalWeight` efectivo), cae en `lastEntry()`.
-- `public T pick()` - pick ponderado usando `ThreadLocalRandom.current()`.
-- `public int size()` - cantidad de entradas.
-- `public boolean isEmpty()` - si el pool no tiene entradas.
-- `public double totalWeight()` - suma de pesos.
-- `public Collection<T> values()` - valores en orden de peso acumulado (coleccion no modificable).
+- `public static <T> Builder<T> builder()` - creates an empty builder.
+- `public T pick(Random random)` - weighted pick with the given randomness source; throws `NoSuchElementException` if the pool is empty. If `ceilingEntry` returned null (floating-point edge at effective `r == totalWeight`), it falls to `lastEntry()`.
+- `public T pick()` - weighted pick using `ThreadLocalRandom.current()`.
+- `public int size()` - entry count.
+- `public boolean isEmpty()` - whether the pool has no entries.
+- `public double totalWeight()` - sum of weights.
+- `public Collection<T> values()` - values in cumulative weight order (unmodifiable collection).
 
-Clase anidada publica `Builder<T>`:
+Public nested class `Builder<T>`:
 
-- `public Builder<T> add(T value, double weight)` - agrega una entrada; pesos no positivos o no finitos (`<= 0`, `NaN`, infinito) se ignoran silenciosamente (contrato heredado de RandomCollection). Devuelve `this` para encadenar.
-- `public WeightedRandomPool<T> build()` - construye el pool copiando el mapa acumulado (el builder puede seguir usandose despues sin afectar al pool construido).
+- `public Builder<T> add(T value, double weight)` - adds an entry; non-positive or non-finite weights (`<= 0`, `NaN`, infinity) are silently ignored (contract inherited from RandomCollection). Returns `this` for chaining.
+- `public WeightedRandomPool<T> build()` - builds the pool copying the cumulative map (the builder can keep being used afterwards without affecting the built pool).
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Si dos entradas hacen que el peso acumulado coincida exactamente en el mismo `double`, la segunda pisaria la clave del `TreeMap`; en la practica solo pasa con `weight` que se ignoran (0 o negativos), que ya estan filtrados en `add`.
-- Al ser inmutable, la instancia es segura para compartir entre hilos; `pick()` sin argumentos es thread-safe via `ThreadLocalRandom`.
+- If two entries make the cumulative weight land on exactly the same `double`, the second would overwrite the `TreeMap` key; in practice that only happens with weights that are ignored (0 or negative), already filtered in `add`.
+- Being immutable, the instance is safe to share across threads; the no-arg `pick()` is thread-safe via `ThreadLocalRandom`.
 
 ### Experience
 
 `src/main/java/com/sn/lib/util/Experience.java`
 
-Matematica de XP de jugador sobre la formula piecewise exacta de vanilla. XP total para alcanzar un nivel: `level^2 + 6*level` para 0-15, `2.5*level^2 - 40.5*level + 360` para 16-30 y `4.5*level^2 - 162.5*level + 2220` para 31+. Costo de un nivel: `2*level + 7`, `5*level - 38` y `9*level - 158` en los mismos brackets. Umbrales inversos: 315 XP total = nivel 15, 1395 XP total = nivel 30 (constantes privadas `BRACKET_15_TOTAL` y `BRACKET_30_TOTAL`).
+Player XP math over vanilla's exact piecewise formula. Total XP to reach a level: `level^2 + 6*level` for 0-15, `2.5*level^2 - 40.5*level + 360` for 16-30 and `4.5*level^2 - 162.5*level + 2220` for 31+. Cost of one level: `2*level + 7`, `5*level - 38` and `9*level - 158` in the same brackets. Inverse thresholds: 315 total XP = level 15, 1395 total XP = level 30 (private constants `BRACKET_15_TOTAL` and `BRACKET_30_TOTAL`).
 
-- `public static long getExp(Player player)` - XP total que tiene el jugador ahora (niveles completos mas la fraccion de la barra de progreso, redondeada).
-- `public static long getExpFromLevel(int level)` - XP total requerida para llegar a `level` desde cero; niveles `<= 0` devuelven 0.
-- `public static int getExpToNext(int level)` - XP para pasar de `level` a `level + 1` (formula lineal por bracket; niveles negativos se clampean a 0 en el bracket bajo).
-- `public static double getLevelFromExp(long exp)` - nivel fraccionario para una cantidad total de XP (parte entera = nivel, decimal = progreso de barra); usa las inversas cuadraticas por bracket (`sqrt`); `exp <= 0` devuelve 0.
-- `public static int getIntLevelFromExp(long exp)` - nivel entero (truncado) para un XP total.
-- `public static void changeExp(Player player, int amount)` - suma (o resta, si es negativo) XP de forma segura: recomputa nivel y barra de progreso del jugador a partir del total resultante, clampeado en 0.
+- `public static long getExp(Player player)` - total XP the player has right now (full levels plus the progress bar fraction, rounded).
+- `public static long getExpFromLevel(int level)` - total XP required to reach `level` from zero; levels `<= 0` return 0.
+- `public static int getExpToNext(int level)` - XP to go from `level` to `level + 1` (per-bracket linear formula; negative levels clamp to 0 in the low bracket).
+- `public static double getLevelFromExp(long exp)` - fractional level for a total XP amount (integer part = level, decimal = bar progress); uses the per-bracket quadratic inverses (`sqrt`); `exp <= 0` returns 0.
+- `public static int getIntLevelFromExp(long exp)` - integer (truncated) level for a total XP.
+- `public static void changeExp(Player player, int amount)` - adds (or subtracts, if negative) XP safely: recomputes the player's level and progress bar from the resulting total, clamped at 0.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- El Javadoc indica explicitamente usar `changeExp` en lugar de `Player#giveExp(int)`: al recomputar todo desde el total, nunca sobre-nivela y el clamp en 0 evita XP negativa.
-- `changeExp` normaliza bordes de punto flotante: si el progreso calculado llega a `>= 1.0` sube un nivel y resetea la barra; progreso negativo se clampea a 0. Requiere hilo principal en la practica (muta estado del `Player`).
+- The Javadoc explicitly says to use `changeExp` instead of `Player#giveExp(int)`: by recomputing everything from the total, it never over-levels and the clamp at 0 prevents negative XP.
+- `changeExp` normalizes floating-point edges: if the computed progress reaches `>= 1.0` it goes up a level and resets the bar; negative progress clamps to 0. It requires the main thread in practice (it mutates `Player` state).
 
 ### MathUtil
 
 `src/main/java/com/sn/lib/util/MathUtil.java`
 
-Helpers matematicos: redondeo probabilistico "justo" y numeros romanos (pura, sin Bukkit). El redondeo justo resuelve la parte fraccionaria de forma probabilistica para que el valor esperado del resultado sea igual al input: `2.3` da 3 con probabilidad 30% y 2 en el resto.
+Math helpers: "fair" probabilistic rounding and Roman numerals (pure, no Bukkit). Fair rounding resolves the fractional part probabilistically so the result's expected value equals the input: `2.3` yields 3 with 30% probability and 2 otherwise.
 
-- `public static int fairIntFromDouble(double value)` - redondeo justo a `int` usando `ThreadLocalRandom`.
-- `public static int fairIntFromDouble(double value, Random random)` - redondeo justo a `int` con RNG inyectable: hace `floor` y suma 1 con probabilidad igual a la fraccion.
-- `public static long fairLongFromDouble(double value)` - redondeo justo a `long` usando `ThreadLocalRandom`.
-- `public static long fairLongFromDouble(double value, Random random)` - redondeo justo a `long` con RNG inyectable.
-- `public static String convertToRoman(int number)` - numero romano para `number` en 1-3999 (algoritmo greedy sobre las tablas `ROMAN_VALUES`/`ROMAN_SYMBOLS`, con sustractivos CM/CD/XC/XL/IX/IV); lanza `IllegalArgumentException` fuera del rango.
+- `public static int fairIntFromDouble(double value)` - fair rounding to `int` using `ThreadLocalRandom`.
+- `public static int fairIntFromDouble(double value, Random random)` - fair rounding to `int` with an injectable RNG: takes `floor` and adds 1 with probability equal to the fraction.
+- `public static long fairLongFromDouble(double value)` - fair rounding to `long` using `ThreadLocalRandom`.
+- `public static long fairLongFromDouble(double value, Random random)` - fair rounding to `long` with an injectable RNG.
+- `public static String convertToRoman(int number)` - Roman numeral for `number` in 1-3999 (greedy algorithm over the `ROMAN_VALUES`/`ROMAN_SYMBOLS` tables, with subtractives CM/CD/XC/XL/IX/IV); throws `IllegalArgumentException` outside the range.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- El redondeo justo funciona tambien con negativos por usar `Math.floor` (ej. `-2.3` da -2 con 70% y -3 con 30%, manteniendo el valor esperado -2.3).
-- Las sobrecargas con `Random` existen para testear con RNG deterministico.
+- Fair rounding also works with negatives thanks to `Math.floor` (e.g. `-2.3` yields -2 with 70% and -3 with 30%, keeping the expected value -2.3).
+- The `Random` overloads exist for testing with a deterministic RNG.
 
 ### SoundUtil
 
 `src/main/java/com/sn/lib/util/SoundUtil.java`
 
-Reproduce sonidos desde specs estilo YML: `"SOUND_ID [volume] [pitch]"` (separados por whitespace; volume y pitch defaultean a 1.0). La resolucion trata `Sound` como conjunto abierto (nunca switch/EnumSet): primero `Sound.valueOf` para ids estilo enum (`ENTITY_PLAYER_LEVELUP`), despues `Registry.SOUNDS` por `NamespacedKey` para ids estilo key (`minecraft:entity.player.levelup`), de modo que ids agregados por servidores mas nuevos siguen funcionando. Un id irresoluble loguea un solo WARN y la llamada se vuelve no-op. Specs null, en blanco y `"none"` (case-insensitive) son no-ops silenciosos.
+Plays sounds from YML-style specs: `"SOUND_ID [volume] [pitch]"` (whitespace-separated; volume and pitch default to 1.0). Resolution treats `Sound` as an open set (never switch/EnumSet): first `Sound.valueOf` for enum-style ids (`ENTITY_PLAYER_LEVELUP`), then `Registry.SOUNDS` by `NamespacedKey` for key-style ids (`minecraft:entity.player.levelup`), so ids added by newer servers keep working. An unresolvable id logs a single WARN and the call becomes a no-op. Null, blank and `"none"` (case-insensitive) specs are silent no-ops.
 
-- `public static void play(Player player, String spec)` - reproduce el spec solo para ese jugador, en la ubicacion del propio jugador; player null es no-op.
-- `public static void playAt(Location location, String spec)` - reproduce el spec para todos los jugadores cercanos a la location (via `World.playSound`); location null o sin mundo es no-op.
+- `public static void play(Player player, String spec)` - plays the spec for that player only, at the player's own location; a null player is a no-op.
+- `public static void playAt(Location location, String spec)` - plays the spec for all players near the location (via `World.playSound`); a null location or one without a world is a no-op.
 
-Logica interna:
+Internal logic:
 
-- `resolve(String)`: normaliza a mayusculas, quita el prefijo `MINECRAFT:` y reemplaza `.` por `_` para probar `Sound.valueOf`; si falla, intenta `NamespacedKey.fromString(id.toLowerCase())` contra `Registry.SOUNDS`.
-- Volume/pitch mal formados no anulan el sonido: se loguea un WARN ("Volumen/pitch invalido en '...'; usando 1.0") y se usa 1.0.
-- `warnOnce`: los WARNs se deduplican en un `Set` estatico concurrente (`WARNED`) con tags `"id:..."` / `"num:..."`; cada problema se loguea una sola vez por vida del servidor, con prefijo `[SnLib]` en `Bukkit.getLogger()`.
+- `resolve(String)`: uppercases, strips the `MINECRAFT:` prefix and replaces `.` with `_` to try `Sound.valueOf`; on failure, tries `NamespacedKey.fromString(id.toLowerCase())` against `Registry.SOUNDS`.
+- Malformed volume/pitch do not cancel the sound: a WARN is logged ("Invalid volume/pitch in '...'; using 1.0") and 1.0 is used.
+- `warnOnce`: WARNs deduplicate in a static concurrent `Set` (`WARNED`) with tags `"id:..."` / `"num:..."`; each problem logs once per server lifetime, with the `[SnLib]` prefix on `Bukkit.getLogger()`.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Estado estatico server-wide permitido por el contrato de SnLib: que un id de sonido resuelva o no es un hecho del servidor, no del consumidor.
-- Los mensajes de WARN estan en español ("Sonido invalido '...': no se resolvio por enum ni por Registry.SOUNDS; se ignora").
+- Server-wide static state allowed by the SnLib contract: whether a sound id resolves is a fact about the server, not the consumer.
+- WARN messages read e.g. "Invalid sound '...': it did not resolve via enum nor Registry.SOUNDS; ignored".
 
 ### HeadUtil
 
 `src/main/java/com/sn/lib/util/HeadUtil.java`
 
-Construye stacks de `PLAYER_HEAD` desde valores de textura o desde un `OfflinePlayer` owner, sin NMS. Inputs de textura aceptados: prefijos `texture-`/`texture:`, `base64-`/`base64:`, `basehead-` (desanidados recursivamente, ej. `basehead-eyJ...`), payloads base64 crudos (`eyJ...`) y URLs http(s) de skin (envueltas en el JSON de textures estandar y codificadas a base64).
+Builds `PLAYER_HEAD` stacks from texture values or from an `OfflinePlayer` owner, without NMS. Accepted texture inputs: `texture-`/`texture:` prefixes, `base64-`/`base64:`, `basehead-` (unnested recursively, e.g. `basehead-eyJ...`), raw base64 payloads (`eyJ...`) and http(s) skin URLs (wrapped in the standard textures JSON and base64-encoded).
 
-- `public static ItemStack fromBase64(String value)` - crea un stack `PLAYER_HEAD` de amount 1 mostrando la textura dada; null o vacio devuelve una cabeza por defecto.
-- `public static void applyBase64(SkullMeta meta, String value)` - aplica una textura a un `SkullMeta` con UUID de perfil deterministico derivado de los bytes de la textura; valores no parseables dejan el meta intacto con un WARN unico; meta null es no-op.
-- `public static ItemStack fromPlayer(@Nullable OfflinePlayer owner)` - crea un stack `PLAYER_HEAD` de amount 1 con la skin del jugador dado; owner null devuelve la cabeza por defecto. Cero NMS y cero HTTP propio: la skin la resuelve el server desde su profile cache (Steve transitorio mientras el perfil no este cacheado).
-- `public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner)` - aplica un owner a un `SkullMeta` via `setOwningPlayer`; meta u owner null son no-op. Misma semantica de resolucion que `fromPlayer` (profile cache del server, Steve transitorio, sin NMS/HTTP).
-- `public static @Nullable String extractTextureValue(String value)` - normaliza un input crudo a su payload base64: quita prefijos (recursivo), codifica URLs http(s) al JSON `{"textures":{"SKIN":{"url":"..."}}}` en base64, acepta `eyJ...` tal cual; devuelve null cuando el input no es una textura.
-- `public static void clearCache()` - vacia el cache acotado de perfiles; lo invoca el plugin SnLib en su teardown (onDisable).
+- `public static ItemStack fromBase64(String value)` - creates an amount-1 `PLAYER_HEAD` stack showing the given texture; null or empty returns a default head.
+- `public static void applyBase64(SkullMeta meta, String value)` - applies a texture to a `SkullMeta` with a deterministic profile UUID derived from the texture bytes; unparseable values leave the meta intact with a single WARN; a null meta is a no-op.
+- `public static ItemStack fromPlayer(@Nullable OfflinePlayer owner)` - creates an amount-1 `PLAYER_HEAD` stack with the given player's skin; a null owner returns the default head. Zero NMS and zero own HTTP: the server resolves the skin from its profile cache (transient Steve while the profile is not cached).
+- `public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner)` - applies an owner to a `SkullMeta` via `setOwningPlayer`; a null meta or owner is a no-op. Same resolution semantics as `fromPlayer` (server profile cache, transient Steve, no NMS/HTTP).
+- `public static @Nullable String extractTextureValue(String value)` - normalizes a raw input to its base64 payload: strips prefixes (recursively), encodes http(s) URLs to the `{"textures":{"SKIN":{"url":"..."}}}` JSON in base64, accepts `eyJ...` as-is; returns null when the input is not a texture.
+- `public static void clearCache()` - empties the bounded profile cache; invoked by the SnLib plugin in its teardown (onDisable).
 
-Logica interna:
+Internal logic:
 
-- UUID deterministico: texturas identicas comparten el mismo UUID de perfil via `UUID.nameUUIDFromBytes(texture.getBytes(UTF_8))`, asi el cliente cachea la skin una sola vez entre todas las cabezas que usan esa textura (menos descargas y parpadeo).
-- Cache LRU acotado: `PROFILE_CACHE` es un `LinkedHashMap` en access-order con `removeEldestEntry` sobre `CACHE_CAP = 512`; todo acceso se sincroniza sobre el propio mapa (incluido el `get`, porque en access-order un get muta el orden interno).
-- Aplicacion multi-tier: primero Paper `PlayerProfile` (`meta.setPlayerProfile`); si tira `Throwable`, fallback reflectivo legacy que instancia `com.mojang.authlib.GameProfile` (nombre `"SnLibHead"`) y lo inyecta en el field privado `profile` del meta, sin dependencia en compile-time. Si ambos tiers fallan, la cabeza queda default y se loguea un solo WARN con ambas causas.
-- WARNs deduplicados en `WARNED` (set concurrente), con prefijo `[SnLib]` y valores abreviados a 40 caracteres en el mensaje ("Textura de cabeza invalida '...'; se deja la cabeza por defecto").
+- Deterministic UUID: identical textures share the same profile UUID via `UUID.nameUUIDFromBytes(texture.getBytes(UTF_8))`, so the client caches the skin only once across all heads using that texture (fewer downloads and flicker).
+- Bounded LRU cache: `PROFILE_CACHE` is an access-order `LinkedHashMap` with `removeEldestEntry` over `CACHE_CAP = 512`; all access synchronizes on the map itself (including `get`, because in access-order a get mutates the internal order).
+- Multi-tier application: first Paper `PlayerProfile` (`meta.setPlayerProfile`); if it throws `Throwable`, a legacy reflective fallback that instantiates `com.mojang.authlib.GameProfile` (name `"SnLibHead"`) and injects it into the meta's private `profile` field, with no compile-time dependency. If both tiers fail, the head stays default and a single WARN with both causes is logged.
+- WARNs deduplicate in `WARNED` (concurrent set), with the `[SnLib]` prefix and values abbreviated to 40 characters in the message ("Invalid head texture '...'; leaving the default head").
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Estatico server-wide justificado por el contrato de SnLib: el mapeo textura -> perfil es content-addressed e identico para cualquier consumidor.
-- En `extractTextureValue`, tras quitar un prefijo se intenta desanidar recursivamente; si el resto no matchea ningun formato conocido, se devuelve el resto tal cual (el prefijo explicito se toma como declaracion de intencion de que eso ES una textura).
-- Un string arbitrario sin prefijo, que no empiece con `eyJ` ni sea URL, devuelve null (no se adivina).
+- Server-wide static justified by the SnLib contract: the texture -> profile mapping is content-addressed and identical for any consumer.
+- In `extractTextureValue`, after stripping a prefix it tries to unnest recursively; if the rest matches no known format, the rest is returned as-is (the explicit prefix is taken as a declaration of intent that this IS a texture).
+- An arbitrary string with no prefix, not starting with `eyJ` and not a URL, returns null (no guessing).
 
 ### PlayerLookup
 
 `src/main/java/com/sn/lib/util/PlayerLookup.java`
 
-(v1.1) Lookup async nombre -> UUID contra el endpoint de perfiles de Mojang (`https://api.mojang.com/users/profiles/minecraft/<name>`), sin Bukkit y sin NMS. Complementa el gap deliberado de `Args.offlinePlayerUuid`, que sigue cache-only por disenio y no se toca; SnLib JAMAS lo llama internamente.
+(v1.1) Async name -> UUID lookup against Mojang's profile endpoint (`https://api.mojang.com/users/profiles/minecraft/<name>`), no Bukkit and no NMS. It complements the deliberate gap of `Args.offlinePlayerUuid`, which remains cache-only by design and is not touched; SnLib NEVER calls it internally.
 
-- `public static CompletableFuture<Optional<UUID>> fetchUuid(String name)` - resuelve el UUID del nombre. **Contrato de threading**: el future completa en el executor del HttpClient, NUNCA en el main thread; el consumidor vuelve al main con `ctx.scheduler().thenSync(...)` o `sync(...)` (mismo contrato que SnDb). Nombre invalido (null o que no matchea `[A-Za-z0-9_]{1,16}`) completa inmediato con `Optional.empty()` sin HTTP ni cache. Fallos transitorios (status inesperado, body 200 no parseable, error de red) completan EXCEPCIONALMENTE con `IOException` y NO se cachean.
-- `public static void clearCache()` - vacia el LRU y apaga/anula el HttpClient; lo invoca el onDisable de `SnLibPlugin` junto a `HeadUtil.clearCache()`.
+- `public static CompletableFuture<Optional<UUID>> fetchUuid(String name)` - resolves the name's UUID. **Threading contract**: the future completes on the HttpClient's executor, NEVER on the main thread; the consumer hops back to main with `ctx.scheduler().thenSync(...)` or `sync(...)` (same contract as SnDb). An invalid name (null or not matching `[A-Za-z0-9_]{1,16}`) completes immediately with `Optional.empty()` without HTTP or cache. Transient failures (unexpected status, unparseable 200 body, network error) complete EXCEPTIONALLY with `IOException` and are NOT cached.
+- `public static void clearCache()` - empties the LRU and shuts down/nulls the HttpClient; invoked by `SnLibPlugin`'s onDisable alongside `HeadUtil.clearCache()`.
 
-Logica interna:
+Internal logic:
 
-- Cache LRU estatico acotado (patron EXACTO de HeadUtil): `LinkedHashMap(64, 0.75f, true)` en access-order con `removeEldestEntry` sobre cap 512, todo acceso `synchronized` sobre el propio mapa; key `name.toLowerCase(Locale.ROOT)`. Guarda TAMBIEN los misses (204/404 -> `Optional.empty()`) para no re-consultar nombres inexistentes. Static server-wide justificado: el mapeo nombre->UUID es content-addressed e identico para todo consumidor.
-- Dedupe in-flight: `ConcurrentHashMap<String, CompletableFuture<Optional<UUID>>> IN_FLIGHT` con `computeIfAbsent`; un `whenComplete` remueve la entrada al completar (remove condicional de dos args), asi N callers concurrentes del mismo nombre generan UNA sola request.
-- HTTP: HttpClient estatico lazy con double-checked locking, connect timeout 5s, request timeout 10s, `sendAsync(request, BodyHandlers.ofString())`. Status 200 -> `parseUuid(body)` (parse ok cachea `Optional.of(uuid)`; parse fallido completa excepcionalmente con IOException SIN cachear); 204/404 -> cachea y completa `Optional.empty()`; cualquier otro status o excepcion de red -> IOException (`"Mojang lookup fallo: ..."`) sin cachear (transitorio).
-- Helpers package-private PUROS para JUnit: `static boolean validName(String)` (regex `[A-Za-z0-9_]{1,16}`) y `static @Nullable UUID parseUuid(String body)` (escanea el campo `"id"` a mano con un `jsonString` privado duplicado de UpdateChecker siguiendo el precedente de utils autocontenidas, valida 32 hex e inserta guiones formato 8-4-4-4-12 antes de `UUID.fromString`).
+- Bounded static LRU cache (EXACT HeadUtil pattern): access-order `LinkedHashMap(64, 0.75f, true)` with `removeEldestEntry` over cap 512, all access `synchronized` on the map itself; key `name.toLowerCase(Locale.ROOT)`. It ALSO stores misses (204/404 -> `Optional.empty()`) so nonexistent names are not re-queried. Justified server-wide static: the name->UUID mapping is content-addressed and identical for every consumer.
+- In-flight dedup: `ConcurrentHashMap<String, CompletableFuture<Optional<UUID>>> IN_FLIGHT` with `computeIfAbsent`; a `whenComplete` removes the entry on completion (two-arg conditional remove), so N concurrent callers of the same name generate ONE single request.
+- HTTP: lazy static HttpClient with double-checked locking, connect timeout 5s, request timeout 10s, `sendAsync(request, BodyHandlers.ofString())`. Status 200 -> `parseUuid(body)` (successful parse caches `Optional.of(uuid)`; failed parse completes exceptionally with IOException WITHOUT caching); 204/404 -> caches and completes `Optional.empty()`; any other status or network exception -> IOException (`"Mojang lookup failed: ..."`) without caching (transient).
+- PURE package-private helpers for JUnit: `static boolean validName(String)` (regex `[A-Za-z0-9_]{1,16}`) and `static @Nullable UUID parseUuid(String body)` (scans the `"id"` field by hand with a private `jsonString` duplicated from UpdateChecker following the self-contained-utils precedent, validates 32 hex and inserts dashes in 8-4-4-4-12 format before `UUID.fromString`).
 
 ### ArmourUtil
 
 `src/main/java/com/sn/lib/util/ArmourUtil.java`
 
-Helpers de armadura sobre stacks y sobre el set puesto del jugador. Clase `final` con constructor privado y CERO estado estatico. El matching es por sufijo del nombre de `Material` (enum tratado como abierto: chequeos de nombre, nunca switch/EnumSet sobre sus constantes, sin scan de `Material.values()` al class-load), asi las constantes nuevas de Paper nunca rompen el mapeo. Uso tipico: chequear full-set dentro de un handler de `SnArmourEquipEvent`.
+Armor helpers over stacks and over the player's worn set. `final` class with a private constructor and ZERO static state. Matching is by `Material` name suffix (enum treated as open: name checks, never switch/EnumSet over its constants, no `Material.values()` scan at class-load), so new Paper constants never break the mapping. Typical use: full-set checks inside an `SnArmourEquipEvent` handler.
 
-- `public static @Nullable EquipmentSlot slotOf(@Nullable ItemStack item)` - slot de armadura al que el item auto-equipa, por sufijo del nombre de Material (`_HELMET`/`_HEAD`/`_SKULL`/`CARVED_PUMPKIN` -> HEAD; `_CHESTPLATE`/`ELYTRA` -> CHEST; `_LEGGINGS` -> LEGS; `_BOOTS` -> FEET); null o aire o material no-armadura devuelve null. Es la fuente de verdad de la logica que antes vivia en `ArmourEquipListener.matchType` (que ahora delega aca).
-- `public static boolean isArmour(@Nullable ItemStack item)` - si el item mapea a un slot de armadura (`slotOf(item) != null`).
-- `public static boolean isWearingFullSet(Player player)` - true si los 4 slots de armadura del jugador (helmet, chestplate, leggings, boots) estan no vacios (null o aire cuenta como vacio); player null devuelve false.
-- `public static boolean isWearingFullSet(Player player, String materialPrefix)` - como el anterior y ademas cada pieza tiene `getType().name()` que empieza con el prefijo normalizado a mayusculas `Locale.ROOT` (ej `"DIAMOND_"`); prefijo null o blank delega en la sobrecarga sin prefijo.
+- `public static @Nullable EquipmentSlot slotOf(@Nullable ItemStack item)` - armor slot the item auto-equips to, by Material name suffix (`_HELMET`/`_HEAD`/`_SKULL`/`CARVED_PUMPKIN` -> HEAD; `_CHESTPLATE`/`ELYTRA` -> CHEST; `_LEGGINGS` -> LEGS; `_BOOTS` -> FEET); null, air or a non-armor material returns null. It is the source of truth for the logic that used to live in `ArmourEquipListener.matchType` (which now delegates here).
+- `public static boolean isArmour(@Nullable ItemStack item)` - whether the item maps to an armor slot (`slotOf(item) != null`).
+- `public static boolean isWearingFullSet(Player player)` - true if the player's 4 armor slots (helmet, chestplate, leggings, boots) are non-empty (null or air counts as empty); a null player returns false.
+- `public static boolean isWearingFullSet(Player player, String materialPrefix)` - like the above and additionally each piece's `getType().name()` starts with the prefix normalized to uppercase `Locale.ROOT` (e.g. `"DIAMOND_"`); a null or blank prefix delegates to the prefixless overload.
 
 ### TagIo
 
 `src/main/java/com/sn/lib/util/TagIo.java`
 
-Tags de tipo String sobre items via `PersistentDataContainer`. Toda key es un `NamespacedKey(owner, key)`, asi dos consumidores que usan el mismo nombre de key nunca colisionan: el dato del tag siempre es propiedad del plugin que lo escribio (ownership por `JavaPlugin`). Valores almacenados como `PersistentDataType.STRING`. Items null, aire e items sin meta son no-ops guardeados.
+String-typed tags on items via `PersistentDataContainer`. Every key is a `NamespacedKey(owner, key)`, so two consumers using the same key name never collide: the tag data is always owned by the plugin that wrote it (ownership per `JavaPlugin`). Values stored as `PersistentDataType.STRING`. Null items, air and items without meta are guarded no-ops.
 
-- `public static ItemStack set(ItemStack item, JavaPlugin owner, String key, String value)` - escribe `value` bajo la key namespaced del owner; un `value` null delega en `remove` (borra el tag). Devuelve la misma instancia de item, para encadenar.
-- `public static @Nullable String get(ItemStack item, JavaPlugin owner, String key)` - lee el valor del tag, o null cuando esta ausente o el item es null/aire/sin meta.
-- `public static boolean has(ItemStack item, JavaPlugin owner, String key)` - si el tag esta presente en el item (chequeado como STRING).
-- `public static ItemStack remove(ItemStack item, JavaPlugin owner, String key)` - remueve el tag si esta presente; devuelve la misma instancia para encadenar.
+- `public static ItemStack set(ItemStack item, JavaPlugin owner, String key, String value)` - writes `value` under the owner's namespaced key; a null `value` delegates to `remove` (deletes the tag). Returns the same item instance, for chaining.
+- `public static @Nullable String get(ItemStack item, JavaPlugin owner, String key)` - reads the tag value, or null when absent or the item is null/air/without meta.
+- `public static boolean has(ItemStack item, JavaPlugin owner, String key)` - whether the tag is present on the item (checked as STRING).
+- `public static ItemStack remove(ItemStack item, JavaPlugin owner, String key)` - removes the tag if present; returns the same instance for chaining.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- La key se normaliza a minusculas (`key.toLowerCase(Locale.ROOT)`) antes de crear el `NamespacedKey`, porque `NamespacedKey` no admite mayusculas; asi `"MyKey"` y `"mykey"` son el mismo tag.
-- `set`/`remove` mutan el item pasado (hacen `setItemMeta` sobre la misma instancia); el retorno es solo azucar para chaining.
+- The key normalizes to lowercase (`key.toLowerCase(Locale.ROOT)`) before creating the `NamespacedKey`, because `NamespacedKey` does not admit uppercase; thus `"MyKey"` and `"mykey"` are the same tag.
+- `set`/`remove` mutate the passed item (they call `setItemMeta` on the same instance); the return is just sugar for chaining.
 
 ### InvUtil
 
 `src/main/java/com/sn/lib/util/InvUtil.java`
 
-Helpers de inventario para entregar items a jugadores.
+Inventory helpers to give items to players.
 
-- `public static void giveItems(Player player, ItemStack... items)` - agrega los items al inventario del jugador; lo que no entra se dropea naturalmente (`World.dropItemNaturally`) en la ubicacion del jugador, asi nunca se pierde nada. Stacks null y de aire se saltan; player null, array null o vacio son no-ops.
+- `public static void giveItems(Player player, ItemStack... items)` - adds the items to the player's inventory; whatever does not fit drops naturally (`World.dropItemNaturally`) at the player's location, so nothing is ever lost. Null and air stacks are skipped; a null player, null or empty array are no-ops.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Usa `Inventory.addItem`, que puede mergear con stacks parciales existentes; el `Map` de leftover que devuelve Bukkit es lo que se dropea.
-- Debe llamarse en el hilo principal (muta inventario y spawnea entidades de item).
+- It uses `Inventory.addItem`, which can merge with existing partial stacks; the leftover `Map` Bukkit returns is what gets dropped.
+- Must be called on the main thread (it mutates the inventory and spawns item entities).
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-Ninguno. No hay marcadores TODO/FIXME/HACK/placeholder en ningun archivo del paquete `com.sn.lib.util`. Limitaciones de diseño ya documentadas arriba en cada clase: rango maximo de 10000 slots en `SlotParser`, sufijos de `NumberFormatter` topeados en `Qi` (10^18), `convertToRoman` limitado a 1-3999, `deserialize` de `LocationSerializer` dependiente de que el mundo este cargado, y caches de `HeadUtil` y `PlayerLookup` acotados a 512 entradas.
-
+None. There are no TODO/FIXME/HACK/placeholder markers in any file of the `com.sn.lib.util` package. Design limitations already documented above per class: 10000-slot max range in `SlotParser`, `NumberFormatter` suffixes capped at `Qi` (10^18), `convertToRoman` limited to 1-3999, `LocationSerializer.deserialize` dependent on the world being loaded, and `HeadUtil`/`PlayerLookup` caches bounded to 512 entries.
 ---
 
-## 08. Acciones, Requirements y PAPI
+## 08. Actions, Requirements and PAPI
 
-Este modulo cubre tres piezas que casi todos los plugins consumidores usan desde YML: el motor de acciones (`com.sn.lib.action.ActionEngine`, alcanzado via `sn.actions()`, una instancia por contexto Sn) que ejecuta listas de lineas `[tag] argumento` con guards de click, de superficie (BLOCK/AIR) y de chance; el motor de requirements (`RequirementEngine`, estatico) que parsea expresiones de comparacion con `&&`/`||` una sola vez al load y las evalua contra placeholders en runtime con politica fail-open; y el servicio PAPI (`com.sn.lib.papi.SnPapi` + `ExpansionBuilder` + el holder interno `PapiHolder`) que resuelve tokens de PlaceholderAPI y registra expansiones declarativas sin que un servidor sin PlaceholderAPI cargue jamas una clase de PAPI. Todo el modulo es ownership por plugin: cada contexto Sn tiene su propio `ActionEngine` y su propio `SnPapi`/`PapiHolder`, y el teardown del contexto libera el canal Bungee y desregistra las expansiones.
+This module covers three pieces almost every consumer plugin uses from YML: the action engine (`com.sn.lib.action.ActionEngine`, reached via `sn.actions()`, one instance per Sn context) which runs lists of `[tag] argument` lines with click, surface (BLOCK/AIR) and chance guards; the requirement engine (`RequirementEngine`, static) which parses comparison expressions with `&&`/`||` once at load and evaluates them against placeholders at runtime with a fail-open policy; and the PAPI service (`com.sn.lib.papi.SnPapi` + `ExpansionBuilder` + the internal holder `PapiHolder`) which resolves PlaceholderAPI tokens and registers declarative expansions without a PAPI-less server ever loading a PAPI class. The whole module is per-plugin ownership: each Sn context has its own `ActionEngine` and its own `SnPapi`/`PapiHolder`, and the context teardown releases the Bungee channel and unregisters the expansions.
 
 ### ActionEngine
 `src/main/java/com/sn/lib/action/ActionEngine.java`
 
-Ejecuta listas de acciones YML de la forma `[tag] argumento`. Es `final`, una instancia por contexto (`sn.actions()`). Mantiene un `ConcurrentHashMap<String, ActionHandler>` de handlers (built-ins registrados en el constructor), un set `warned` para WARN-once por clave, y un `AtomicBoolean bungeeRegistered` para el canal saliente `"BungeeCord"` (constante privada `BUNGEE_CHANNEL`). No expone constantes publicas ni enums.
+Runs YML action lists of the form `[tag] argument`. It is `final`, one instance per context (`sn.actions()`). It keeps a `ConcurrentHashMap<String, ActionHandler>` of handlers (built-ins registered in the constructor), a `warned` set for per-key WARN-once, and an `AtomicBoolean bungeeRegistered` for the outgoing `"BungeeCord"` channel (private constant `BUNGEE_CHANNEL`). It exposes no public constants or enums.
 
-- `public ActionEngine(Sn ctx)` - crea el motor para el contexto dado con el catalogo built-in ya registrado; toma el `JavaPlugin` de `ctx.plugin()`.
-- `public void run(Player player, List<String> actions, Ph... phs)` - corre las lineas para el jugador con placeholders locales y sin datos de pagina ni de click (construye un `ActionContext` con `pageTarget` y `clickType` en null).
-- `public void run(Player player, List<String> actions, ActionContext context)` - corre las lineas bajo el contexto dado. `player`/`actions` null o lista vacia retornan sin hacer nada; `context` null lanza NPE (`Objects.requireNonNull`). Threading: si el caller ya esta en el main thread ejecuta inline; desde cualquier otro thread salta via `ctx.scheduler().sync(...)`. Si el scheduling falla con `IllegalPluginAccessException` (plugin deshabilitado) loguea WARN "Acciones descartadas: plugin deshabilitado durante el scheduling" y descarta.
-- `public void register(String tag, ActionHandler handler)` - registra una accion custom bajo `tag` (con o sin corchetes, case-insensitive: el tag se normaliza con trim + lowercase + strip de `[...]`), reemplazando cualquier handler previo INCLUIDO un built-in. Tag vacio tras normalizar lanza `IllegalArgumentException("Tag de accion vacio")`; tag o handler null lanzan NPE.
-- `public void shutdown()` - libera el canal de plugin saliente que `[connect]` registro en su primer uso; lo invoca el teardown del contexto. Idempotente (CAS sobre `bungeeRegistered`).
+- `public ActionEngine(Sn ctx)` - creates the engine for the given context with the built-in catalog already registered; takes the `JavaPlugin` from `ctx.plugin()`.
+- `public void run(Player player, List<String> actions, Ph... phs)` - runs the lines for the player with local placeholders and no page or click data (builds an `ActionContext` with `pageTarget` and `clickType` null).
+- `public void run(Player player, List<String> actions, ActionContext context)` - runs the lines under the given context. Null `player`/`actions` or an empty list return without doing anything; a null `context` throws NPE (`Objects.requireNonNull`). Threading: if the caller is already on the main thread it executes inline; from any other thread it hops via `ctx.scheduler().sync(...)`. If scheduling fails with `IllegalPluginAccessException` (plugin disabled) it logs WARN "Actions discarded: plugin disabled during scheduling" and discards.
+- `public void register(String tag, ActionHandler handler)` - registers a custom action under `tag` (with or without brackets, case-insensitive: the tag normalizes with trim + lowercase + `[...]` strip), replacing any previous handler INCLUDING a built-in. An empty tag after normalizing throws `IllegalArgumentException("Empty action tag")`; a null tag or handler throws NPE.
+- `public void shutdown()` - releases the outgoing plugin channel `[connect]` registered on first use; invoked by the context teardown. Idempotent (CAS over `bungeeRegistered`).
 
-#### Logica interna: anatomia de linea y guards
+#### Internal logic: line anatomy and guards
 
-Cada linea se procesa asi (`executeLine`):
+Each line processes as follows (`executeLine`):
 
-1. Se parsea el head `[tag]` inicial (`head(...)`: la linea debe empezar con `[`, tener `]` en posicion >= 1 y tag no vacio; el tag se lowercasea con `Locale.ROOT`).
-2. Mientras el head sea un guard, se evalua y se re-parsea el resto (los guards se pueden ENCADENAR, ej `[right-click] [chance=50] [message] hola`). Matriz completa guard x ClickType:
+1. The initial `[tag]` head is parsed (`head(...)`: the line must start with `[`, have `]` at position >= 1 and a non-empty tag; the tag lowercases with `Locale.ROOT`).
+2. While the head is a guard, it is evaluated and the rest is re-parsed (guards can be CHAINED, e.g. `[right-click] [chance=50] [message] hello`). Full guard x ClickType matrix:
 
-   | Guard | ClickType que pasan |
+   | Guard | ClickTypes that pass |
    |---|---|
-   | `[right-click]` | RIGHT, SHIFT_RIGHT (`isRightClick()`; semantica inclusiva v1.0.0 intacta) |
-   | `[left-click]` | LEFT, SHIFT_LEFT, DOUBLE_CLICK, CREATIVE (`isLeftClick()`; inclusiva) |
-   | `[shift-right-click]` | SHIFT_RIGHT exacto |
-   | `[shift-left-click]` | SHIFT_LEFT exacto |
-   | `[right-click-only]` | RIGHT exacto (excluye SHIFT_RIGHT y DOUBLE_CLICK) |
-   | `[left-click-only]` | LEFT exacto (excluye SHIFT_LEFT, DOUBLE_CLICK y CREATIVE) |
-   | `[middle-click]` | MIDDLE exacto |
-   | `[double-click]` | DOUBLE_CLICK exacto |
-   | `[drop-click]` | DROP exacto (la tecla Q; CONTROL_DROP no pasa) |
-   | `[number-key]` | NUMBER_KEY exacto (teclas 1-9 de la hotbar) |
-   | `[swap-offhand]` | SWAP_OFFHAND exacto (la tecla F) |
-   | `[click=TIPO,...]` | exactamente los nombres del enum listados, separados por coma |
-   | `[click-block]` / `[click-air]` | igualdad contra `ActionContext.clickSurface()` (BLOCK/AIR), no contra ClickType |
-   | `[chance=N]` | probabilistico, independiente del click |
+   | `[right-click]` | RIGHT, SHIFT_RIGHT (`isRightClick()`; inclusive v1.0.0 semantics intact) |
+   | `[left-click]` | LEFT, SHIFT_LEFT, DOUBLE_CLICK, CREATIVE (`isLeftClick()`; inclusive) |
+   | `[shift-right-click]` | SHIFT_RIGHT exact |
+   | `[shift-left-click]` | SHIFT_LEFT exact |
+   | `[right-click-only]` | RIGHT exact (excludes SHIFT_RIGHT and DOUBLE_CLICK) |
+   | `[left-click-only]` | LEFT exact (excludes SHIFT_LEFT, DOUBLE_CLICK and CREATIVE) |
+   | `[middle-click]` | MIDDLE exact |
+   | `[double-click]` | DOUBLE_CLICK exact |
+   | `[drop-click]` | DROP exact (the Q key; CONTROL_DROP does not pass) |
+   | `[number-key]` | NUMBER_KEY exact (hotbar keys 1-9) |
+   | `[swap-offhand]` | SWAP_OFFHAND exact (the F key) |
+   | `[click=TYPE,...]` | exactly the listed enum names, comma-separated |
+   | `[click-block]` / `[click-air]` | equality against `ActionContext.clickSurface()` (BLOCK/AIR), not against ClickType |
+   | `[chance=N]` | probabilistic, click-independent |
 
-   Reglas de cada familia:
-   - `[click=TIPO,...]` - nombres del enum `ClickType` case-insensitive y con `-` equivalente a `_` (ej `[click=number-key]`). FAIL-CLOSED, a diferencia de `[chance=]`: un spec invalido (nombre desconocido, token vacio, spec vacio) WARNea una vez ("Guard [click=<spec>] con tipo invalido; linea omitida: <line>") y la linea NO corre, asi un typo jamas dispara acciones con clicks no deseados.
-   - `[click-block]` / `[click-air]` (guards posicionales) - matchean por igualdad contra el `ClickSurface` del contexto. Solo las interacciones de items de mundo llevan superficie; en clicks de GUI y corridas sin click la superficie es null y la linea se OMITE con nota de debug.
-   - `[chance=N]` - tira `ThreadLocalRandom.current().nextDouble(100.0) < N` (N admite decimales, escala 0-100). Un N malformado WARN-once ("Guard [chance=...] invalido; la accion corre igual") y deja correr la linea (fail-open).
-   - Todo guard de click evaluado con `context.clickType()` null (fuera de un click de GUI o de una interaccion de item) OMITE su linea con nota de debug (no WARN).
-   - Helpers package-private testeables: `matchesExactClickGuard(String, ClickType)` (matching de los guards nombrados) y `parseClickTypes(String)` (parseo del spec de `[click=]`; devuelve null ante cualquier token invalido). Cubiertos por `ClickGuardTest`.
-3. Si la linea no arranca con un tag valido, corre entera como `[message]`.
-4. El argumento pasa por placeholders locales (`SnText.applyLocals(arg, context.phs())`) y despues por PAPI viewer-aware (`ctx.papi().apply(player, ...)`) ANTES de llegar al handler.
-5. Tag desconocido: WARN-once por tag ("Accion desconocida '[tag]'; linea ignorada: ...").
+   Rules per family:
+   - `[click=TYPE,...]` - `ClickType` enum names, case-insensitive and with `-` equivalent to `_` (e.g. `[click=number-key]`). FAIL-CLOSED, unlike `[chance=]`: an invalid spec (unknown name, empty token, empty spec) WARNs once ("Guard [click=<spec>] with an invalid type; line skipped: <line>") and the line does NOT run, so a typo never fires actions on unintended clicks.
+   - `[click-block]` / `[click-air]` (positional guards) - match by equality against the context's `ClickSurface`. Only world item interactions carry a surface; in GUI clicks and clickless runs the surface is null and the line is SKIPPED with a debug note.
+   - `[chance=N]` - rolls `ThreadLocalRandom.current().nextDouble(100.0) < N` (N allows decimals, 0-100 scale). A malformed N WARN-onces ("Invalid [chance=...] guard; the action runs anyway") and lets the line run (fail-open).
+   - Any click guard evaluated with a null `context.clickType()` (outside a GUI click or item interaction) SKIPS its line with a debug note (no WARN).
+   - Testable package-private helpers: `matchesExactClickGuard(String, ClickType)` (named guard matching) and `parseClickTypes(String)` (parses the `[click=]` spec; returns null on any invalid token). Covered by `ClickGuardTest`.
+3. If the line does not start with a valid tag, it runs whole as `[message]`.
+4. The argument goes through local placeholders (`SnText.applyLocals(arg, context.phs())`) and then viewer-aware PAPI (`ctx.papi().apply(player, ...)`) BEFORE reaching the handler.
+5. Unknown tag: per-tag WARN-once ("Unknown action '[tag]'; line ignored: ...").
 
-Cada linea corre dentro de un try/catch de `Throwable`: una accion que explota loguea WARN "Accion fallo en '<linea>': <t>" y NO corta el resto de la lista. Lineas null o en blanco se saltean.
+Each line runs inside a `Throwable` try/catch: an exploding action logs WARN "Action failed in '<line>': <t>" and does NOT stop the rest of the list. Null or blank lines are skipped.
 
-#### Catalogo completo de tags built-in
+#### Full built-in tag catalog
 
-Render "message-like" = `SnText.color(SnText.normalizePapiOutput(arg))`: normalizacion del output de PAPI mas el pipeline completo de SnText, incluyendo `[rgb]` y `[center]` (segun el Javadoc de la clase).
+"Message-like" render = `SnText.color(SnText.normalizePapiOutput(arg))`: PAPI output normalization plus the full SnText pipeline, including `[rgb]` and `[center]` (per the class Javadoc).
 
-| Tag | Sintaxis | Semantica exacta |
+| Tag | Syntax | Exact semantics |
 |---|---|---|
-| `[player]` | `[player] comando` | `Bukkit.dispatchCommand` como el jugador. El `/` inicial se stripea. Argumento vacio: WARN-once "Accion de comando sin argumento; se ignora". |
-| `[player-as-op]` | `[player-as-op] comando` | Si el jugador ya es OP, despacha directo. Si no, `setOp(true)`, despacha, y restaura `setOp(false)` en un `finally`. |
-| `[console]` | `[console] comando` | Despacha con `Bukkit.getConsoleSender()`. Mismo strip de `/` y WARN de argumento vacio. |
-| `[message]` | `[message] texto` (o linea sin tag) | `player.sendMessage(render(arg))`. Es el tag implicito de las lineas sin head. |
-| `[broadcastmessage]` | `[broadcastmessage] texto` | `Bukkit.getServer().sendMessage(render(arg))` a todo el servidor. |
-| `[actionbar]` | `[actionbar] texto` | `player.sendActionBar(render(arg))`. |
-| `[title]` | `[title] titulo;subtitulo;fadeIn;stay;fadeOut` | Split por `;` (limite -1). Subtitulo default `Component.empty()`. Tiempos EN TICKS, defaults 10/70/20; se convierten a `Duration.ofMillis(ticks * 50)`. Parte en blanco o faltante usa el default; numero invalido WARN-once y usa el default. |
-| `[sound]` | `[sound] SOUND_ID [vol] [pitch]` | Delega en `SoundUtil.play(player, arg)` (parseo de id/volumen/pitch vive en SoundUtil). |
+| `[player]` | `[player] command` | `Bukkit.dispatchCommand` as the player. A leading `/` is stripped. Empty argument: WARN-once "Command action without an argument; ignored". |
+| `[player-as-op]` | `[player-as-op] command` | If the player is already OP, dispatches directly. Otherwise `setOp(true)`, dispatches, and restores `setOp(false)` in a `finally`. |
+| `[console]` | `[console] command` | Dispatches with `Bukkit.getConsoleSender()`. Same `/` strip and empty-argument WARN. |
+| `[message]` | `[message] text` (or a tagless line) | `player.sendMessage(render(arg))`. It is the implicit tag of headless lines. |
+| `[broadcastmessage]` | `[broadcastmessage] text` | `Bukkit.getServer().sendMessage(render(arg))` to the whole server. |
+| `[actionbar]` | `[actionbar] text` | `player.sendActionBar(render(arg))`. |
+| `[title]` | `[title] title;subtitle;fadeIn;stay;fadeOut` | Split by `;` (limit -1). Subtitle default `Component.empty()`. Times IN TICKS, defaults 10/70/20; converted to `Duration.ofMillis(ticks * 50)`. A blank or missing part uses the default; an invalid number WARN-onces and uses the default. |
+| `[sound]` | `[sound] SOUND_ID [vol] [pitch]` | Delegates to `SoundUtil.play(player, arg)` (id/volume/pitch parsing lives in SoundUtil). |
 | `[close]` | `[close]` | `player.closeInventory()`. |
-| `[open]` | `[open] gui-id` | Abre la GUI del contexto via `ctx.guis().get(id)`. Id vacio: WARN-once. Modulo guis no declarado en el spec (`UnsupportedOperationException`): WARN-once "Accion [open] ignorada: modulo guis no declarado en el spec". Gui inexistente: WARN-once "gui '<id>' no existe". |
-| `[connect]` | `[connect] servidor` | Envia el plugin message BungeeCord `Connect` + servidor al canal `"BungeeCord"`. Registra el canal saliente en el PRIMER uso (CAS); `shutdown()` lo libera. Servidor vacio o `IOException` armando el mensaje: WARN-once. |
-| `[next-page]` | `[next-page]` | `PageTarget.nextPage()` del contexto. |
+| `[open]` | `[open] gui-id` | Opens the context's GUI via `ctx.guis().get(id)`. Empty id: WARN-once. guis module not declared in the spec (`UnsupportedOperationException`): WARN-once "[open] action ignored: guis module not declared in the spec". Nonexistent gui: WARN-once "gui '<id>' does not exist". |
+| `[connect]` | `[connect] server` | Sends the BungeeCord `Connect` + server plugin message on the `"BungeeCord"` channel. Registers the outgoing channel on FIRST use (CAS); `shutdown()` releases it. Empty server or `IOException` building the message: WARN-once. |
+| `[next-page]` | `[next-page]` | `PageTarget.nextPage()` of the context. |
 | `[previous-page]` | `[previous-page]` | `PageTarget.previousPage()`. |
-| `[set-page]` | `[set-page] n` | `PageTarget.setPage(n)`; `n` invalido WARN-once y usa 1. |
-| `[refresh-page]` | `[refresh-page]` | `PageTarget.refreshPage()` (re-render de la pagina actual). |
-| `[refresh-menu]` | `[refresh-menu]` | `PageTarget.refreshMenu()` (re-render del menu completo). |
-| `[particle]` | `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]` | Spawnea en el mundo del jugador, en su location +1.0 en Y. Todo token con `=` es una opcion (`color`, `size`, `to`, `block`, `item`; key lowercase, split en el primer `=`); el resto son posicionales con los umbrales de siempre: `count` default 1 con >= 1 posicional, los tres offsets solo si hay >= 4 posicionales, `extra` solo con >= 5. Ver resolucion de tipo y de data abajo. |
-| `[potion]` | `[potion] EFFECT [segundos] [amplifier]` | `player.addPotionEffect(new PotionEffect(type, segundos * 20, amplifier))`. Defaults: 10 segundos, amplifier 0. Efecto invalido: WARN-once "Efecto de pocion invalido". Resolucion: `NamespacedKey.fromString(lowercase)` contra `Registry.EFFECT` primero, fallback al deprecado `PotionEffectType.getByName` para configs viejas. |
-| `[remove-item]` | `[remove-item] [n] [selector]` | Sin selector: saca `n` (default 1) del item en MANO PRINCIPAL, byte-identico a v1.0.0 (mano vacia = no-op silencioso; si la cantidad en mano es mayor a `n` decrementa; si no, vacia el slot con `setItemInMainHand(null)`). Un solo token que parsea como entero es `n`; si no parsea, es el selector con `n` = 1. Selectores: `offhand` (case-insensitive, misma logica espejada sobre la offhand), `id:<item-id>` (descuenta stacks que `ctx.items().is(stack, id)` barriendo los slots de storage 0-35 y despues la offhand; id vacio o no registrado = WARN-once y linea ignorada) y cualquier otro token como nombre de Material (`Material.matchMaterial`; null o `!isItem()` = WARN-once y linea ignorada; matchea por `getType()` ignorando meta PERO excluye todo stack tagueado por SnLib de CUALQUIER contexto: para items custom existe `id:`). Remocion parcial permitida en todos los modos: si hay menos de `n` unidades se saca lo que haya, sin error ni WARN. |
+| `[set-page]` | `[set-page] n` | `PageTarget.setPage(n)`; an invalid `n` WARN-onces and uses 1. |
+| `[refresh-page]` | `[refresh-page]` | `PageTarget.refreshPage()` (re-render of the current page). |
+| `[refresh-menu]` | `[refresh-menu]` | `PageTarget.refreshMenu()` (re-render of the whole menu). |
+| `[particle]` | `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]` | Spawns in the player's world, at their location +1.0 in Y. Every token with `=` is an option (`color`, `size`, `to`, `block`, `item`; lowercase key, split at the first `=`); the rest are positionals with the usual thresholds: `count` default 1 with >= 1 positional, the three offsets only with >= 4 positionals, `extra` only with >= 5. See type and data resolution below. |
+| `[potion]` | `[potion] EFFECT [seconds] [amplifier]` | `player.addPotionEffect(new PotionEffect(type, seconds * 20, amplifier))`. Defaults: 10 seconds, amplifier 0. Invalid effect: WARN-once "Invalid potion effect". Resolution: `NamespacedKey.fromString(lowercase)` against `Registry.EFFECT` first, fallback to the deprecated `PotionEffectType.getByName` for old configs. |
+| `[remove-item]` | `[remove-item] [n] [selector]` | Without a selector: removes `n` (default 1) from the MAIN HAND item, byte-identical to v1.0.0 (empty hand = silent no-op; if the amount in hand is greater than `n` it decrements; otherwise it empties the slot with `setItemInMainHand(null)`). A single token that parses as an integer is `n`; if it does not parse, it is the selector with `n` = 1. Selectors: `offhand` (case-insensitive, same logic mirrored on the offhand), `id:<item-id>` (deducts stacks that `ctx.items().is(stack, id)`, sweeping storage slots 0-35 and then the offhand; an empty or unregistered id = WARN-once and line ignored) and any other token as a Material name (`Material.matchMaterial`; null or `!isItem()` = WARN-once and line ignored; matches by `getType()` ignoring meta BUT excludes every stack tagged by SnLib from ANY context: for custom items there is `id:`). Partial removal allowed in all modes: with fewer than `n` units it removes what there is, without error or WARN. |
 
-Detalles de `[particle]`:
+`[particle]` details:
 
-- Resolucion del tipo (`resolveParticle`): uppercase, strip del prefijo `MINECRAFT:`, `.` y `-` se vuelven `_`, y `Particle.valueOf`. Como Particle es un set abierto, hay alias leniente `REDSTONE` <-> `DUST` (WARN-once "usando alias '...'") para que specs escritas antes o despues del rename de 1.20.5 funcionen en ambos lados. Tipo invalido: WARN-once "Particula invalida"; se ignora.
-- Datos de particula, resueltos por `particle.getDataType()` contra las opciones `key=value`:
-  - `Void`: data null, como siempre. Si el usuario paso `color=`/`size=`/`to=`/`block=`/`item=`, WARN-once por opcion incompatible (key `"particle-opt:TYPE:key"`) y la opcion se ignora; la linea corre igual.
-  - `Particle.DustOptions` (DUST): `color=#RRGGBB` o `color=R,G,B` (default `Color.RED`) y `size=F` float (default `1.0f`). Sin opciones el resultado es identico a v1.0.0 (`Color.RED`, `1.0f`).
-  - `Particle.DustTransition` (DUST_COLOR_TRANSITION): `from` = opcion `color` (default `Color.RED`), `to` = opcion `to` (mismos dos formatos de color; default = `from`), `size` default `1.0f`.
-  - `BlockData` (BLOCK, BLOCK_MARKER, FALLING_DUST, DUST_PILLAR): requiere `block=MATERIAL` (`Material.matchMaterial`; material null o `!isBlock()` = WARN-once y la LINEA se ignora; data = `mat.createBlockData()` con catch defensivo de `IllegalArgumentException`). Sin `block=`: WARN-once "requiere block=MATERIAL; se ignora" y la linea se salta.
-  - `ItemStack` (ITEM): requiere `item=MATERIAL` (`matchMaterial` + `isItem()`; data = `new ItemStack(mat)`); misma politica de errores que `block=`.
-  - Cualquier otro `dataType`: WARN-once "requiere datos no soportados; se ignora", igual que antes.
-- Colores (`parseColor`): `#RRGGBB` (6 hex) o `R,G,B` (tres enteros 0-255); valor invalido = WARN-once "Color invalido" y se usa el default. `size=` invalido = WARN-once y `1.0f`. Key de opcion desconocida (ni color/size/to/block/item) = WARN-once "Opcion desconocida"; la linea corre igual.
+- Type resolution (`resolveParticle`): uppercase, `MINECRAFT:` prefix strip, `.` and `-` become `_`, then `Particle.valueOf`. Since Particle is an open set, there is a lenient `REDSTONE` <-> `DUST` alias (WARN-once "using alias '...'") so specs written before or after the 1.20.5 rename work on both sides. Invalid type: WARN-once "Invalid particle"; ignored.
+- Particle data, resolved by `particle.getDataType()` against the `key=value` options:
+  - `Void`: null data, as always. If the user passed `color=`/`size=`/`to=`/`block=`/`item=`, WARN-once per incompatible option (key `"particle-opt:TYPE:key"`) and the option is ignored; the line still runs.
+  - `Particle.DustOptions` (DUST): `color=#RRGGBB` or `color=R,G,B` (default `Color.RED`) and `size=F` float (default `1.0f`). With no options the result is identical to v1.0.0 (`Color.RED`, `1.0f`).
+  - `Particle.DustTransition` (DUST_COLOR_TRANSITION): `from` = the `color` option (default `Color.RED`), `to` = the `to` option (same two color formats; default = `from`), `size` default `1.0f`.
+  - `BlockData` (BLOCK, BLOCK_MARKER, FALLING_DUST, DUST_PILLAR): requires `block=MATERIAL` (`Material.matchMaterial`; a null material or `!isBlock()` = WARN-once and the LINE is ignored; data = `mat.createBlockData()` with a defensive `IllegalArgumentException` catch). Without `block=`: WARN-once "requires block=MATERIAL; ignored" and the line is skipped.
+  - `ItemStack` (ITEM): requires `item=MATERIAL` (`matchMaterial` + `isItem()`; data = `new ItemStack(mat)`); same error policy as `block=`.
+  - Any other `dataType`: WARN-once "requires unsupported data; ignored", as before.
+- Colors (`parseColor`): `#RRGGBB` (6 hex) or `R,G,B` (three integers 0-255); an invalid value = WARN-once "Invalid color" and the default is used. An invalid `size=` = WARN-once and `1.0f`. An unknown option key (not color/size/to/block/item) = WARN-once "Unknown option"; the line still runs.
 
-Paginacion: los cinco tags de pagina pasan por `withPagination(...)`: con `context.pageTarget()` null o `paginationEnabled()` false son NO-OP con nota de debug "paginacion no habilitada (opt-in por menu)". La paginacion es opt-in por menu.
+Pagination: the five page tags go through `withPagination(...)`: with a null `context.pageTarget()` or `paginationEnabled()` false they are NO-OPs with the debug note "pagination not enabled (opt-in per menu)". Pagination is opt-in per menu.
 
-#### Registro de acciones custom
+#### Custom action registration
 
-`register(tag, handler)` acepta el tag con o sin corchetes y case-insensitive; el handler reemplaza al anterior, incluyendo built-ins (override intencional permitido por contrato). El handler recibe el argumento YA resuelto (locals + PAPI) y siempre corre en el main thread.
+`register(tag, handler)` accepts the tag with or without brackets and case-insensitive; the handler replaces the previous one, including built-ins (intentional override allowed by contract). The handler receives the ALREADY resolved argument (locals + PAPI) and always runs on the main thread.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- `[right-click]` usa `ClickType.isRightClick()`, que tambien es true para SHIFT_RIGHT; `[left-click]` usa `isLeftClick()`, que ademas pasa con DOUBLE_CLICK y CREATIVE. Para distinguir existen los guards shift exactos y los puros `[right-click-only]`/`[left-click-only]` (naming exacto, decision de usuario).
-- `warnOnce` deduplica por clave dentro de CADA instancia del motor (o sea, por plugin consumidor): el mismo error en dos plugins loguea dos veces, una por logger de cada plugin.
-- `[player-as-op]` abre una ventana temporal de OP; el `finally` garantiza el `setOp(false)` incluso si el comando lanza, pero solo cuando el jugador NO era op de antemano.
-- En `[particle]`, dar `TYPE count offX` (sin los tres offsets) ignora el offset silenciosamente: los offsets solo se leen con >= 4 tokens POSICIONALES (las opciones `key=value` no cuentan para ese umbral).
-- El orden de resolucion del argumento es locals PRIMERO, PAPI DESPUES: un placeholder local puede expandirse a un token `%...%` que PAPI luego resuelve.
+- `[right-click]` uses `ClickType.isRightClick()`, which is also true for SHIFT_RIGHT; `[left-click]` uses `isLeftClick()`, which additionally passes with DOUBLE_CLICK and CREATIVE. To distinguish, there are the exact shift guards and the pure `[right-click-only]`/`[left-click-only]` (exact naming, user decision).
+- `warnOnce` dedupes per key within EACH engine instance (that is, per consumer plugin): the same error in two plugins logs twice, once per plugin's logger.
+- `[player-as-op]` opens a temporary OP window; the `finally` guarantees the `setOp(false)` even if the command throws, but only when the player was NOT op beforehand.
+- In `[particle]`, giving `TYPE count offX` (without the three offsets) ignores the offset silently: offsets are only read with >= 4 POSITIONAL tokens (`key=value` options do not count toward that threshold).
+- The argument resolution order is locals FIRST, PAPI SECOND: a local placeholder can expand to a `%...%` token that PAPI then resolves.
 
 ### ActionContext
 `src/main/java/com/sn/lib/action/ActionContext.java`
 
-Record inmutable con el contexto de ejecucion de una corrida de acciones.
+Immutable record with the execution context of an action run.
 
-- `public record ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, @Nullable ClickSurface clickSurface, Ph[] phs)` - componentes: jugador destino, contexto SnLib dueño, target de paginacion (una sesion de GUI, o null fuera de un menu paginado), click que disparo la corrida (null fuera de un click de GUI; los guards de click omiten su linea cuando es null), superficie del click para interacciones de mundo (BLOCK/AIR, o null en clicks de GUI y corridas sin click; los guards `[click-block]`/`[click-air]` omiten su linea cuando es null), y pares de placeholders locales aplicados a cada argumento.
-- `public ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, Ph[] phs)` - sobrecarga de compatibilidad sin superficie (clicks de GUI y corridas sin click): delega en el constructor canonico con `clickSurface` null. Todo caller de v1.0.0 compila y se comporta identico.
-- Constructor compacto: `phs = phs == null ? new Ph[0] : phs` - normaliza `phs` null a array vacio.
+- `public record ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, @Nullable ClickSurface clickSurface, Ph[] phs)` - components: target player, owning SnLib context, pagination target (a GUI session, or null outside a paginated menu), click that fired the run (null outside a GUI click; click guards skip their line when it is null), click surface for world interactions (BLOCK/AIR, or null in GUI clicks and clickless runs; the `[click-block]`/`[click-air]` guards skip their line when it is null), and local placeholder pairs applied to each argument.
+- `public ActionContext(Player player, Sn ctx, @Nullable PageTarget pageTarget, @Nullable ClickType clickType, Ph[] phs)` - compatibility overload without a surface (GUI clicks and clickless runs): delegates to the canonical constructor with a null `clickSurface`. Every v1.0.0 caller compiles and behaves identically.
+- Compact constructor: `phs = phs == null ? new Ph[0] : phs` - normalizes a null `phs` to an empty array.
 
-Los accessors generados del record (`player()`, `ctx()`, `pageTarget()`, `clickType()`, `clickSurface()`, `phs()`) son la API publica.
+The record's generated accessors (`player()`, `ctx()`, `pageTarget()`, `clickType()`, `clickSurface()`, `phs()`) are the public API.
 
 ### ClickSurface
 `src/main/java/com/sn/lib/action/ClickSurface.java`
 
-Enum de la superficie de un click de mundo (items fisicos): la interaccion pego en un bloque o en el aire. Los clicks de GUI no tienen superficie y dejan `ActionContext.clickSurface()` en null, asi los guards posicionales `[click-block]`/`[click-air]` omiten su linea ahi.
+Enum of a world click's surface (physical items): the interaction hit a block or the air. GUI clicks have no surface and leave `ActionContext.clickSurface()` null, so the positional guards `[click-block]`/`[click-air]` skip their line there.
 
-Valores: `BLOCK`, `AIR`.
+Values: `BLOCK`, `AIR`.
 
 ### ActionHandler
 `src/main/java/com/sn/lib/action/ActionHandler.java`
 
-Interfaz funcional (`@FunctionalInterface`) detras de cada tag, built-in o registrado por un consumidor via `ActionEngine#register`.
+Functional interface (`@FunctionalInterface`) behind each tag, built-in or registered by a consumer via `ActionEngine#register`.
 
-- `void run(Player player, String arg, ActionContext context)` - corre la accion para el jugador, SIEMPRE en el main thread. `arg` es el argumento posterior al tag con locals y PAPI ya resueltos.
+- `void run(Player player, String arg, ActionContext context)` - runs the action for the player, ALWAYS on the main thread. `arg` is the post-tag argument with locals and PAPI already resolved.
 
 ### PageTarget
 `src/main/java/com/sn/lib/action/PageTarget.java`
 
-Controles de paginacion a los que delegan las acciones de pagina; lo implementan las sesiones de GUI. La paginacion es opt-in por menu: con `paginationEnabled()` false el `ActionEngine` convierte cada accion de pagina en no-op con nota de debug.
+Pagination controls the page actions delegate to; GUI sessions implement it. Pagination is opt-in per menu: with `paginationEnabled()` false the `ActionEngine` turns every page action into a no-op with a debug note.
 
-- `void nextPage()` - avanza a la pagina siguiente.
-- `void previousPage()` - vuelve a la pagina anterior.
-- `void setPage(int page)` - salta a la pagina dada; las implementaciones clampean valores fuera de rango.
-- `void refreshPage()` - re-renderiza la pagina actual.
-- `void refreshMenu()` - re-renderiza el menu completo.
-- `boolean paginationEnabled()` - true cuando el menu declaro paginacion; si no, las acciones de pagina no hacen nada.
+- `void nextPage()` - advances to the next page.
+- `void previousPage()` - goes back to the previous page.
+- `void setPage(int page)` - jumps to the given page; implementations clamp out-of-range values.
+- `void refreshPage()` - re-renders the current page.
+- `void refreshMenu()` - re-renders the whole menu.
+- `boolean paginationEnabled()` - true when the menu declared pagination; otherwise page actions do nothing.
 
 ### RequirementEngine
 `src/main/java/com/sn/lib/action/RequirementEngine.java`
 
-Clase `final` estatica (constructor privado) que parsea expresiones de requirements sobre placeholders en arboles inmutables de `Requirement`. El parseo ocurre UNA vez al load; los placeholders quedan como tokens crudos y se resuelven en cada `Requirement#test` a traves del resolver del caller.
+Static `final` class (private constructor) that parses requirement expressions over placeholders into immutable `Requirement` trees. Parsing happens ONCE at load; placeholders stay raw tokens and resolve on each `Requirement#test` through the caller's resolver.
 
-- `public static Requirement parse(List<String> lines)` - parsea las lineas (AND implicito entre lineas) mandando los warnings al logger compartido `Logger.getLogger("SnLib")`.
-- `public static Requirement parse(@Nullable List<String> lines, @Nullable Consumer<String> warn)` - idem con sink de warnings delegable (logger del plugin, SnDebug, etc.); con `warn` null usa el logger compartido deduplicado por contenido del mensaje. Input null, vacio o solo lineas en blanco produce un requirement que SIEMPRE pasa.
+- `public static Requirement parse(List<String> lines)` - parses the lines (implicit AND between lines) sending warnings to the shared logger `Logger.getLogger("SnLib")`.
+- `public static Requirement parse(@Nullable List<String> lines, @Nullable Consumer<String> warn)` - same with a delegable warning sink (plugin logger, SnDebug, etc.); with a null `warn` it uses the shared logger deduplicated by message content. Null, empty or blank-lines-only input produces a requirement that ALWAYS passes.
 
-Enum interno (privado) `Op` con los operadores de comparacion: `GE(">=")`, `LE("<=")`, `EQ_STRICT("==")`, `NE("!=")`, `GT(">")`, `LT("<")`, `EQ("=")`. Los simbolos de dos caracteres estan declarados primero para que el escaneo los prefiera sobre `>`, `<` y `=`. Constante estatica privada `WARNED` (set server-wide): el contrato de SnLib permite este static porque solo deduplica logs, no guarda datos de consumidores.
+Internal (private) enum `Op` with the comparison operators: `GE(">=")`, `LE("<=")`, `EQ_STRICT("==")`, `NE("!=")`, `GT(">")`, `LT("<")`, `EQ("=")`. The two-character symbols are declared first so the scan prefers them over `>`, `<` and `=`. Private static constant `WARNED` (server-wide set): the SnLib contract allows this static because it only dedupes logs, it holds no consumer data.
 
-#### Gramatica y precedencia
+#### Grammar and precedence
 
-- Por linea: comparaciones `left OP right` unidas por `&&` y `||`, con AND ligando MAS fuerte que OR, y agrupables con parentesis. Descenso recursivo sobre la lista de tokens: `expr := and ('||' and)*` (-> `AnyOf`), `and := primary ('&&' primary)*` (-> `AllOf`), `primary := '(' expr ')' | comparacion`.
-- Entre lineas de una lista: AND implicito.
-- Quoting: un operando puede envolverse en `'` o `"`; dentro de la region quoted los conectores, los parentesis y los simbolos de operador quedan LITERALES (tanto el tokenizer como el scan de operadores trackean el estado de comillas). Al parsear la comparacion se quita UN par de comillas balanceadas que envuelva el operando completo (primer char == ultimo char, ambos `'` o ambos `"`, largo >= 2); el contenido interno NO se re-trimea (un operando quoted preserva espacios internos y de borde). Una comilla sin cerrar extiende la region lenientemente hasta el fin de la linea, sin WARN propio.
-- Deteccion del operador (`parseComparison`): se escanea el texto de izquierda a derecha FUERA de comillas y en cada indice se prueban los operadores en orden de declaracion del enum, asi `>=` gana sobre `>`. Operando vacio (tras el strip de comillas) a cualquier lado, o ausencia de operador, hacen la comparacion invalida.
-- Fail-open: cualquier malformacion (comparacion invalida, `(` sin cierre, `)` suelto o tokens sobrantes al terminar la expresion, parentesis vacios, conector colgante) convierte la LINEA ENTERA en always-true con un solo WARN ("Requirement malformado: '<linea>'; se evalua como true"), para que una config rota nunca deje jugadores afuera.
-- Cambio de interpretacion respecto de 1.0.0 (aceptado): un operando que contenia `(`, `)`, `&&` o `||` literales sin comillas ahora requiere quoting; sin quotear, la linea cae en fail-open (true + WARN), nunca bloquea jugadores. Toda expresion sin comillas ni parentesis produce un arbol IDENTICO al de 1.0.0.
+- Per line: `left OP right` comparisons joined by `&&` and `||`, with AND binding TIGHTER than OR, and groupable with parentheses. Recursive descent over the token list: `expr := and ('||' and)*` (-> `AnyOf`), `and := primary ('&&' primary)*` (-> `AllOf`), `primary := '(' expr ')' | comparison`.
+- Between lines of a list: implicit AND.
+- Quoting: an operand may be wrapped in `'` or `"`; inside the quoted region the connectors, parentheses and operator symbols are LITERAL (both the tokenizer and the operator scan track quote state). When parsing the comparison, ONE pair of balanced quotes wrapping the whole operand is stripped (first char == last char, both `'` or both `"`, length >= 2); the inner content is NOT re-trimmed (a quoted operand preserves inner and edge spaces). An unclosed quote leniently extends the region to the end of the line, with no WARN of its own.
+- Operator detection (`parseComparison`): the text scans left to right OUTSIDE quotes and at each index the operators try in enum declaration order, so `>=` wins over `>`. An empty operand (after quote stripping) on either side, or no operator, makes the comparison invalid.
+- Fail-open: any malformation (invalid comparison, unclosed `(`, stray `)` or leftover tokens at expression end, empty parentheses, dangling connector) turns the WHOLE LINE into always-true with a single WARN ("Malformed requirement: '<line>'; it evaluates as true"), so a broken config never locks players out.
+- Interpretation change vs 1.0.0 (accepted): an operand that contained literal `(`, `)`, `&&` or `||` without quotes now requires quoting; unquoted, the line falls into fail-open (true + WARN), it never blocks players. Every expression without quotes or parentheses produces a tree IDENTICAL to 1.0.0's.
 
-#### Coercion en evaluacion
+#### Coercion at evaluation
 
-En cada `test`, ambos tokens se resuelven via el resolver (resolver null o resultado null dejan el token crudo). Luego:
+On each `test`, both tokens resolve via the resolver (a null resolver or null result leaves the raw token). Then:
 
-- Si AMBOS lados parsean como `Double`, la comparacion es numerica (`Double.compare`).
-- Si no: `=`/`==` y `!=` comparan lexicograficamente case-insensitive (`equalsIgnoreCase`); `=` y `==` son semanticamente identicos.
-- Los relacionales (`>`, `<`, `>=`, `<=`) sobre valores no numericos evaluan a FALSE con warn ("Comparacion no numerica con '<op>': ... se evalua como false").
+- If BOTH sides parse as `Double`, the comparison is numeric (`Double.compare`).
+- Otherwise: `=`/`==` and `!=` compare lexicographically case-insensitive (`equalsIgnoreCase`); `=` and `==` are semantically identical.
+- Relational operators (`>`, `<`, `>=`, `<=`) on non-numeric values evaluate to FALSE with a warn ("Non-numeric comparison with '<op>': ... evaluates as false").
 
-#### Logica interna
+#### Internal logic
 
-Los nodos del arbol son records privados: `AllOf` (AND con short-circuit, copia defensiva `List.copyOf`), `AnyOf` (OR con short-circuit) y `Comparison` (hoja que retiene los tokens crudos ya des-quoteados y el sink de warn). El parseo por linea es un tokenizer de UNA pasada (tokens `LPAREN`/`RPAREN`/`AND`/`OR`/`TEXT`, quote-aware; el whitespace se conserva dentro de los runs TEXT pero los runs de solo whitespace entre tokens estructurales se descartan) seguido del descenso recursivo con indice mutable; las malformaciones cortan via una excepcion interna (`MalformedLineException`) que `parseLine` traduce al WARN unico. `ALWAYS_TRUE` es el requirement constante para inputs vacios y lineas malformadas.
+The tree nodes are private records: `AllOf` (short-circuit AND, defensive `List.copyOf`), `AnyOf` (short-circuit OR) and `Comparison` (leaf that retains the raw, already unquoted tokens and the warn sink). Per-line parsing is a ONE-pass tokenizer (tokens `LPAREN`/`RPAREN`/`AND`/`OR`/`TEXT`, quote-aware; whitespace is preserved inside TEXT runs but whitespace-only runs between structural tokens are dropped) followed by recursive descent with a mutable index; malformations cut off via an internal exception (`MalformedLineException`) that `parseLine` translates into the single WARN. `ALWAYS_TRUE` is the constant requirement for empty inputs and malformed lines.
 
 ### Requirement
 `src/main/java/com/sn/lib/action/Requirement.java`
 
-Interfaz funcional (`@FunctionalInterface`) de un requirement inmutable pre-parseado, evaluado contra valores de placeholders en runtime. Las instancias se construyen una vez al load via `RequirementEngine#parse` y mantienen los placeholders como tokens crudos: cada evaluacion los resuelve de nuevo, por lo que UNA instancia sirve para cualquier jugador.
+Functional interface (`@FunctionalInterface`) of an immutable pre-parsed requirement, evaluated against placeholder values at runtime. Instances are built once at load via `RequirementEngine#parse` and keep placeholders as raw tokens: each evaluation resolves them again, so ONE instance serves any player.
 
-- `boolean test(@Nullable Player player, @Nullable Function<String, String> resolver)` - evalua el requirement. `player` puede ser null para chequeos a nivel servidor; `resolver` resuelve cada token de operando a su valor actual (tipicamente locals + PAPI atados a `player`); resolver null deja los tokens intactos.
+- `boolean test(@Nullable Player player, @Nullable Function<String, String> resolver)` - evaluates the requirement. `player` may be null for server-level checks; `resolver` resolves each operand token to its current value (typically locals + PAPI bound to `player`); a null resolver leaves the tokens untouched.
 
 ### SnPapi
 `src/main/java/com/sn/lib/papi/SnPapi.java`
 
-Servicio PlaceholderAPI de un contexto consumidor, alcanzado via `sn.papi()`. Clase `final`; el aislamiento vive en el holder interno: con PlaceholderAPI ausente el texto vuelve intacto y NUNCA se carga una clase de PAPI.
+PlaceholderAPI service of a consumer context, reached via `sn.papi()`. `final` class; the isolation lives in the internal holder: with PlaceholderAPI absent the text comes back untouched and NO PAPI class is ever loaded.
 
-- `public SnPapi(Sn ctx)` - crea el servicio para el contexto; construye un `PapiHolder(ctx.plugin())`. La presencia de PAPI se sondea lazy.
-- `public String apply(@Nullable Player viewer, String text)` - resuelve tokens PAPI en `text` contra el viewer, o contra el servidor cuando el viewer es null. Fast-path: texto null o sin `'%'` retorna tal cual sin tocar el holder. PAPI ausente: texto intacto. Resolucion main-thread ONLY: fuera del primary thread los tokens quedan intactos y el skip se registra via el servicio de debug del contexto ("PAPI omitido fuera del main thread; tokens intactos: ...").
-- `public List<String> apply(@Nullable Player viewer, List<String> lines)` - overload de lista, resuelve linea por linea; lista null o vacia retorna la misma referencia.
-- `public SnFuture<String> applyOnMain(@Nullable Player viewer, String text)` - (v1.1) puente async-safe hacia `apply`. En el primary thread resuelve INLINE y devuelve un future ya completado (`SnFuture.wrap(ctx, CompletableFuture.completedFuture(...))`); fuera de el, agenda un hop al main thread via `ctx.scheduler().sync(...)` y completa el future ahi. Fail-open: un error del resolver (try/catch de `Throwable` con nota de debug) o un fallo de scheduling (`IllegalPluginAccessException`: plugin deshabilitado antes del hop) completan con el TEXTO ORIGINAL sin resolver; text null completa con null. Consumo canonico: `thenSync(...)`, igual que los futures de db.
-- `public SnFuture<List<String>> applyOnMain(@Nullable Player viewer, List<String> lines)` - (v1.1) overload de lista: resuelve TODA la lista en UN solo hop con `apply(viewer, lines)`; fail-open a la lista original, lines null completa con null.
-- `public boolean available()` - true cuando el plugin PlaceholderAPI esta presente y habilitado (delegado al holder, cacheado).
-- `public void invalidate()` - descarta el probe de presencia cacheado; el proximo apply o register vuelve a sondear (util cuando el plugin PAPI se togglea).
-- `public ExpansionBuilder expansion(String identifier)` - arranca una expansion declarativa bajo `identifier`. Defaults del builder: autor = autores del plugin unidos con ", " (o el nombre del plugin si la lista esta vacia), version = version del `plugin.yml`.
-- `public void unregisterAll()` - desregistra toda expansion que este contexto registro; lo invoca el teardown del contexto.
-- `boolean registerExpansion(String identifier, String author, String version, Map<String, Function<OfflinePlayer, String>> exact, Map<String, BiFunction<OfflinePlayer, String, String>> prefixed)` - (package-private) puente del builder hacia `PapiHolder.register`.
+- `public SnPapi(Sn ctx)` - creates the service for the context; builds a `PapiHolder(ctx.plugin())`. PAPI presence is probed lazily.
+- `public String apply(@Nullable Player viewer, String text)` - resolves PAPI tokens in `text` against the viewer, or against the server when the viewer is null. Fast path: null text or text without `'%'` returns as-is without touching the holder. PAPI absent: text untouched. Main-thread ONLY resolution: off the primary thread the tokens stay intact and the skip is recorded via the context's debug service ("PAPI skipped off the main thread; tokens untouched: ...").
+- `public List<String> apply(@Nullable Player viewer, List<String> lines)` - list overload, resolves line by line; a null or empty list returns the same reference.
+- `public SnFuture<String> applyOnMain(@Nullable Player viewer, String text)` - (v1.1) async-safe bridge to `apply`. On the primary thread it resolves INLINE and returns an already-completed future (`SnFuture.wrap(ctx, CompletableFuture.completedFuture(...))`); off it, it schedules a hop to the main thread via `ctx.scheduler().sync(...)` and completes the future there. Fail-open: a resolver error (`Throwable` try/catch with a debug note) or a scheduling failure (`IllegalPluginAccessException`: plugin disabled before the hop) complete with the ORIGINAL unresolved text; null text completes with null. Canonical consumption: `thenSync(...)`, just like db futures.
+- `public SnFuture<List<String>> applyOnMain(@Nullable Player viewer, List<String> lines)` - (v1.1) list overload: resolves the WHOLE list in ONE hop with `apply(viewer, lines)`; fail-open to the original list, null lines completes with null.
+- `public boolean available()` - true when the PlaceholderAPI plugin is present and enabled (delegated to the holder, cached).
+- `public void invalidate()` - discards the cached presence probe; the next apply or register probes again (useful when the PAPI plugin toggles).
+- `public ExpansionBuilder expansion(String identifier)` - starts a declarative expansion under `identifier`. Builder defaults: author = the plugin's authors joined with ", " (or the plugin name if the list is empty), version = the `plugin.yml` version.
+- `public void unregisterAll()` - unregisters every expansion this context registered; invoked by the context teardown.
+- `boolean registerExpansion(String identifier, String author, String version, Map<String, Function<OfflinePlayer, String>> exact, Map<String, BiFunction<OfflinePlayer, String, String>> prefixed)` - (package-private) the builder's bridge to `PapiHolder.register`.
 
 ### ExpansionBuilder
 `src/main/java/com/sn/lib/papi/ExpansionBuilder.java`
 
-Builder declarativo de una expansion PlaceholderAPI, obtenido via `SnPapi#expansion(String)`. La expansion construida reporta `persist() = true` (sobrevive los reloads de expansiones de PlaceholderAPI y solo la remueve el teardown del contexto) y null-chequea el `OfflinePlayer` solicitante antes de tocar cualquier resolver: player null deja el token sin resolver. Contrato cache-only: los resolvers corren en el main thread dentro del parse de PAPI, asi que deben leer estado precomputado en memoria y jamas tocar disco, base de datos o red.
+Declarative builder of a PlaceholderAPI expansion, obtained via `SnPapi#expansion(String)`. The built expansion reports `persist() = true` (it survives PlaceholderAPI expansion reloads and only the context teardown removes it) and null-checks the requesting `OfflinePlayer` before touching any resolver: a null player leaves the token unresolved. Cache-only contract: resolvers run on the main thread inside PAPI's parse, so they must read precomputed in-memory state and never touch disk, database or network.
 
-Decision de disenio (v1.1, documentada en el Javadoc de clase): los resolvers async NO se soportan POR DISENIO - el parse de PlaceholderAPI es sincronico y main-thread por contrato de PAPI, no hay forma de esperar I/O adentro de un resolver. El patron soportado es precomputar cache (ej. LeaderboardCache) y resolver con lecturas lock-free; para el camino inverso (componer texto CON tokens PAPI desde flujos async: db, leaderboards, Discord) esta `SnPapi.applyOnMain`.
+Design decision (v1.1, documented in the class Javadoc): async resolvers are NOT supported BY DESIGN - PlaceholderAPI's parse is synchronous and main-thread by PAPI contract, there is no way to wait for I/O inside a resolver. The supported pattern is precomputing a cache (e.g. LeaderboardCache) and resolving with lock-free reads; for the reverse path (composing text WITH PAPI tokens from async flows: db, leaderboards, Discord) there is `SnPapi.applyOnMain`.
 
-- `public ExpansionBuilder placeholder(String param, Function<OfflinePlayer, String> resolver)` - liga `%<identifier>_<param>%` al resolver. Matching case-insensitive (la clave se lowercasea con `Locale.ROOT`); los placeholders exactos GANAN sobre los prefijados.
-- `public ExpansionBuilder prefixed(String prefix, BiFunction<OfflinePlayer, String, String> resolver)` - liga cada `%<identifier>_<prefix><rest>%` al resolver, que recibe el resto despues del prefijo como segundo argumento. Los prefijos se prueban EN ORDEN DE REGISTRO (LinkedHashMap), despues de los exactos.
-- `public ExpansionBuilder author(String author)` - autor reportado a PlaceholderAPI; default los autores del plugin.
-- `public ExpansionBuilder version(String version)` - version reportada a PlaceholderAPI; default la version del plugin.
-- `public boolean register()` - registra la expansion en PlaceholderAPI, desregistrando primero cualquier previa bajo el mismo identifier (lookup-before-register: un segundo enable del consumidor nunca falla). Los mapas se copian defensivamente (`new LinkedHashMap<>(...)`) al registrar. La instancia registrada queda trackeada en el contexto para desregistro en shutdown. Retorna false con WARN cuando PlaceholderAPI esta ausente o rechaza el registro.
+- `public ExpansionBuilder placeholder(String param, Function<OfflinePlayer, String> resolver)` - binds `%<identifier>_<param>%` to the resolver. Case-insensitive matching (the key lowercases with `Locale.ROOT`); exact placeholders WIN over prefixed ones.
+- `public ExpansionBuilder prefixed(String prefix, BiFunction<OfflinePlayer, String, String> resolver)` - binds every `%<identifier>_<prefix><rest>%` to the resolver, which receives the rest after the prefix as its second argument. Prefixes try IN REGISTRATION ORDER (LinkedHashMap), after the exacts.
+- `public ExpansionBuilder author(String author)` - author reported to PlaceholderAPI; defaults to the plugin's authors.
+- `public ExpansionBuilder version(String version)` - version reported to PlaceholderAPI; defaults to the plugin version.
+- `public boolean register()` - registers the expansion in PlaceholderAPI, first unregistering any previous one under the same identifier (lookup-before-register: a consumer's second enable never fails). The maps copy defensively (`new LinkedHashMap<>(...)`) at registration. The registered instance is tracked in the context for unregistration at shutdown. Returns false with a WARN when PlaceholderAPI is absent or rejects the registration.
 
 ### PapiHolder (internal)
 `src/main/java/com/sn/lib/papi/internal/PapiHolder.java`
 
-Capa de aislamiento lazy de PlaceholderAPI de UN contexto consumidor. Diseño clave del classloader: TODA referencia bytecode a clases de PAPI vive en las clases anidadas `Bridge` y `BuiltExpansion`, que se cargan solo despues de que el probe de presencia da positivo; la clase externa no referencia ningun tipo PAPI (la lista de registradas es `List<Object>`), asi un servidor sin PlaceholderAPI nunca dispara `NoClassDefFoundError`. El flag de presencia se sondea lazy, se cachea en un `volatile Boolean`, y se descarta via `invalidate()` cuando el plugin objetivo se togglea.
+Lazy PlaceholderAPI isolation layer of ONE consumer context. Key classloader design: EVERY bytecode reference to PAPI classes lives in the nested classes `Bridge` and `BuiltExpansion`, which load only after the presence probe is positive; the outer class references no PAPI type (the registered list is a `List<Object>`), so a server without PlaceholderAPI never triggers `NoClassDefFoundError`. The presence flag is probed lazily, cached in a `volatile Boolean`, and discarded via `invalidate()` when the target plugin toggles.
 
-- `public PapiHolder(JavaPlugin owner)` - crea el holder para el plugin dueño (su logger recibe los WARNs).
-- `public boolean available()` - true cuando el plugin `"PlaceholderAPI"` esta presente y habilitado (`getPlugin` + `isEnabled`); sondeo lazy, resultado cacheado.
-- `public void invalidate()` - descarta el flag cacheado; la proxima llamada vuelve a sondear.
-- `public String apply(@Nullable OfflinePlayer player, String text)` - resuelve tokens PAPI via `Bridge.setPlaceholders`, o retorna el texto intacto cuando PAPI no esta disponible. Un `LinkageError` marca el modulo como roto (`present = FALSE`, WARN "PlaceholderAPI inaccesible (...); modulo papi degradado") y retorna el texto intacto.
-- `public boolean register(String identifier, String author, String version, Map<String, Function<OfflinePlayer, String>> exact, Map<String, BiFunction<OfflinePlayer, String, String>> prefixed)` - registra una expansion declarativa, desregistrando primero cualquier previa con el mismo identifier (lookup-before-register). PAPI ausente: WARN "PlaceholderAPI ausente: expansion '<id>' no registrada" y false. Registro rechazado por PAPI: WARN "PlaceholderAPI rechazo la expansion '<id>'" y false. La instancia queda trackeada (CopyOnWriteArrayList) para `unregisterAll()`. `LinkageError` degrada el modulo y retorna false.
-- `public void unregisterAll()` - desregistra cada expansion registrada por este holder (teardown del contexto); drena la lista primero y tolera `LinkageError` degradando el modulo.
+- `public PapiHolder(JavaPlugin owner)` - creates the holder for the owning plugin (its logger receives the WARNs).
+- `public boolean available()` - true when the `"PlaceholderAPI"` plugin is present and enabled (`getPlugin` + `isEnabled`); lazy probe, cached result.
+- `public void invalidate()` - discards the cached flag; the next call probes again.
+- `public String apply(@Nullable OfflinePlayer player, String text)` - resolves PAPI tokens via `Bridge.setPlaceholders`, or returns the text untouched when PAPI is unavailable. A `LinkageError` marks the module as broken (`present = FALSE`, WARN "PlaceholderAPI inaccessible (...); papi module degraded") and returns the text untouched.
+- `public boolean register(String identifier, String author, String version, Map<String, Function<OfflinePlayer, String>> exact, Map<String, BiFunction<OfflinePlayer, String, String>> prefixed)` - registers a declarative expansion, first unregistering any previous one with the same identifier (lookup-before-register). PAPI absent: WARN "PlaceholderAPI absent: expansion '<id>' not registered" and false. Registration rejected by PAPI: WARN "PlaceholderAPI rejected the expansion '<id>'" and false. The instance is tracked (CopyOnWriteArrayList) for `unregisterAll()`. A `LinkageError` degrades the module and returns false.
+- `public void unregisterAll()` - unregisters every expansion this holder registered (context teardown); it drains the list first and tolerates `LinkageError` by degrading the module.
 
-#### Logica interna
+#### Internal logic
 
-- `Bridge` (estatica, privada): junto con `BuiltExpansion` es la UNICA clase cuyo constant pool referencia tipos PAPI; se carga exclusivamente detras de un probe de presencia exitoso. Metodos: `setPlaceholders(player, text)` delega en `PlaceholderAPI.setPlaceholders`; `register(...)` busca la expansion existente via `PlaceholderAPIPlugin.getInstance().getLocalExpansionManager().getExpansion(identifier.toLowerCase(Locale.ROOT))`, la desregistra si existe (este es el lookup-antes-de-registrar concreto), construye la `BuiltExpansion` y retorna null si `expansion.register()` falla; `unregister(expansion)` castea a `PlaceholderExpansion` y desregistra.
-- `BuiltExpansion` (estatica, privada, extiende `PlaceholderExpansion`): expansion construida desde los mapas declarativos. `getIdentifier()`/`getAuthor()`/`getVersion()` devuelven lo configurado. `persist()` retorna TRUE: sobrevive los reloads de expansiones de PlaceholderAPI (ej `/papi reload`) y solo la remueve el teardown del contexto. `onRequest(player, params)`: player null retorna null (token sin resolver); la clave se lowercasea; primero busca resolver EXACTO, despues recorre los prefijos en orden de registro con `startsWith`, pasando el resto despues del prefijo como argumento; sin match retorna null. `resolveSafe` envuelve cada resolver en try/catch de `Throwable`: una excepcion loguea WARN "Placeholder '%<id>_<params>%' fallo al resolver: <t>" y retorna null en vez de romper el parse de PAPI.
+- `Bridge` (static, private): together with `BuiltExpansion` it is the ONLY class whose constant pool references PAPI types; it loads exclusively behind a successful presence probe. Methods: `setPlaceholders(player, text)` delegates to `PlaceholderAPI.setPlaceholders`; `register(...)` looks up the existing expansion via `PlaceholderAPIPlugin.getInstance().getLocalExpansionManager().getExpansion(identifier.toLowerCase(Locale.ROOT))`, unregisters it if it exists (this is the concrete lookup-before-register), builds the `BuiltExpansion` and returns null if `expansion.register()` fails; `unregister(expansion)` casts to `PlaceholderExpansion` and unregisters.
+- `BuiltExpansion` (static, private, extends `PlaceholderExpansion`): the expansion built from the declarative maps. `getIdentifier()`/`getAuthor()`/`getVersion()` return the configured values. `persist()` returns TRUE: it survives PlaceholderAPI expansion reloads (e.g. `/papi reload`) and only the context teardown removes it. `onRequest(player, params)`: a null player returns null (unresolved token); the key lowercases; it first looks for an EXACT resolver, then walks the prefixes in registration order with `startsWith`, passing the rest after the prefix as the argument; no match returns null. `resolveSafe` wraps each resolver in a `Throwable` try/catch: an exception logs WARN "Placeholder '%<id>_<params>%' failed to resolve: <t>" and returns null instead of breaking PAPI's parse.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El patron holder existe porque un `import` normal de PAPI en una clase que siempre se carga romperia en servidores sin PlaceholderAPI; el probe (`available()`) usa solo la API de Bukkit y la carga de `Bridge`/`BuiltExpansion` queda gated detras de el.
-- `persist() = true` + lookup-antes-de-registrar juntos garantizan que reiniciar/rehabilitar el plugin consumidor o recargar PAPI nunca deje expansiones duplicadas ni registros fallidos por identifier tomado.
-- `markBroken` en `LinkageError` es defensa contra mismatches de version de PAPI en runtime: degrada el modulo a no-op (texto intacto) en vez de spamear errores.
+- The holder pattern exists because a normal PAPI `import` in an always-loaded class would break on servers without PlaceholderAPI; the probe (`available()`) uses only Bukkit API and the loading of `Bridge`/`BuiltExpansion` stays gated behind it.
+- `persist() = true` + lookup-before-register together guarantee that restarting/re-enabling the consumer plugin or reloading PAPI never leaves duplicate expansions or registrations failed over a taken identifier.
+- `markBroken` on `LinkageError` is a defense against runtime PAPI version mismatches: it degrades the module to a no-op (text untouched) instead of spamming errors.
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME explicitos en ninguno de los archivos del alcance. Limitaciones documentadas en el codigo:
+There are no explicit TODO/FIXME markers in any file of this scope. Limitations documented in the code:
 
-- `[particle]` soporta los dataTypes `Void`, `Particle.DustOptions` (opciones `color=`/`size=`, defaults Color.RED y 1.0f), `Particle.DustTransition` (`color=`/`to=`/`size=`), `BlockData` (`block=MATERIAL` obligatorio) e `ItemStack` (`item=MATERIAL` obligatorio); cualquier otro `dataType` (ej. Vibration, Trail) sigue ignorandose con WARN ("requiere datos no soportados").
-- `[remove-item]` cubre mano principal (default), `offhand`, material (`MATERIAL`, excluyendo stacks tagueados por SnLib) e `id:<item-id>`; el barrido por selector alcanza los slots de storage 0-35 mas la offhand (no toca armadura ni cursor) y no hay soporte de slot arbitrario.
-- La gramatica de requirements soporta agrupamiento con `( )` y quoting de operandos con `'` o `"`; la contracara es que un operando con `(`, `)`, `&&`, `||` o simbolos de operador literales ahora DEBE quotearse (sin comillas la linea cae en fail-open con WARN, nunca bloquea jugadores).
-- La resolucion PAPI es main-thread only por diseño: fuera del primary thread `apply` deja los tokens intactos (con nota de debug); para flujos async el puente es `SnPapi.applyOnMain` (v1.1), que hopea la resolucion al main thread y devuelve un `SnFuture`.
-- Los resolvers de expansiones tienen contrato cache-only (memoria precomputada); el holder no ofrece variante async para resolvers con I/O (decision de disenio ratificada en v1.1: el parse de PAPI es sincronico por contrato).
-
+- `[particle]` supports the dataTypes `Void`, `Particle.DustOptions` (`color=`/`size=` options, defaults Color.RED and 1.0f), `Particle.DustTransition` (`color=`/`to=`/`size=`), `BlockData` (`block=MATERIAL` mandatory) and `ItemStack` (`item=MATERIAL` mandatory); any other `dataType` (e.g. Vibration, Trail) is still ignored with a WARN ("requires unsupported data").
+- `[remove-item]` covers main hand (default), `offhand`, material (`MATERIAL`, excluding stacks tagged by SnLib) and `id:<item-id>`; the selector sweep reaches storage slots 0-35 plus the offhand (it does not touch armor or cursor) and there is no arbitrary-slot support.
+- The requirement grammar supports grouping with `( )` and quoting of operands with `'` or `"`; the flip side is that an operand with literal `(`, `)`, `&&`, `||` or operator symbols now MUST be quoted (unquoted, the line falls into fail-open with a WARN, it never blocks players).
+- PAPI resolution is main-thread only by design: off the primary thread `apply` leaves the tokens intact (with a debug note); for async flows the bridge is `SnPapi.applyOnMain` (v1.1), which hops the resolution to the main thread and returns an `SnFuture`.
+- Expansion resolvers have a cache-only contract (precomputed memory); the holder offers no async variant for I/O resolvers (design decision ratified in v1.1: PAPI's parse is synchronous by contract).
 ---
 
 # 09
 
-## 09. Multi-tenant, cleanup y reload
+## 09. Multi-tenant, cleanup and reload
 
-SnLib es una libreria compartida: un unico jar (un unico classloader) sirve a ~57 plugins consumidores a la vez. Este modulo garantiza que el estado de cada consumidor (GUIs, comandos, cooldowns, callbacks, inventarios abiertos) viva bajo su `Plugin` owner y muera con el, sin filtrar classloaders ni tocar a los demas consumidores. Los pilares son: `TenantRegistry` (contenedor base por owner con sweep), `ListenerHub` (punto unico de registro de eventos), `TenantSweeper` (doble red al deshabilitarse un plugin), `QuitCleanupListener` (unico listener de quit/kick), `Cooldowns` (estado por jugador sin boxing y con politica de relog) y `ReloadManager` (reload por contexto en 7 fases estrictas).
+SnLib is a shared library: a single jar (a single classloader) serves ~57 consumer plugins at once. This module guarantees that each consumer's state (GUIs, commands, cooldowns, callbacks, open inventories) lives under its owning `Plugin` and dies with it, without leaking classloaders or touching the other consumers. The pillars are: `TenantRegistry` (per-owner base container with sweep), `ListenerHub` (single event registration point), `TenantSweeper` (double safety net when a plugin disables), `QuitCleanupListener` (single quit/kick listener), `Cooldowns` (boxing-free per-player state with a relog policy) and `ReloadManager` (per-context reload in 7 strict phases).
 
-### Regla dura del classloader compartido
+### Hard rule of the shared classloader
 
-Documentada en el Javadoc de `TenantRegistry`: los estaticos SIN namespace de owner solo se permiten para datos server-wide (SnVersion/SnCompat). Todo lo que contenga datos de plugin, jugador o sesion pasa por una instancia de `TenantRegistry` con un `Plugin` owner explicito. Las instancias de `TenantRegistry` son campos estaticos de clases de la libreria y viven lo que vive la libreria; nunca se crea una por contexto. Cada estatico server-wide del modulo lleva un comentario "Server-wide static justified: ..." que justifica la excepcion (la enumeracion `REGISTRIES` para el sweep, los `OPEN_HOLDERS` del sweeper, los `CALLBACKS` de quit-cleanup).
+Documented in `TenantRegistry`'s Javadoc: statics WITHOUT an owner namespace are only allowed for server-wide data (SnVersion/SnCompat). Anything containing plugin, player or session data goes through a `TenantRegistry` instance with an explicit `Plugin` owner. `TenantRegistry` instances are static fields of library classes and live as long as the library; one is never created per context. Every server-wide static in the module carries a "Server-wide static justified: ..." comment justifying the exception (the `REGISTRIES` enumeration for the sweep, the sweeper's `OPEN_HOLDERS`, the quit-cleanup `CALLBACKS`).
 
-### Criterio de NO-interferencia
+### Non-interference criterion
 
-Regla transversal del modulo: toda operacion de limpieza o reload afecta EXCLUSIVAMENTE al owner involucrado.
+Cross-cutting rule of the module: every cleanup or reload operation affects EXCLUSIVELY the owner involved.
 
-- `TenantRegistry.removeOwner(owner)` toca solo la key de ese owner; las registraciones de todos los demas plugins quedan intactas.
-- El sweep per-consumidor de `TenantSweeper` barre unicamente las registraciones de ese owner.
-- `ReloadManager.reloadPlugin()` reconstruye solo los modulos del plugin dueño del contexto: jamas toca el estado de otros consumidores ni el de la libreria misma.
+- `TenantRegistry.removeOwner(owner)` touches only that owner's key; the registrations of every other plugin stay intact.
+- `TenantSweeper`'s per-consumer sweep clears only that owner's registrations.
+- `ReloadManager.reloadPlugin()` rebuilds only the modules of the context's owning plugin: it never touches other consumers' state nor the library's own.
 
 ### TenantRegistry
 
 `src/main/java/com/sn/lib/tenant/TenantRegistry.java`
 
-Registro multi-tenant generico keyed por el plugin owner: el contenedor base de todo estado per-plugin que la libreria mantiene (GUIs, comandos, cooldowns, callbacks de listeners, expansiones, recetas, hologramas, bossbars, soft dependencies). Internamente es un `Map<Plugin, Set<T>>` sobre `ConcurrentHashMap`, con un `Consumer<T> onSweep` opcional. Cada instancia se auto-inscribe en el set estatico `REGISTRIES` para que `sweepOwner` pueda enumerar todos los registros existentes.
+Generic multi-tenant registry keyed by the owning plugin: the base container of all per-plugin state the library keeps (GUIs, commands, cooldowns, listener callbacks, expansions, recipes, holograms, bossbars, soft dependencies). Internally it is a `Map<Plugin, Set<T>>` over `ConcurrentHashMap`, with an optional `Consumer<T> onSweep`. Each instance self-enrolls in the static `REGISTRIES` set so `sweepOwner` can enumerate all existing registries.
 
-- `public TenantRegistry()` - registro sin callback de sweep.
-- `public TenantRegistry(@Nullable Consumer<T> onSweep)` - registro cuyos valores reciben `onSweep` cuando su owner key se remueve via `removeOwner`; permite que un sweep libere recursos (force-disable de hooks, cierre de inventarios) aun cuando el owner nunca limpio.
-- `public void add(Plugin owner, T value)` - registra un valor bajo su owner. La mutacion va dentro de `compute`: atomica por key contra el drop de `remove()`, asi un alta concurrente jamas cae en un set cuya key acaba de removerse.
-- `public void remove(Plugin owner, T value)` - desregistra un valor, dropeando la key del owner cuando su set queda vacio.
-- `public Set<T> forOwner(Plugin owner)` - vista no modificable de los valores del owner; vacia cuando no tiene ninguno.
-- `public Set<T> removeOwner(Plugin owner)` - remueve la key COMPLETA del owner y devuelve los valores que tenia, aplicando el callback de sweep (si esta configurado) a cada uno. Cada fallo del callback se atrapa como `Throwable` y se loguea WARN "Sweep de una registracion fallo: ...". Solo la key de ese owner se toca (no-interferencia).
-- `public void forEachOwner(BiConsumer<Plugin, Set<T>> action)` - aplica la accion a cada owner con una vista no modificable de sus valores.
-- `public static void sweepOwner(Plugin owner)` - barre un owner de TODOS los registros existentes; cada registro pierde solo la key de ese owner.
+- `public TenantRegistry()` - registry without a sweep callback.
+- `public TenantRegistry(@Nullable Consumer<T> onSweep)` - registry whose values receive `onSweep` when their owner key is removed via `removeOwner`; lets a sweep release resources (force-disable of hooks, inventory closing) even when the owner never cleaned up.
+- `public void add(Plugin owner, T value)` - registers a value under its owner. The mutation goes inside `compute`: atomic per key against the `remove()` drop, so a concurrent add never lands in a set whose key was just removed.
+- `public void remove(Plugin owner, T value)` - unregisters a value, dropping the owner key when its set becomes empty.
+- `public Set<T> forOwner(Plugin owner)` - unmodifiable view of the owner's values; empty when it has none.
+- `public Set<T> removeOwner(Plugin owner)` - removes the owner's WHOLE key and returns the values it had, applying the sweep callback (if configured) to each one. Every callback failure is caught as `Throwable` and logged WARN "Sweep of a registration failed: ...". Only that owner's key is touched (non-interference).
+- `public void forEachOwner(BiConsumer<Plugin, Set<T>> action)` - applies the action to each owner with an unmodifiable view of its values.
+- `public static void sweepOwner(Plugin owner)` - sweeps an owner from ALL existing registries; each registry loses only that owner's key.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Por que `removeOwner` remueve la key completa y no solo los valores: mantener la key `Plugin` en el map mantendria alcanzable el classloader del plugin deshabilitado (el Javadoc lo llama "the ManticCommand leak"). Remover la key entera corta esa referencia.
-- El `onSweep` es defensivo por diseño: se ejecuta valor por valor con try/catch individual, de modo que un valor roto no impide barrer el resto.
+- Why `removeOwner` removes the whole key and not just the values: keeping the `Plugin` key in the map would keep the disabled plugin's classloader reachable (the Javadoc calls it "the ManticCommand leak"). Removing the whole key cuts that reference.
+- `onSweep` is defensive by design: it runs value by value with an individual try/catch, so a broken value does not prevent sweeping the rest.
 
 ### OwnedHolder
 
 `src/main/java/com/sn/lib/tenant/OwnedHolder.java`
 
-Interfaz marcadora (`extends InventoryHolder`) de todo inventario que la libreria crea en nombre de un plugin consumidor. El tenant sweeper y el quit cleanup listener compilan contra esta interfaz para identificar inventarios de la libreria y su owner sin depender del modulo GUI; el holder del modulo GUI la implementa.
+Marker interface (`extends InventoryHolder`) of every inventory the library creates on behalf of a consumer plugin. The tenant sweeper and the quit cleanup listener compile against this interface to identify library inventories and their owner without depending on the GUI module; the GUI module's holder implements it.
 
-- `Plugin owner()` - plugin al que pertenece el inventario.
+- `Plugin owner()` - plugin the inventory belongs to.
 
 ### ListenerHub (internal)
 
 `src/main/java/com/sn/lib/tenant/internal/ListenerHub.java`
 
-Punto de inscripcion unico de todos los listeners compartidos de la libreria. Mecanica fija: cada modulo inscribe su listener compartido aca (acumulado en una `CopyOnWriteArrayList` desde el inicializador estatico, antes de cualquier llamada de bootstrap) y `registerAll` realiza la UNICA llamada `registerEvents` de toda la libreria, invocada una vez desde el bootstrap de `SnLibPlugin`. Ningun codigo de la libreria puede registrar eventos en otro lado.
+Single enrollment point of all the library's shared listeners. Fixed mechanics: each module enrolls its shared listener here (accumulated in a `CopyOnWriteArrayList` from the static initializer, before any bootstrap call) and `registerAll` performs the ONLY `registerEvents` call of the whole library, invoked once from the `SnLibPlugin` bootstrap. No library code may register events anywhere else.
 
-- `public static void inscribe(Listener listener)` - agrega un listener compartido al hub; queda dormido hasta `registerAll`.
-- `public static void registerAll(SnLibPlugin plugin)` - registra cada listener inscripto contra el plugin SnLib. Idempotente: primero hace `HandlerList.unregisterAll(plugin)` para dropear las registraciones previas de SnLib, asi una doble llamada o un re-enable nunca duplican handlers (un disable de SnLib tambien los desregistra a todos).
+- `public static void inscribe(Listener listener)` - adds a shared listener to the hub; it stays dormant until `registerAll`.
+- `public static void registerAll(SnLibPlugin plugin)` - registers each enrolled listener against the SnLib plugin. Idempotent: it first does `HandlerList.unregisterAll(plugin)` to drop SnLib's previous registrations, so a double call or a re-enable never duplicates handlers (a SnLib disable also unregisters them all).
 
-#### Enumeracion canonica de los 14 listeners (con su paquete de origen)
+#### Canonical enumeration of the 14 listeners (with their origin package)
 
-Orden exacto del inicializador estatico:
+Exact static initializer order:
 
 1. `new HookListener(SoftDependency::forEachRegistered)` - `com.sn.lib.hook` (hooks / soft dependencies).
-2. `new TenantSweeper()` - `com.sn.lib.tenant.internal` (sweep por disable de plugin).
+2. `new TenantSweeper()` - `com.sn.lib.tenant.internal` (sweep on plugin disable).
 3. `new QuitCleanupListener()` - `com.sn.lib.internal` (quit/kick cleanup).
-4. `new ArmourEquipListener()` - `com.sn.lib.event.internal` (eventos de armadura).
-5. `new ChunkMoveListener()` - `com.sn.lib.event.internal` (sintesis de SnChunkMoveEvent, D3, v1.1).
-6. `new ItemPropertyListener()` - `com.sn.lib.item.internal` (propiedades de items).
-7. `new ItemInteractListener()` - `com.sn.lib.item.internal` (interacciones de items).
-8. `new LockedItemListener()` - `com.sn.lib.item.internal` (items bloqueados).
-9. `new GuiClickListener()` - `com.sn.lib.gui.internal` (clicks de GUI).
-10. `new GuiProtectionListener()` - `com.sn.lib.gui.internal` (proteccion de GUI).
-11. `PlayerDataCache.joinListener()` - `com.sn.lib.db` (cache de datos de jugador, join).
-12. `UpdateChecker.joinListener()` - `com.sn.lib.update` (aviso de updates al join, D4, v1.1).
-13. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (carga/descarga de chunks para hologramas).
-14. `new SelectionWandListener()` - `com.sn.lib.region.internal` (wand de seleccion de cuboides, v1.1).
+4. `new ArmourEquipListener()` - `com.sn.lib.event.internal` (armor events).
+5. `new ChunkMoveListener()` - `com.sn.lib.event.internal` (SnChunkMoveEvent synthesis, D3, v1.1).
+6. `new ItemPropertyListener()` - `com.sn.lib.item.internal` (item properties).
+7. `new ItemInteractListener()` - `com.sn.lib.item.internal` (item interactions).
+8. `new LockedItemListener()` - `com.sn.lib.item.internal` (locked items).
+9. `new GuiClickListener()` - `com.sn.lib.gui.internal` (GUI clicks).
+10. `new GuiProtectionListener()` - `com.sn.lib.gui.internal` (GUI protection).
+11. `PlayerDataCache.joinListener()` - `com.sn.lib.db` (player data cache, join).
+12. `UpdateChecker.joinListener()` - `com.sn.lib.update` (update notice on join, D4, v1.1).
+13. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (chunk load/unload for holograms).
+14. `new SelectionWandListener()` - `com.sn.lib.region.internal` (cuboid selection wand, v1.1).
 
 ### TenantSweeper (internal)
 
 `src/main/java/com/sn/lib/tenant/internal/TenantSweeper.java`
 
-Listener compartido de doble red, owned por SnLib: cuando un consumidor se deshabilita, se barre toda registracion per-owner EXCLUSIVAMENTE de ese owner (no-interferencia), se cierran sus inventarios de libreria abiertos y se remueve su key de contexto; cuando SnLib mismo se deshabilita, la cascada completa apaga todos los contextos vivos en orden inverso de registracion.
+Double-net shared listener, owned by SnLib: when a consumer disables, every per-owner registration is swept EXCLUSIVELY for that owner (non-interference), its open library inventories close and its context key is removed; when SnLib itself disables, the full cascade shuts down all live contexts in reverse registration order.
 
-Interfaz interna `ContextAccess` (acceso al registro de contextos, instalado por el inicializador estatico de SnLib):
+Internal interface `ContextAccess` (access to the context registry, installed by SnLib's static initializer):
 
-- `boolean detach(Plugin owner, Sn expected)` - remueve la key de contexto del owner solo si todavia mapea a `expected`.
-- `List<Sn> detachAllReversed()` - remueve y devuelve todos los contextos, en orden inverso de registracion.
+- `boolean detach(Plugin owner, Sn expected)` - removes the owner's context key only if it still maps to `expected`.
+- `List<Sn> detachAllReversed()` - removes and returns all contexts, in reverse registration order.
 
-Metodos publicos:
+Public methods:
 
-- `public static void bindContexts(ContextAccess access)` - instala el acceso al registro de contextos de SnLib; llamado desde el static init de SnLib.
-- `public static void trackInventory(OwnedHolder holder)` - trackea un inventario de libreria abierto para que un disable de su owner lo cierre (va al `TenantRegistry<OwnedHolder> OPEN_HOLDERS` estatico, cuyo callback de sweep cierra el inventario expulsando a cada viewer).
-- `public static void untrackInventory(OwnedHolder holder)` - deja de trackear un inventario de libreria una vez cerrado.
-- `public static void forEachOpenInventory(Consumer<OwnedHolder> action)` - aplica la accion a cada inventario de libreria abierto trackeado, cruzando todos los owners.
-- `public void onPluginDisable(PluginDisableEvent event)` - handler `@EventHandler(priority = EventPriority.MONITOR)`. Si el plugin deshabilitado es `SnLibPlugin`, dispara `cascadeAll()` de inmediato. Si es un consumidor con contexto (`SnLib.context(owner) != null`), difiere el sweep 1 tick.
-- `public static void cascadeAll()` - cascada de shutdown completa: detacha y apaga cada contexto vivo en orden inverso de registracion. Idempotente (el registro se drena en la primera pasada); la dispara el evento de disable de SnLib y se invoca de nuevo desde el `onDisable` del bootstrap como doble red por si el listener nunca llego a registrarse. Por cada contexto: WARN de shutdown forzado si no estaba cerrandose (y no es SnLib mismo), `shutdownQuietly(ctx)`, `OPEN_HOLDERS.removeOwner(owner)` y `TenantRegistry.sweepOwner(owner)`.
+- `public static void bindContexts(ContextAccess access)` - installs the access to SnLib's context registry; called from SnLib's static init.
+- `public static void trackInventory(OwnedHolder holder)` - tracks an open library inventory so a disable of its owner closes it (goes to the static `TenantRegistry<OwnedHolder> OPEN_HOLDERS`, whose sweep callback closes the inventory evicting each viewer).
+- `public static void untrackInventory(OwnedHolder holder)` - stops tracking a library inventory once closed.
+- `public static void forEachOpenInventory(Consumer<OwnedHolder> action)` - applies the action to every tracked open library inventory, across all owners.
+- `public void onPluginDisable(PluginDisableEvent event)` - `@EventHandler(priority = EventPriority.MONITOR)` handler. If the disabled plugin is `SnLibPlugin`, it fires `cascadeAll()` immediately. If it is a consumer with a context (`SnLib.context(owner) != null`), it defers the sweep 1 tick.
+- `public static void cascadeAll()` - full shutdown cascade: detaches and shuts down every live context in reverse registration order. Idempotent (the registry drains on the first pass); it is fired by SnLib's disable event and invoked again from the bootstrap's `onDisable` as a double net in case the listener never got registered. For each context: forced-shutdown WARN if it was not already closing (and is not SnLib itself), `shutdownQuietly(ctx)`, `OPEN_HOLDERS.removeOwner(owner)` and `TenantRegistry.sweepOwner(owner)`.
 
-#### Logica interna
+#### Internal logic
 
-- Red diferida 1 tick: Bukkit dispara `PluginDisableEvent` ANTES del `onDisable` propio del plugin. Por eso el sweep per-consumidor se difiere un tick (via `Bukkit.getGlobalRegionScheduler().run(...)` en Folia o `Bukkit.getScheduler().runTask(...)` en Bukkit, siempre con SnLib como plugin agendador): el teardown prolijo (el `onDisable` del consumidor llamando `Sn.shutdown()`) corre primero sobre modulos vivos, y la pasada diferida solo repasa lo que el owner dejo atras. Si SnLib ya no esta enabled, o el scheduler no esta disponible (carrera de shutdown del server), el defer se aborta en silencio y los restos los atrapa la cascada de SnLib, que corre despues de que ya se deshabilito cada consumidor que hard-depende de la lib.
-- `sweep(Plugin owner, Sn captured)` (privado): compara el contexto actual contra el capturado en el momento del disable; si el owner ya re-registro un contexto NUEVO (re-enable dentro del mismo tick), no hace nada. Si el contexto sigue vivo y no esta en shutdown, loguea el WARN "Contexto SnLib no cerrado en onDisable; shutdown forzado por el sweeper (doble red)" y lo apaga. Luego `OPEN_HOLDERS.removeOwner(owner)`, `TenantRegistry.sweepOwner(owner)`, `SoftDependency.targetDisabled(owner.getName())` y `access.detach(owner, captured)` (detach condicionado al contexto capturado).
-- `shutdownQuietly(Sn ctx)` (privado): `ctx.shutdown()` con catch de `Throwable` y WARN "Shutdown del contexto fallo: ...".
-- `closeHolder(OwnedHolder holder)` (privado, callback de sweep de `OPEN_HOLDERS`): cierra el inventario iterando una copia de sus viewers (`List.copyOf(holder.getInventory().getViewers())`) y llamando `viewer.closeInventory()`; en fallo, WARN "No se pudo cerrar un inventario de la lib: ...".
+- 1-tick deferred net: Bukkit fires `PluginDisableEvent` BEFORE the plugin's own `onDisable`. That is why the per-consumer sweep defers one tick (via `Bukkit.getGlobalRegionScheduler().run(...)` on Folia or `Bukkit.getScheduler().runTask(...)` on Bukkit, always with SnLib as the scheduling plugin): the tidy teardown (the consumer's `onDisable` calling `Sn.shutdown()`) runs first over live modules, and the deferred pass only re-checks what the owner left behind. If SnLib is no longer enabled, or the scheduler is unavailable (server shutdown race), the defer aborts silently and the leftovers are caught by SnLib's cascade, which runs after every consumer that hard-depends on the lib has already been disabled.
+- `sweep(Plugin owner, Sn captured)` (private): compares the current context against the one captured at disable time; if the owner already re-registered a NEW context (re-enable within the same tick), it does nothing. If the context is still alive and not shutting down, it logs the WARN "SnLib context not closed in onDisable; shutdown forced by the sweeper (double net)" and shuts it down. Then `OPEN_HOLDERS.removeOwner(owner)`, `TenantRegistry.sweepOwner(owner)`, `SoftDependency.targetDisabled(owner.getName())` and `access.detach(owner, captured)` (detach conditioned on the captured context).
+- `shutdownQuietly(Sn ctx)` (private): `ctx.shutdown()` with a `Throwable` catch and WARN "Context shutdown failed: ...".
+- `closeHolder(OwnedHolder holder)` (private, `OPEN_HOLDERS` sweep callback): closes the inventory iterating a copy of its viewers (`List.copyOf(holder.getInventory().getViewers())`) and calling `viewer.closeInventory()`; on failure, WARN "Could not close a lib inventory: ...".
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El WARN de "shutdown forzado por el sweeper (doble red)" es el sintoma de un consumidor que no llamo `Sn.shutdown()` en su `onDisable`: la lib lo cubre, pero avisa.
-- El detach condicionado (`detach(owner, expected)`) evita que un sweep diferido pise un contexto recien re-registrado por un re-enable rapido del mismo plugin.
+- The "shutdown forced by the sweeper (double net)" WARN is the symptom of a consumer that did not call `Sn.shutdown()` in its `onDisable`: the lib covers it, but warns.
+- The conditioned detach (`detach(owner, expected)`) prevents a deferred sweep from clobbering a context freshly re-registered by a quick re-enable of the same plugin.
 
 ### QuitCleanupListener (internal)
 
 `src/main/java/com/sn/lib/internal/QuitCleanupListener.java`
 
-El UNICO listener de `PlayerQuitEvent`/`PlayerKickEvent` de toda la libreria, owned por SnLib. Los modulos registran callbacks de cleanup per-owner via `register`; en quit o kick, el listener fuerza el cierre del inventario abierto del jugador cuando su holder es un `OwnedHolder` de la libreria y despues corre los callbacks de todos los owners con el UUID del jugador.
+The ONLY `PlayerQuitEvent`/`PlayerKickEvent` listener of the whole library, owned by SnLib. Modules register per-owner cleanup callbacks via `register`; on quit or kick, the listener forces the player's open inventory closed when its holder is a library `OwnedHolder` and then runs all owners' callbacks with the player's UUID.
 
-- `public static void register(Plugin owner, Consumer<UUID> callback)` - registra un callback que corre con el UUID del jugador que se va; se barre per-owner (los callbacks viven en un `TenantRegistry<Consumer<UUID>>` estatico).
-- `public void onQuit(PlayerQuitEvent event)` - handler `@EventHandler(priority = EventPriority.HIGHEST)`; delega en el cleanup privado.
-- `public void onKick(PlayerKickEvent event)` - handler `@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)`; delega en el cleanup privado.
+- `public static void register(Plugin owner, Consumer<UUID> callback)` - registers a callback that runs with the departing player's UUID; it sweeps per-owner (callbacks live in a static `TenantRegistry<Consumer<UUID>>`).
+- `public void onQuit(PlayerQuitEvent event)` - `@EventHandler(priority = EventPriority.HIGHEST)` handler; delegates to the private cleanup.
+- `public void onKick(PlayerKickEvent event)` - `@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)` handler; delegates to the private cleanup.
 
-#### Logica interna
+#### Internal logic
 
-- `cleanup(Player player)` (privado): primero cierra el inventario de libreria si el jugador esta mirando uno, despues recorre los callbacks de todos los owners con try/catch individual; en fallo WARN "Callback de quit-cleanup fallo: ...".
-- `closeLibraryInventory(Player player)` (privado): detecta si el jugador esta viendo un inventario de la lib recorriendo los `OwnedHolder` trackeados y sus viewers (via `TenantSweeper.forEachOpenInventory`) en vez de usar la API de open-view del jugador, cuyo tipo de vista es binariamente incompatible a traves del limite 1.20.4/1.21 y esta prohibida en la codebase. Si esta viendo uno, `player.closeInventory()`.
+- `cleanup(Player player)` (private): first closes the library inventory if the player is looking at one, then walks all owners' callbacks with an individual try/catch; on failure WARN "Quit-cleanup callback failed: ...".
+- `closeLibraryInventory(Player player)` (private): detects whether the player is viewing a lib inventory by walking the tracked `OwnedHolder`s and their viewers (via `TenantSweeper.forEachOpenInventory`) instead of using the player's open-view API, whose view type is binary-incompatible across the 1.20.4/1.21 boundary and is forbidden in the codebase. If they are viewing one, `player.closeInventory()`.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Un jugador kickeado dispara AMBOS eventos (kick y quit), por lo que los callbacks registrados DEBEN ser idempotentes (documentado en el Javadoc de la clase).
+- A kicked player fires BOTH events (kick and quit), so registered callbacks MUST be idempotent (documented in the class Javadoc).
 
 ### Cooldowns
 
 `src/main/java/com/sn/lib/cooldown/Cooldowns.java`
 
-Store de cooldowns per-contexto, keyed por categoria y jugador. El estado es `Map<String, Map<UUID, long[]>>` donde cada celda `long[]` de un elemento contiene el epoch millis de expiracion: sin boxing de `Long` en el hot path. Constante privada `SWEEP_PERIOD_TICKS = 5L * 60L * 20L` (5 minutos).
+Per-context cooldown store, keyed by category and player. The state is `Map<String, Map<UUID, long[]>>` where each one-element `long[]` cell holds the expiry epoch millis: no `Long` boxing on the hot path. Private constant `SWEEP_PERIOD_TICKS = 5L * 60L * 20L` (5 minutes).
 
-- `public Cooldowns(Sn ctx)` - constructor; registra `this::clearSession` en `QuitCleanupListener` bajo el plugin del contexto.
-- `public boolean tryUse(UUID player, String category, Duration cooldown)` - arma el cooldown de la categoria para el jugador salvo que siga corriendo. Devuelve true cuando la accion puede correr (cooldown armado o re-armado); false mientras el jugador sigue en cooldown.
-- `public boolean tryUseTicks(UUID player, String category, long cooldownTicks)` - variante en ticks de `tryUse` (1 tick = 50 ms).
-- `public long remainingMillis(UUID player, String category)` - milisegundos restantes del cooldown del jugador; 0 cuando expiro o nunca se armo. Purga lazy: una entrada expirada se remueve en la lectura (con `remove(player, expiry)` condicionado al mismo array, seguro ante carreras).
-- `public void registerSessionCategory(String category)` - marca una categoria como session-scoped: sus entradas se limpian cuando el jugador hace quit o es kickeado. Las entradas de toda otra categoria sobreviven relogs por diseño.
-- `public void clearSession(UUID player)` - dropea las entradas del jugador en cada categoria de sesion; las categorias persistentes quedan.
-- `public void clearAll()` - dropea toda entrada de toda categoria y frena la task de sweep (cancel con catch de `Throwable`: el scheduler puede ya no existir durante el shutdown).
+- `public Cooldowns(Sn ctx)` - constructor; registers `this::clearSession` in `QuitCleanupListener` under the context's plugin.
+- `public boolean tryUse(UUID player, String category, Duration cooldown)` - arms the category's cooldown for the player unless it is still running. Returns true when the action may run (cooldown armed or re-armed); false while the player is still cooling down.
+- `public boolean tryUseTicks(UUID player, String category, long cooldownTicks)` - tick variant of `tryUse` (1 tick = 50 ms).
+- `public long remainingMillis(UUID player, String category)` - remaining millis of the player's cooldown; 0 when expired or never armed. Lazy purge: an expired entry is removed on read (with `remove(player, expiry)` conditioned on the same array, race-safe).
+- `public void registerSessionCategory(String category)` - marks a category as session-scoped: its entries clear when the player quits or is kicked. Entries of every other category survive relogs by design.
+- `public void clearSession(UUID player)` - drops the player's entries in every session category; persistent categories stay.
+- `public void clearAll()` - drops every entry of every category and stops the sweep task (cancel with a `Throwable` catch: the scheduler may no longer exist during shutdown).
 
-#### Logica interna
+#### Internal logic
 
-- Politica de relog: las entradas no expiradas NUNCA se dropean cuando un jugador hace quit, asi un relog no resetea cooldowns. La unica excepcion explicita son las categorias registradas via `registerSessionCategory`, limpiadas en quit/kick por el quit cleanup listener.
-- `tryUseMillis` (privado): con `cooldownMillis <= 0` devuelve true directo. El arme es atomico via `entries.compute(player, ...)`: si existe una expiry vigente (`expiry[0] > now`) gana la existente y devuelve false; si no, gana el array nuevo `armed` y devuelve true (comparacion por identidad `winner == armed`).
-- `ensureSweepScheduled` (privado): double-checked (volatile + synchronized) y no agenda si el contexto esta en shutdown. Agenda `ctx.scheduler().timerAsync(SWEEP_PERIOD_TICKS, SWEEP_PERIOD_TICKS, this::sweepExpired)` en el primer uso; `sweepScheduled` pasa a true SOLO tras agendar con exito. Si falla, `sweepScheduled` queda en false (el proximo `tryUse*` reintenta agendar) y el WARN "No se pudo agendar el sweep de cooldowns; queda solo la purga lazy: ..." se emite una unica vez (flag `sweepWarned`, accedido solo bajo `synchronized(this)`; `clearAll` lo resetea junto con `sweepScheduled`).
-- `sweepExpired` (privado, corre ASYNC cada 5 minutos): `removeIf(expiry -> expiry[0] <= now)` sobre cada categoria. Seguro porque los maps son `ConcurrentHashMap`.
+- Relog policy: non-expired entries are NEVER dropped when a player quits, so a relog does not reset cooldowns. The only explicit exception are the categories registered via `registerSessionCategory`, cleared on quit/kick by the quit cleanup listener.
+- `tryUseMillis` (private): with `cooldownMillis <= 0` it returns true directly. Arming is atomic via `entries.compute(player, ...)`: if a live expiry exists (`expiry[0] > now`) the existing one wins and it returns false; otherwise the new `armed` array wins and it returns true (identity comparison `winner == armed`).
+- `ensureSweepScheduled` (private): double-checked (volatile + synchronized) and does not schedule if the context is shutting down. It schedules `ctx.scheduler().timerAsync(SWEEP_PERIOD_TICKS, SWEEP_PERIOD_TICKS, this::sweepExpired)` on first use; `sweepScheduled` becomes true ONLY after a successful schedule. On failure, `sweepScheduled` stays false (the next `tryUse*` retries scheduling) and the WARN "Could not schedule the cooldown sweep; only the lazy purge remains: ..." is emitted exactly once (flag `sweepWarned`, accessed only under `synchronized(this)`; `clearAll` resets it along with `sweepScheduled`).
+- `sweepExpired` (private, runs ASYNC every 5 minutes): `removeIf(expiry -> expiry[0] <= now)` over every category. Safe because the maps are `ConcurrentHashMap`.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Doble estrategia de purga: lazy en lectura (`remainingMillis`) mas sweep async periodico; si el sweep no pudo agendarse, queda la purga lazy y el proximo `tryUse*` reintenta agendar (WARN unico).
-- El `long[]` de un elemento es una decision deliberada de performance: evita el boxing `Long` en el hot path de `tryUse`/`remainingMillis` y a la vez da una identidad de objeto para el CAS logico de `compute` y el `remove` condicionado.
+- Double purge strategy: lazy on read (`remainingMillis`) plus a periodic async sweep; if the sweep could not be scheduled, the lazy purge remains and the next `tryUse*` retries scheduling (single WARN).
+- The one-element `long[]` is a deliberate performance decision: it avoids `Long` boxing on the `tryUse`/`remainingMillis` hot path while providing an object identity for `compute`'s logical CAS and the conditioned `remove`.
 
 ### ReloadManager
 
 `src/main/java/com/sn/lib/reload/ReloadManager.java`
 
-Orquestador de reload de un contexto consumidor, alcanzado via `sn.reload()`. Lo invocan el subcomando `reload` por defecto, `/snlib reload <plugin>` y codigo programatico; `Sn.reloadAll()` delega aca. Main-thread only. Un reload NUNCA recarga clases: actualizar SnLib.jar requiere restart del server. La relectura sincronica de I/O se acepta SOLO porque reload es un comando administrativo que nunca corre durante gameplay.
+Reload orchestrator of a consumer context, reached via `sn.reload()`. Invoked by the default `reload` subcommand, `/snlib reload <plugin>` and programmatic code; `Sn.reloadAll()` delegates here. Main-thread only. A reload NEVER reloads classes: updating SnLib.jar requires a server restart. The synchronous I/O re-read is accepted ONLY because reload is an administrative command that never runs during gameplay.
 
-- `public ReloadManager(Sn ctx)` - crea el manager para el contexto dado; lo instancia el contexto.
-- `public void register(Reloadable reloadable)` - registra un componente del consumidor para re-despacharlo (re-cache tipado) en cada `reloadPlugin()` de este contexto. Ignora null. Lista interna `CopyOnWriteArrayList`.
-- `public ReloadManager reopenGuis(boolean reopen)` - opt-in del paso final del reload: cuando esta habilitado, las GUIs abiertas al momento del reload se re-abren para sus viewers en su pagina despues. Default off: las GUIs recargadas quedan cerradas. Devuelve `this` (fluido).
-- `public void reloadPlugin()` - recarga cada modulo del plugin owner en el orden estricto documentado (ver abajo).
+- `public ReloadManager(Sn ctx)` - creates the manager for the given context; instantiated by the context.
+- `public void register(Reloadable reloadable)` - registers a consumer component for re-dispatch (typed re-cache) on every `reloadPlugin()` of this context. Ignores null. Internal list is a `CopyOnWriteArrayList`.
+- `public ReloadManager reopenGuis(boolean reopen)` - opt-in of the reload's final step: when enabled, GUIs open at reload time re-open for their viewers at their page afterwards. Default off: reloaded GUIs stay closed. Returns `this` (fluent).
+- `public void reloadPlugin()` - reloads every module of the owning plugin in the documented strict order (see below).
 
-#### Orden estricto de las 7 fases de `reloadPlugin()`
+#### Strict order of the 7 phases of `reloadPlugin()`
 
-Antes de la fase 1, si `reopenGuis` esta activo se captura un snapshot inmutable de las sesiones abiertas (viewer UUID, guiId, pagina) via el record privado `OpenGui`.
+Before phase 1, if `reopenGuis` is on, an immutable snapshot of the open sessions (viewer UUID, guiId, page) is captured via the private `OpenGui` record.
 
-1. Cerrar las GUIs de este contexto ANTES de releer ymls (`guis.closeAll()`); cerrar cada sesion per-viewer tambien cancela sus `TaskHandle` de render/update.
-2. Cancelar las tasks de render/update per-contexto restantes (`ctx.items().cancelTasks()`, el timer de held-effects).
-3. Releer ymls en orden: config primero (re-merge managed, `yml.reloadAll()`), despues lang (`lang.reload()`), guis (`guis.load()`) e items (`ctx.items().reload()`).
-4. Re-registrar los command roots de este owner (`ctx.commands().reregisterAll()`); cada pasada de registro refresca los arboles cliente via `player.updateCommands()`.
-5. Re-despachar los `Reloadable` registrados (re-cache tipado), cada uno con try/catch de `Throwable` y log SEVERE "Un Reloadable registrado fallo durante el reload"; los hooks per-file `onReload` ya se dispararon durante la relectura.
-6. Ciclo de recetas en el main thread (`ctx.items().reloadRecipes()`): desregistrar cada recipe key de este owner y re-agregar las recetas de las definiciones recargadas.
-7. Re-abrir las GUIs capturadas solo con opt-in; por default quedan cerradas. Solo se reabre si el viewer sigue online y la GUI recargada todavia existe (`gui.open(player, open.page())`).
+1. Close this context's GUIs BEFORE re-reading ymls (`guis.closeAll()`); closing each per-viewer session also cancels its render/update `TaskHandle`s.
+2. Cancel the remaining per-context render/update tasks (`ctx.items().cancelTasks()`, the held-effects timer).
+3. Re-read ymls in order: config first (managed re-merge, `yml.reloadAll()`), then lang (`lang.reload()`), guis (`guis.load()`) and items (`ctx.items().reload()`).
+4. Re-register this owner's command roots (`ctx.commands().reregisterAll()`); each registration pass refreshes the client trees via `player.updateCommands()`.
+5. Re-dispatch the registered `Reloadable`s (typed re-cache), each with a `Throwable` try/catch and SEVERE log "A registered Reloadable failed during the reload"; per-file `onReload` hooks already fired during the re-read.
+6. Recipe cycle on the main thread (`ctx.items().reloadRecipes()`): unregister every recipe key of this owner and re-add the recipes from the reloaded definitions.
+7. Re-open the captured GUIs only with opt-in; by default they stay closed. A GUI only reopens if the viewer is still online and the reloaded GUI still exists (`gui.open(player, open.page())`).
 
-#### Logica interna
+#### Internal logic
 
-- `guisOrNull()` / `ymlOrNull()` / `langOrNull()` (privados): acceden a los modulos del contexto atrapando `UnsupportedOperationException`; un modulo no declarado por el consumidor simplemente se saltea en el flujo (el reload no exige que el plugin use GUI, yml o lang).
-- `capture(List<GuiSession>)` (privado estatico): snapshot inmutable de las sesiones abiertas antes de que el reload las cierre.
-- Record privado `OpenGui(UUID viewer, String guiId, int page)`.
+- `guisOrNull()` / `ymlOrNull()` / `langOrNull()` (private): access the context's modules catching `UnsupportedOperationException`; a module not declared by the consumer is simply skipped in the flow (the reload does not require the plugin to use GUI, yml or lang).
+- `capture(List<GuiSession>)` (private static): immutable snapshot of the open sessions before the reload closes them.
+- Private record `OpenGui(UUID viewer, String guiId, int page)`.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El orden config -> lang -> guis -> items en la fase 3 no es casual: las capas posteriores dependen de valores de las anteriores.
-- Fase 5 aclara que los hooks `onReload` per-file ya corrieron durante la relectura de la fase 3; los `Reloadable` son para re-caches tipados del consumidor, no para releer archivos.
+- The config -> lang -> guis -> items order in phase 3 is not accidental: later layers depend on values of the earlier ones.
+- Phase 5 clarifies that per-file `onReload` hooks already ran during phase 3's re-read; `Reloadable`s are for the consumer's typed re-caches, not for re-reading files.
 
 ### Reloadable
 
 `src/main/java/com/sn/lib/reload/Reloadable.java`
 
-Interfaz funcional: un componente capaz de reconstruir su estado desde sus fuentes (archivos, registros, caches).
+Functional interface: a component capable of rebuilding its state from its sources (files, registries, caches).
 
-- `void reload()` - reconstruye el estado del componente; lo invoca el flujo de reload de su contexto owner.
+- `void reload()` - rebuilds the component's state; invoked by its owning context's reload flow.
 
 ### Registrable
 
 `src/main/java/com/sn/lib/reload/Registrable.java`
 
-Interfaz: un componente que puede attachearse y detachearse de un registro server-side.
+Interface: a component that can attach and detach from a server-side registry.
 
-- `void register()` - attachea el componente a su registro.
-- `void unregister()` - detachea el componente de su registro; seguro de llamar cuando no esta registrado.
+- `void register()` - attaches the component to its registry.
+- `void unregister()` - detaches the component from its registry; safe to call when not registered.
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME/placeholder en los archivos de este modulo. Limitaciones documentadas en Javadoc/codigo:
+There are no TODO/FIXME/placeholder markers in this module's files. Limitations documented in Javadoc/code:
 
-- Un reload NUNCA recarga clases: actualizar SnLib.jar requiere restart del server (`ReloadManager`).
-- El I/O sincronico del reload se acepta solo por ser comando administrativo; no debe correr durante gameplay (`ReloadManager`).
-- Un jugador kickeado dispara kick y quit: los callbacks de `QuitCleanupListener.register` deben ser idempotentes.
-- Si el sweep async de `Cooldowns` no puede agendarse, queda la purga lazy en lectura y el proximo `tryUse*` reintenta agendar; el WARN se emite una sola vez.
-- Cuando el scheduler no esta disponible (carrera de shutdown del server), la red diferida de 1 tick del `TenantSweeper` se aborta en silencio y los restos quedan a cargo de la cascada de SnLib.
-- La API de open-view del jugador esta prohibida en la codebase por incompatibilidad binaria 1.20.4/1.21; la deteccion de inventarios abiertos se hace recorriendo los `OwnedHolder` trackeados.
-
+- A reload NEVER reloads classes: updating SnLib.jar requires a server restart (`ReloadManager`).
+- The reload's synchronous I/O is accepted only because it is an administrative command; it must not run during gameplay (`ReloadManager`).
+- A kicked player fires kick and quit: `QuitCleanupListener.register` callbacks must be idempotent.
+- If `Cooldowns`' async sweep cannot be scheduled, the lazy read purge remains and the next `tryUse*` retries scheduling; the WARN emits only once.
+- When the scheduler is unavailable (server shutdown race), `TenantSweeper`'s 1-tick deferred net aborts silently and the leftovers are handled by SnLib's cascade.
+- The player's open-view API is forbidden in the codebase due to 1.20.4/1.21 binary incompatibility; open inventory detection is done by walking the tracked `OwnedHolder`s.
 ---
 
-# (Seccion generada - documentacion SnLib v1.1.0)
+# (Generated section - SnLib v1.1.0 documentation)
 
-## 10. Eventos custom
+## 10. Custom events
 
-El paquete `com.sn.lib.event` define la infraestructura de eventos propios de SnLib: dos bases abstractas auto-disparables (`SnEvent` y `SnPlayerEvent`, ambas `Cancellable`, con el metodo `call()` que despacha via `PluginManager` y devuelve si el evento sobrevivio), los eventos concretos `SnArmourEquipEvent` (equip/unequip de armadura por cualquier vector) y `SnChunkMoveEvent` (cruce de chunk via movimiento, v1.1), y el enum `EquipMethod` con los 8 vectores de entrada. La sintesis de cada evento la hace su listener compartido (`internal/ArmourEquipListener` e `internal/ChunkMoveListener`), propiedad de SnLib: se inscriben una unica vez en el `ListenerHub` (`src/main/java/com/sn/lib/tenant/internal/ListenerHub.java`) y el `registerEvents` ocurre UNICAMENTE en el bootstrap de `SnLibPlugin`, de modo que los ~57 plugins consumidores escuchan los eventos sin registrar fuentes propias. Todo el flujo corre en el main thread (los eventos fuente de Bukkit/Paper son sincronicos); las bases exponen ademas constructores `async` para subclases que lo necesiten.
+The `com.sn.lib.event` package defines the infrastructure of SnLib's own events: two self-firing abstract bases (`SnEvent` and `SnPlayerEvent`, both `Cancellable`, with the `call()` method that dispatches via `PluginManager` and returns whether the event survived), the concrete events `SnArmourEquipEvent` (armor equip/unequip through any vector) and `SnChunkMoveEvent` (chunk crossing via movement, v1.1), and the `EquipMethod` enum with the 8 input vectors. Each event's synthesis is done by its shared listener (`internal/ArmourEquipListener` and `internal/ChunkMoveListener`), owned by SnLib: they enroll exactly once in the `ListenerHub` (`src/main/java/com/sn/lib/tenant/internal/ListenerHub.java`) and the `registerEvents` happens SOLELY in the `SnLibPlugin` bootstrap, so the ~57 consumer plugins listen to the events without registering their own sources. The whole flow runs on the main thread (the source Bukkit/Paper events are synchronous); the bases additionally expose `async` constructors for subclasses that need them.
 
 ### SnEvent
 `src/main/java/com/sn/lib/event/SnEvent.java`
 
-Base abstracta auto-disparable y cancelable para eventos custom de la libreria. Extiende `org.bukkit.event.Event` e implementa `Cancellable`. Las subclases concretas se disparan a si mismas via `call()` y deben proveer igualmente el par de handler-list de Bukkit: el metodo de instancia `getHandlers()` mas el estatico `getHandlerList()` (la base no los provee).
+Self-firing, cancelable abstract base for the library's custom events. Extends `org.bukkit.event.Event` and implements `Cancellable`. Concrete subclasses fire themselves via `call()` and must still provide Bukkit's handler-list pair: the instance method `getHandlers()` plus the static `getHandlerList()` (the base does not provide them).
 
-- `protected SnEvent()` - constructor sincronico (evento de main thread, el default de Bukkit).
-- `protected SnEvent(boolean async)` - constructor que delega en `Event(boolean)` para marcar el evento como asincronico cuando la subclase lo requiere.
-- `public boolean call()` - despacha el evento via `Bukkit.getPluginManager().callEvent(this)` y devuelve `!isCancelled()`: `true` si el evento "sobrevivio" (nadie lo cancelo), `false` si algun listener lo cancelo.
-- `public boolean isCancelled()` - devuelve el flag de cancelacion interno.
-- `public void setCancelled(boolean cancelled)` - setea el flag de cancelacion interno.
+- `protected SnEvent()` - synchronous constructor (main-thread event, Bukkit's default).
+- `protected SnEvent(boolean async)` - constructor delegating to `Event(boolean)` to mark the event as asynchronous when the subclass requires it.
+- `public boolean call()` - dispatches the event via `Bukkit.getPluginManager().callEvent(this)` and returns `!isCancelled()`: `true` if the event "survived" (nobody cancelled it), `false` if some listener cancelled it.
+- `public boolean isCancelled()` - returns the internal cancellation flag.
+- `public void setCancelled(boolean cancelled)` - sets the internal cancellation flag.
 
 ### SnPlayerEvent
 `src/main/java/com/sn/lib/event/SnPlayerEvent.java`
 
-Base abstracta gemela de `SnEvent` para eventos que siempre llevan un jugador: extiende `org.bukkit.event.player.PlayerEvent` (hereda `getPlayer()`) e implementa `Cancellable`. Mismo contrato que `SnEvent`: las subclases se disparan via `call()` y deben proveer el par de handler-list.
+Twin abstract base of `SnEvent` for events that always carry a player: extends `org.bukkit.event.player.PlayerEvent` (inherits `getPlayer()`) and implements `Cancellable`. Same contract as `SnEvent`: subclasses fire via `call()` and must provide the handler-list pair.
 
-- `protected SnPlayerEvent(Player who)` - constructor sincronico con el jugador portador.
-- `protected SnPlayerEvent(Player who, boolean async)` - variante que permite marcar el evento como asincronico.
-- `public boolean call()` - despacha via `Bukkit.getPluginManager().callEvent(this)` y devuelve `!isCancelled()`.
-- `public boolean isCancelled()` - devuelve el flag de cancelacion interno.
-- `public void setCancelled(boolean cancelled)` - setea el flag de cancelacion interno.
+- `protected SnPlayerEvent(Player who)` - synchronous constructor with the carrying player.
+- `protected SnPlayerEvent(Player who, boolean async)` - variant allowing the event to be marked asynchronous.
+- `public boolean call()` - dispatches via `Bukkit.getPluginManager().callEvent(this)` and returns `!isCancelled()`.
+- `public boolean isCancelled()` - returns the internal cancellation flag.
+- `public void setCancelled(boolean cancelled)` - sets the internal cancellation flag.
 
 ### SnArmourEquipEvent
 `src/main/java/com/sn/lib/event/SnArmourEquipEvent.java`
 
-Evento `final` que se dispara cuando un jugador equipa o desequipa una pieza de armadura por cualquier vector. Lo sintetiza el listener compartido de la libreria (`ArmourEquipListener`); ningun plugin consumidor lo construye a mano en el flujo normal. La cancelacion es vinculante SOLO cuando la fuente subyacente es cancelable (`EquipMethod.DISPENSER`, donde cancelar el SnArmourEquipEvent cancela el `BlockDispenseArmorEvent`); los eventos que reportan un cambio ya aplicado (fuente primaria `PlayerArmorChangeEvent` y `EquipMethod.DEATH`) exponen la cancelacion solo como señal a nivel de consumidores (un listener puede marcarlo cancelado para que otros lo ignoren, pero el cambio de armadura no se revierte).
+`final` event fired when a player equips or unequips an armor piece through any vector. Synthesized by the library's shared listener (`ArmourEquipListener`); no consumer plugin builds it by hand in the normal flow. Cancellation is binding ONLY when the underlying source is cancelable (`EquipMethod.DISPENSER`, where cancelling the SnArmourEquipEvent cancels the `BlockDispenseArmorEvent`); events reporting an already-applied change (primary source `PlayerArmorChangeEvent` and `EquipMethod.DEATH`) expose cancellation only as a consumer-level signal (a listener may mark it cancelled so others ignore it, but the armor change is not reverted).
 
-- `public SnArmourEquipEvent(Player player, EquipMethod method, EquipmentSlot slot, @Nullable ItemStack oldPiece, @Nullable ItemStack newPiece)` - construye el evento: jugador cuya armadura cambio, vector de entrada, slot afectado, pieza que sale del slot (o `null` si el slot estaba vacio) y pieza que entra (o `null` si el slot se vacia).
-- `public EquipMethod getMethod()` - vector de entrada del cambio.
-- `public EquipmentSlot getSlot()` - slot de armadura afectado.
-- `public @Nullable ItemStack getOldPiece()` - pieza que sale del slot, o `null` si el slot estaba vacio.
-- `public void setOldPiece(@Nullable ItemStack oldPiece)` - reemplaza la pieza saliente reportada (mutador expuesto a listeners; no altera el inventario real).
-- `public @Nullable ItemStack getNewPiece()` - pieza que entra al slot, o `null` si el slot se vacia.
-- `public void setNewPiece(@Nullable ItemStack newPiece)` - reemplaza la pieza entrante reportada (mutador expuesto a listeners; no altera el inventario real).
-- `public HandlerList getHandlers()` - devuelve la `HandlerList` estatica compartida de la clase.
-- `public static HandlerList getHandlerList()` - par estatico requerido por Bukkit; misma instancia que `getHandlers()`.
+- `public SnArmourEquipEvent(Player player, EquipMethod method, EquipmentSlot slot, @Nullable ItemStack oldPiece, @Nullable ItemStack newPiece)` - builds the event: player whose armor changed, input vector, affected slot, piece leaving the slot (or `null` if the slot was empty) and piece entering (or `null` if the slot empties).
+- `public EquipMethod getMethod()` - input vector of the change.
+- `public EquipmentSlot getSlot()` - affected armor slot.
+- `public @Nullable ItemStack getOldPiece()` - piece leaving the slot, or `null` if the slot was empty.
+- `public void setOldPiece(@Nullable ItemStack oldPiece)` - replaces the reported outgoing piece (mutator exposed to listeners; it does not alter the real inventory).
+- `public @Nullable ItemStack getNewPiece()` - piece entering the slot, or `null` if the slot empties.
+- `public void setNewPiece(@Nullable ItemStack newPiece)` - replaces the reported incoming piece (mutator exposed to listeners; it does not alter the real inventory).
+- `public HandlerList getHandlers()` - returns the class's shared static `HandlerList`.
+- `public static HandlerList getHandlerList()` - the static pair Bukkit requires; same instance as `getHandlers()`.
 
-Nota: el contrato de `normalize` en el listener garantiza que `oldPiece`/`newPiece` nunca llegan como aire; el aire se normaliza a `null`, y un evento con ambos `null` directamente no se dispara.
+Note: the `normalize` contract in the listener guarantees `oldPiece`/`newPiece` never arrive as air; air normalizes to `null`, and an event with both `null` simply is not fired.
 
 ### EquipMethod
 `src/main/java/com/sn/lib/event/EquipMethod.java`
 
-Enum publico con el vector de entrada por el cual una pieza de armadura fue equipada o desequipada. Constantes (8):
+Public enum with the input vector through which an armor piece was equipped or unequipped. Constants (8):
 
-- `SHIFT_CLICK` - shift-click de la pieza entre el inventario y su slot de armadura.
-- `DRAG` - arrastre de la pieza al slot de armadura dentro del inventario.
-- `PICK_DROP` - pick-up con el cursor y drop dentro/fuera del slot de armadura. Es tambien el vector manual generico reportado cuando la fuente sintetizada no expone el input exacto.
-- `HOTBAR` - equip con click derecho de la pieza en mano, sin abrir el inventario.
-- `HOTBAR_SWAP` - swap por tecla numerica mientras se hace hover sobre el slot de armadura.
-- `DISPENSER` - auto-equip por un dispenser.
-- `BROKE` - la pieza se rompio al agotar su durabilidad.
-- `DEATH` - la pieza dejo su slot porque el jugador murio.
+- `SHIFT_CLICK` - shift-click of the piece between the inventory and its armor slot.
+- `DRAG` - dragging the piece to the armor slot inside the inventory.
+- `PICK_DROP` - cursor pick-up and drop into/out of the armor slot. It is also the generic manual vector reported when the synthesized source does not expose the exact input.
+- `HOTBAR` - right-click equip of the piece in hand, without opening the inventory.
+- `HOTBAR_SWAP` - number-key swap while hovering the armor slot.
+- `DISPENSER` - auto-equip by a dispenser.
+- `BROKE` - the piece broke when its durability ran out.
+- `DEATH` - the piece left its slot because the player died.
 
-Sintetizables HOY vs constantes de API:
+Synthesizable TODAY vs API constants:
 
-| EquipMethod | Sintetizable hoy | Fuente real |
+| EquipMethod | Synthesizable today | Real source |
 |---|---|---|
-| `PICK_DROP` | Si | `PlayerArmorChangeEvent` (vector manual generico best-effort: la fuente primaria no expone el input exacto) |
-| `BROKE` | Si | `PlayerArmorChangeEvent` cuando `newPiece == null` y la pieza saliente agoto su durabilidad (`Damageable.getDamage() >= getMaxDurability()`) |
-| `DISPENSER` | Si | `BlockDispenseArmorEvent` (fuente dedicada, cancelacion vinculante) |
-| `DEATH` | Si | `PlayerDeathEvent` (una emision por pieza equipada, salvo keepInventory) |
-| `SHIFT_CLICK` | No | Constante de API: ninguna fuente actual la emite |
-| `DRAG` | No | Constante de API: ninguna fuente actual la emite |
-| `HOTBAR` | No | Constante de API: ninguna fuente actual la emite |
-| `HOTBAR_SWAP` | No | Constante de API: ninguna fuente actual la emite |
+| `PICK_DROP` | Yes | `PlayerArmorChangeEvent` (best-effort generic manual vector: the primary source does not expose the exact input) |
+| `BROKE` | Yes | `PlayerArmorChangeEvent` when `newPiece == null` and the outgoing piece ran out of durability (`Damageable.getDamage() >= getMaxDurability()`) |
+| `DISPENSER` | Yes | `BlockDispenseArmorEvent` (dedicated source, binding cancellation) |
+| `DEATH` | Yes | `PlayerDeathEvent` (one emission per equipped piece, except keepInventory) |
+| `SHIFT_CLICK` | No | API constant: no current source emits it |
+| `DRAG` | No | API constant: no current source emits it |
+| `HOTBAR` | No | API constant: no current source emits it |
+| `HOTBAR_SWAP` | No | API constant: no current source emits it |
 
-Los cuatro vectores manuales finos (`SHIFT_CLICK`, `DRAG`, `HOTBAR`, `HOTBAR_SWAP`) existen en la API para que los consumidores puedan hacer switch exhaustivo y para una futura sintesis mas fina, pero hoy todo cambio manual llega colapsado en `PICK_DROP` (o `BROKE`).
+The four fine manual vectors (`SHIFT_CLICK`, `DRAG`, `HOTBAR`, `HOTBAR_SWAP`) exist in the API so consumers can switch exhaustively and for finer future synthesis, but today every manual change arrives collapsed into `PICK_DROP` (or `BROKE`).
 
 ### ArmourEquipListener (internal)
 `src/main/java/com/sn/lib/event/internal/ArmourEquipListener.java`
 
-Listener compartido `final`, propiedad de SnLib, que sintetiza `SnArmourEquipEvent` desde tres fuentes reales. Se inscribe en el `ListenerHub` y el `registerEvents` sucede UNICAMENTE en el bootstrap de `SnLibPlugin`: hay una sola instancia para todo el server, sin estado por consumidor.
+Shared `final` listener, owned by SnLib, that synthesizes `SnArmourEquipEvent` from three real sources. It enrolls in the `ListenerHub` and the `registerEvents` happens SOLELY in the `SnLibPlugin` bootstrap: there is a single instance for the whole server, with no per-consumer state.
 
-Fuente primaria: `com.destroystokyo.paper.event.player.PlayerArmorChangeEvent`. Ese evento es `@ApiStatus.Obsolete` (~1.21.4) pero NO fue removido: esta presente y funcional en todo el rango 1.20.4-1.21.8+ (SnGens lo usa en produccion). Su uso aca es DELIBERADO; el Javadoc indica migrar a `io.papermc.paper.event.entity.EntityEquipmentChangedEvent` SOLO cuando suba el piso/baseline de versiones (esa clase no existe ni en 1.21.1 ni en 1.20.4).
+Primary source: `com.destroystokyo.paper.event.player.PlayerArmorChangeEvent`. That event is `@ApiStatus.Obsolete` (~1.21.4) but was NOT removed: it is present and functional across the whole 1.20.4-1.21.8+ range (SnGens uses it in production). Its use here is DELIBERATE; the Javadoc says to migrate to `io.papermc.paper.event.entity.EntityEquipmentChangedEvent` ONLY when the version floor/baseline rises (that class exists neither in 1.21.1 nor in 1.20.4).
 
-Tipos y estado interno:
+Types and internal state:
 
-- `private record DispenseMark(EquipmentSlot slot, int tick)` - marca de dedupe de dispenser: slot que un dispenser equipo y el tick en que ocurrio.
-- `private final Map<UUID, DispenseMark> dispensed = new ConcurrentHashMap<>()` - estado de dedupe transitorio, acotado por jugadores online; no es data por consumidor.
+- `private record DispenseMark(EquipmentSlot slot, int tick)` - dispenser dedup mark: slot a dispenser equipped and the tick it happened.
+- `private final Map<UUID, DispenseMark> dispensed = new ConcurrentHashMap<>()` - transient dedup state, bounded by online players; not per-consumer data.
 
-Metodos:
+Methods:
 
-- `@EventHandler(priority = EventPriority.MONITOR) public void onArmorChange(PlayerArmorChangeEvent event)` - fuente primaria (best-effort). Ignora jugadores muertos (`player.isDead()`: DEATH se sintetiza desde `PlayerDeathEvent`), resuelve el slot con `slotOf` (si da `null`, no emite), descarta el evento si hay una `DispenseMark` vigente para ese slot (ya se reporto como DISPENSER), normaliza old/new (aire -> `null`; si ambos quedan `null` no emite) y dispara `SnArmourEquipEvent` con el metodo que devuelve `classify` (`BROKE` o `PICK_DROP`). Corre en prioridad MONITOR: observa el cambio ya decidido, por eso su cancelacion no es vinculante.
-- `@EventHandler(ignoreCancelled = true) public void onDispense(BlockDispenseArmorEvent event)` - fuente dedicada de `DISPENSER`. Solo actua si el target es `Player`; resuelve el slot con `matchType(event.getItem())` (si da `null`, no emite); lee `oldPiece` del inventario del jugador en ese slot (el equip todavia no se aplico). Dispara el `SnArmourEquipEvent` y, si algun listener lo cancela (`!equip.call()`), cancela el `BlockDispenseArmorEvent`: es el UNICO vector con cancelacion vinculante. Si sobrevive, registra `DispenseMark(slot, Bukkit.getCurrentTick())` para dedupear el `PlayerArmorChangeEvent` que Paper disparara a continuacion por el mismo cambio.
-- `@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void onDeath(PlayerDeathEvent event)` - fuente dedicada de `DEATH`. Si el evento tiene `getKeepInventory()` activo no emite nada; si no, recorre HEAD/CHEST/LEGS/FEET del inventario del jugador y delega en `fireDeath` una emision por pieza presente.
-- `private static void fireDeath(Player player, EquipmentSlot slot, @Nullable ItemStack piece)` - normaliza la pieza y, si no es `null`, dispara `SnArmourEquipEvent(player, DEATH, slot, oldPiece, null).call()` (informativo: la cancelacion no revierte nada).
-- `static @Nullable EquipmentSlot matchType(@Nullable ItemStack item)` - (package-private, testeable) delegacion de una linea en `ArmourUtil.slotOf` (la fuente de verdad del mapeo item -> slot por sufijo del nombre de `Material`); se conserva para no tocar sus call sites internos (`onDispense` y `slotOf(PlayerArmorChangeEvent)`).
-- `private static @Nullable EquipmentSlot slotOf(PlayerArmorChangeEvent event)` - mapea `event.getSlotType().name()` (HEAD/CHEST/LEGS/FEET) a `EquipmentSlot` por nombre, manteniendo abierto el enum de slot de la fuente: ante un valor desconocido cae a `matchType` sobre el item nuevo y luego el viejo; si nada matchea devuelve `null` y el evento se descarta en silencio.
-- `private static EquipMethod classify(@Nullable ItemStack oldPiece, @Nullable ItemStack newPiece)` - `BROKE` si la pieza salio (`newPiece == null`) y `broke(oldPiece)` es true; en cualquier otro caso `PICK_DROP` (vector manual generico).
-- `private static boolean broke(@Nullable ItemStack oldPiece)` - true si el `Material` tiene `getMaxDurability() > 0` y el meta es `Damageable` con `getDamage() >= max` (la pieza agoto su durabilidad).
-- `private boolean consumeDispenseMark(UUID uuid, EquipmentSlot slot)` - dedupe por tick: si no hay marca devuelve `false`; si la marca tiene mas de 1 tick de antiguedad (`Bukkit.getCurrentTick() - mark.tick() > 1`) la remueve (con `remove(uuid, mark)` condicional) y devuelve `false` (expirada); si el slot no coincide devuelve `false` sin consumirla; si coincide dentro de la ventana, la consume (remueve) y devuelve `true` (el cambio ya fue reportado como DISPENSER).
-- `private static @Nullable ItemStack normalize(@Nullable ItemStack item)` - normaliza `null` y aire (`getType().isAir()`) a `null`; cualquier otra pieza pasa tal cual.
+- `@EventHandler(priority = EventPriority.MONITOR) public void onArmorChange(PlayerArmorChangeEvent event)` - primary source (best-effort). Ignores dead players (`player.isDead()`: DEATH synthesizes from `PlayerDeathEvent`), resolves the slot with `slotOf` (if it yields `null`, no emission), discards the event if a live `DispenseMark` exists for that slot (already reported as DISPENSER), normalizes old/new (air -> `null`; if both end up `null` no emission) and fires `SnArmourEquipEvent` with the method `classify` returns (`BROKE` or `PICK_DROP`). Runs at MONITOR priority: it observes the already-decided change, which is why its cancellation is not binding.
+- `@EventHandler(ignoreCancelled = true) public void onDispense(BlockDispenseArmorEvent event)` - dedicated `DISPENSER` source. Only acts if the target is a `Player`; resolves the slot with `matchType(event.getItem())` (if `null`, no emission); reads `oldPiece` from the player's inventory at that slot (the equip has not been applied yet). It fires the `SnArmourEquipEvent` and, if some listener cancels it (`!equip.call()`), cancels the `BlockDispenseArmorEvent`: it is the ONLY vector with binding cancellation. If it survives, it records `DispenseMark(slot, Bukkit.getCurrentTick())` to dedup the `PlayerArmorChangeEvent` Paper will fire next for the same change.
+- `@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void onDeath(PlayerDeathEvent event)` - dedicated `DEATH` source. If the event has `getKeepInventory()` on, it emits nothing; otherwise it walks HEAD/CHEST/LEGS/FEET of the player's inventory and delegates to `fireDeath` one emission per present piece.
+- `private static void fireDeath(Player player, EquipmentSlot slot, @Nullable ItemStack piece)` - normalizes the piece and, if not `null`, fires `SnArmourEquipEvent(player, DEATH, slot, oldPiece, null).call()` (informational: cancellation reverts nothing).
+- `static @Nullable EquipmentSlot matchType(@Nullable ItemStack item)` - (package-private, testable) one-line delegation to `ArmourUtil.slotOf` (the source of truth of the item -> slot mapping by `Material` name suffix); kept so its internal call sites (`onDispense` and `slotOf(PlayerArmorChangeEvent)`) stay untouched.
+- `private static @Nullable EquipmentSlot slotOf(PlayerArmorChangeEvent event)` - maps `event.getSlotType().name()` (HEAD/CHEST/LEGS/FEET) to `EquipmentSlot` by name, keeping the source's slot enum open: on an unknown value it falls back to `matchType` over the new item and then the old one; if nothing matches it returns `null` and the event is discarded silently.
+- `private static EquipMethod classify(@Nullable ItemStack oldPiece, @Nullable ItemStack newPiece)` - `BROKE` if the piece left (`newPiece == null`) and `broke(oldPiece)` is true; in any other case `PICK_DROP` (generic manual vector).
+- `private static boolean broke(@Nullable ItemStack oldPiece)` - true if the `Material` has `getMaxDurability() > 0` and the meta is `Damageable` with `getDamage() >= max` (the piece exhausted its durability).
+- `private boolean consumeDispenseMark(UUID uuid, EquipmentSlot slot)` - per-tick dedup: with no mark it returns `false`; if the mark is more than 1 tick old (`Bukkit.getCurrentTick() - mark.tick() > 1`) it removes it (conditional `remove(uuid, mark)`) and returns `false` (expired); if the slot does not match it returns `false` without consuming it; if it matches within the window, it consumes (removes) it and returns `true` (the change was already reported as DISPENSER).
+- `private static @Nullable ItemStack normalize(@Nullable ItemStack item)` - normalizes `null` and air (`getType().isAir()`) to `null`; any other piece passes as-is.
 
-#### Logica interna
+#### Internal logic
 
-- Dedupe por tick (dispenser vs fuente primaria): cuando un dispenser equipa una pieza, Paper dispara `BlockDispenseArmorEvent` y despues `PlayerArmorChangeEvent` por el mismo cambio. `onDispense` emite primero el `SnArmourEquipEvent` con `DISPENSER` y deja una `DispenseMark(slot, tick)`; `onArmorChange` consulta `consumeDispenseMark` y, si la marca es del mismo slot y tiene a lo sumo 1 tick de antiguedad, suprime la emision duplicada. La ventana de tolerancia de 1 tick cubre el caso de que el `PlayerArmorChangeEvent` llegue al tick siguiente. Una marca vieja se limpia lazy en la proxima consulta.
-- El mapa `dispensed` es `ConcurrentHashMap` aunque todos los handlers corren en el main thread: es defensa barata para estado transitorio compartido acotado por jugadores online.
-- DEATH nunca sale de la fuente primaria: `onArmorChange` corta con `player.isDead()` justamente para que las piezas que se vacian al morir se reporten solo desde `PlayerDeathEvent`, una emision por pieza y con `newPiece = null`.
+- Per-tick dedup (dispenser vs primary source): when a dispenser equips a piece, Paper fires `BlockDispenseArmorEvent` and then `PlayerArmorChangeEvent` for the same change. `onDispense` first emits the `SnArmourEquipEvent` with `DISPENSER` and leaves a `DispenseMark(slot, tick)`; `onArmorChange` consults `consumeDispenseMark` and, if the mark is for the same slot and at most 1 tick old, suppresses the duplicate emission. The 1-tick tolerance window covers the case of the `PlayerArmorChangeEvent` arriving on the next tick. A stale mark cleans up lazily on the next query.
+- The `dispensed` map is a `ConcurrentHashMap` even though all handlers run on the main thread: cheap defense for shared transient state bounded by online players.
+- DEATH never comes from the primary source: `onArmorChange` bails on `player.isDead()` precisely so pieces emptied on death report only from `PlayerDeathEvent`, one emission per piece and with `newPiece = null`.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Nota de obsolescencia: `PlayerArmorChangeEvent` esta marcado `@ApiStatus.Obsolete` (~1.21.4) pero NO removido; funciona en todo el rango 1.20.4-1.21.8+ soportado y su uso es una decision deliberada documentada en el Javadoc. La migracion a `EntityEquipmentChangedEvent` queda explicitamente diferida hasta que el baseline de versiones lo permita (esa clase no existe en 1.20.4 ni en 1.21.1).
-- La fuente primaria NO expone el vector de entrada: todo cambio manual se reporta como `PICK_DROP` (o `BROKE` cuando la pieza agoto la durabilidad). `SHIFT_CLICK`, `DRAG`, `HOTBAR` y `HOTBAR_SWAP` hoy son constantes de API sin fuente que las emita.
-- Semantica de cancelacion asimetrica: cancelar el evento solo tiene efecto real con `DISPENSER` (cancela el dispense fisico). Con `PICK_DROP`/`BROKE`/`DEATH` el cambio ya ocurrio; la cancelacion es solo una señal entre consumidores.
-- Enums de terceros tratados como abiertos: tanto `Material` (en `matchType`, via `ArmourUtil.slotOf`) como el slot type de `PlayerArmorChangeEvent` (en `slotOf`) se resuelven por nombre con fallback, para que una constante nueva de Paper nunca rompa el listener; lo desconocido se ignora en silencio.
-- `onDeath` respeta `keepInventory`: si el inventario se conserva, no se emite ningun `DEATH`.
-- Los setters `setOldPiece`/`setNewPiece` de `SnArmourEquipEvent` solo mutan lo que ven los listeners posteriores; no escriben en el inventario.
-- Este modulo no loguea nada: no hay WARNs ni mensajes propios.
+- Obsolescence note: `PlayerArmorChangeEvent` is marked `@ApiStatus.Obsolete` (~1.21.4) but NOT removed; it works across the entire supported 1.20.4-1.21.8+ range and its use is a deliberate decision documented in the Javadoc. The migration to `EntityEquipmentChangedEvent` is explicitly deferred until the version baseline allows it (that class does not exist in 1.20.4 or 1.21.1).
+- The primary source does NOT expose the input vector: every manual change reports as `PICK_DROP` (or `BROKE` when the piece exhausted durability). `SHIFT_CLICK`, `DRAG`, `HOTBAR` and `HOTBAR_SWAP` today are API constants with no source emitting them.
+- Asymmetric cancellation semantics: cancelling the event only has real effect with `DISPENSER` (it cancels the physical dispense). With `PICK_DROP`/`BROKE`/`DEATH` the change already happened; cancellation is only a signal between consumers.
+- Third-party enums treated as open: both `Material` (in `matchType`, via `ArmourUtil.slotOf`) and `PlayerArmorChangeEvent`'s slot type (in `slotOf`) resolve by name with a fallback, so a new Paper constant never breaks the listener; the unknown is ignored silently.
+- `onDeath` respects `keepInventory`: if the inventory is kept, no `DEATH` is emitted.
+- `SnArmourEquipEvent`'s `setOldPiece`/`setNewPiece` setters only mutate what later listeners see; they do not write to the inventory.
+- This module logs nothing: no WARNs or messages of its own.
 
-#### TODOs y limitaciones
+#### TODOs and limitations
 
-No hay marcadores TODO/FIXME literales en los archivos del modulo. Limitaciones documentadas en codigo/Javadoc:
+There are no literal TODO/FIXME markers in the module's files. Limitations documented in code/Javadoc:
 
-- Los vectores manuales finos (`SHIFT_CLICK`, `DRAG`, `HOTBAR`, `HOTBAR_SWAP`) no son sintetizables hoy: la fuente primaria colapsa todo en `PICK_DROP`/`BROKE`.
-- Migracion pendiente (diferida a proposito) de `PlayerArmorChangeEvent` a `io.papermc.paper.event.entity.EntityEquipmentChangedEvent` cuando el baseline de versiones soportadas suba por encima de 1.21.4.
-- La cancelacion no es vinculante para los vectores ya aplicados (`PICK_DROP`, `BROKE`, `DEATH`); solo `DISPENSER` puede revertirse.
+- The fine manual vectors (`SHIFT_CLICK`, `DRAG`, `HOTBAR`, `HOTBAR_SWAP`) are not synthesizable today: the primary source collapses everything into `PICK_DROP`/`BROKE`.
+- Pending migration (deliberately deferred) from `PlayerArmorChangeEvent` to `io.papermc.paper.event.entity.EntityEquipmentChangedEvent` once the supported version baseline rises above 1.21.4.
+- Cancellation is not binding for the already-applied vectors (`PICK_DROP`, `BROKE`, `DEATH`); only `DISPENSER` can be reverted.
 
 ### SnChunkMoveEvent
 `src/main/java/com/sn/lib/event/SnChunkMoveEvent.java`
 
-Evento `final` (v1.1) que se dispara cuando un jugador cruza de un chunk a otro via movimiento. Lo sintetiza el listener compartido de la libreria (`ChunkMoveListener`) desde `PlayerMoveEvent`; ningun plugin consumidor lo construye a mano en el flujo normal. La cancelacion es VINCULANTE: cancelar este evento cancela el `PlayerMoveEvent` fuente (mismo patron que el vector `DISPENSER` de `SnArmourEquipEvent`). ALCANCE: solo el movimiento lo emite; teleports, joins y respawns NO lo disparan (`PlayerTeleportEvent` tiene HandlerList propia y no pasa por el handler de move).
+`final` event (v1.1) fired when a player crosses from one chunk to another via movement. Synthesized by the library's shared listener (`ChunkMoveListener`) from `PlayerMoveEvent`; no consumer plugin builds it by hand in the normal flow. Cancellation is BINDING: cancelling this event cancels the source `PlayerMoveEvent` (same pattern as `SnArmourEquipEvent`'s `DISPENSER` vector). SCOPE: only movement emits it; teleports, joins and respawns do NOT fire it (`PlayerTeleportEvent` has its own HandlerList and does not go through the move handler).
 
-- `public SnChunkMoveEvent(Player player, Location from, Location to)` - construye el evento con el jugador que cruza y las locations de origen y destino. Ambas locations se guardan como `clone()` (snapshots propios del evento): mutarlas JAMAS afecta el `PlayerMoveEvent` fuente.
-- `public Location fromLocation()` - snapshot clonado de la location de origen del movimiento.
-- `public Location toLocation()` - snapshot clonado de la location de destino del movimiento.
-- `public Chunk fromChunk()` - chunk que el jugador abandona; resuelve `getChunk()` de la location de origen al invocarse (en la practica siempre cargado: el jugador viene de ahi).
-- `public Chunk toChunk()` - chunk al que el jugador entra; resuelve `getChunk()` de la location de destino al invocarse (en la practica siempre cargado: el jugador esta parado ahi).
-- `public HandlerList getHandlers()` - devuelve la `HandlerList` estatica compartida de la clase.
-- `public static HandlerList getHandlerList()` - par estatico requerido por Bukkit; misma instancia que `getHandlers()`.
+- `public SnChunkMoveEvent(Player player, Location from, Location to)` - builds the event with the crossing player and the origin and destination locations. Both locations are stored as `clone()` (the event's own snapshots): mutating them NEVER affects the source `PlayerMoveEvent`.
+- `public Location fromLocation()` - cloned snapshot of the movement's origin location.
+- `public Location toLocation()` - cloned snapshot of the movement's destination location.
+- `public Chunk fromChunk()` - chunk the player leaves; resolves the origin location's `getChunk()` at invocation (in practice always loaded: the player comes from there).
+- `public Chunk toChunk()` - chunk the player enters; resolves the destination location's `getChunk()` at invocation (in practice always loaded: the player is standing there).
+- `public HandlerList getHandlers()` - returns the class's shared static `HandlerList`.
+- `public static HandlerList getHandlerList()` - the static pair Bukkit requires; same instance as `getHandlers()`.
 
 ### ChunkMoveListener (internal)
 `src/main/java/com/sn/lib/event/internal/ChunkMoveListener.java`
 
-Listener compartido `final` (v1.1), propiedad de SnLib, que sintetiza `SnChunkMoveEvent`. Un solo handler `@EventHandler(ignoreCancelled = true) public void onMove(PlayerMoveEvent event)` con quick-exit hot-path SIN allocations: compara `getBlockX() >> 4` y `getBlockZ() >> 4` de from/to y los worlds por IDENTIDAD (`==`; los `World` de Bukkit son singletons por server), y si no hubo cruce de chunk retorna sin crear ningun objeto (la mayoria abrumadora de los moves). Solo si cruzo dispara `new SnChunkMoveEvent(player, from, to).call()` y, si algun listener lo cancela, cancela el `PlayerMoveEvent` fuente (cancelacion vinculante). Corre en prioridad default (NORMAL) a proposito: la cancelacion debe poder aplicarse antes de MONITOR. Se inscribe en el `ListenerHub` (`inscribe(new ChunkMoveListener())`) y el `registerEvents` sucede UNICAMENTE en el bootstrap de `SnLibPlugin`.
-
+Shared `final` listener (v1.1), owned by SnLib, that synthesizes `SnChunkMoveEvent`. A single handler `@EventHandler(ignoreCancelled = true) public void onMove(PlayerMoveEvent event)` with an allocation-FREE hot-path quick exit: it compares `getBlockX() >> 4` and `getBlockZ() >> 4` of from/to and the worlds by IDENTITY (`==`; Bukkit `World`s are per-server singletons), and if no chunk crossing happened it returns without creating any object (the overwhelming majority of moves). Only on a crossing does it fire `new SnChunkMoveEvent(player, from, to).call()` and, if some listener cancels it, cancels the source `PlayerMoveEvent` (binding cancellation). It runs at default priority (NORMAL) on purpose: the cancellation must be applicable before MONITOR. It enrolls in the `ListenerHub` (`inscribe(new ChunkMoveListener())`) and the `registerEvents` happens SOLELY in the `SnLibPlugin` bootstrap.
 ---
 
 ## 11. Items
 
-Modulo de items fisicos de SnLib, accesible via `sn.items()`. Cubre la spec dorada completa (`docs/item-example.yml`): apariencia (SnItem, builder fluido con probes de compatibilidad 1.20.4+), definicion de comportamiento (ItemDef, builder universal 100% programatico o parseado de YML), registro por contexto (ItemRegistry, con tag PDC `snlib_item_id` namespaceado por plugin owner), serializacion binaria que sobrevive amounts over-stacked (ItemSerializer) y el modo de obtencion (ObtainMode). La ejecucion en runtime la hacen las clases de `internal/`: dos listeners compartidos de propiedades e interacciones, el enforcement de modo locked con 7 vectores, durabilidad custom por PDC, backup write-through del equipamiento desplazado, timer de held-effects y loader de las 7 variantes de recetas. Los listeners compartidos son propiedad de SnLib (registrados UNA sola vez en el bootstrap de SnLibPlugin via ListenerHub) y resuelven el owner de cada stack por el namespace de su key PDC.
+SnLib's physical items module, accessible via `sn.items()`. It covers the complete golden spec (`docs/item-example.yml`): appearance (SnItem, a fluent builder with 1.20.4+ compatibility probes), behavior definition (ItemDef, a universal builder 100% programmatic or parsed from YML), per-context registry (ItemRegistry, with the PDC tag `snlib_item_id` namespaced by owning plugin), binary serialization that survives over-stacked amounts (ItemSerializer) and the obtain mode (ObtainMode). Runtime execution is done by the classes in `internal/`: two shared listeners for properties and interactions, the locked-mode enforcement with 7 vectors, custom durability via PDC, write-through backup of displaced equipment, the held-effects timer and the loader of the 7 recipe variants. The shared listeners are owned by SnLib (registered ONCE in the SnLibPlugin bootstrap via ListenerHub) and resolve each stack's owner by the namespace of its PDC key.
 
 ### SnItem
 `src/main/java/com/sn/lib/item/SnItem.java`
 
-Builder fluido de stacks fisicos que cubre toda la seccion de apariencia de la spec dorada. Los strings (name, lore) pasan por el pipeline de texto de SnLib (`[rgb]`, `[center]`, codigos legacy, MiniMessage) y se renderizan no-italicos salvo que el input pida italica. Materiales, encantamientos, efectos de pocion y trims se resuelven de forma leniente via Registry/NamespacedKey con fallback a nombres legacy; un id irresoluble loguea UN WARN (dedup por `Set` estatico concurrente `WARNED`) y se saltea, nunca lanza excepcion.
+Fluent builder of physical stacks covering the entire appearance section of the golden spec. Strings (name, lore) go through SnLib's text pipeline (`[rgb]`, `[center]`, legacy codes, MiniMessage) and render non-italic unless the input asks for italics. Materials, enchantments, potion effects and trims resolve leniently via Registry/NamespacedKey with a fallback to legacy names; an unresolvable id logs ONE WARN (deduped by the static concurrent `WARNED` set) and is skipped, never throwing.
 
-- `public static SnItem builder(Material material)` - Arranca el builder; material null cae a `STONE`.
-- `public static SnItem fromConfig(SnYml yml, @Nullable Player viewer, Ph... phs)` - Lee todos los campos de apariencia desde la raiz del yml; delega en la sobrecarga con path.
-- `public static SnItem fromConfig(SnYml yml, @Nullable String path, @Nullable Player viewer, Ph... phs)` - Mapea cada campo de apariencia de la spec bajo `path`: display-name, material (con la convencion de cabezas `texture-`/`basehead-`/`base64-` detectada via `HeadUtil.extractTextureValue`, que fuerza `PLAYER_HEAD`), custom-model-data (solo si esta seteado), amount, glow, lore, enchantments, flags, color, trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size, equipment-slot, skull-owner (pasa por `yml.getString(..., viewer)` + `applyLocals(phs)`, asi `skull-owner: "%player_name%"` resuelve por viewer), attributes (lineas `ATTRIBUTE OPERATION amount [slot-group]` tokenizadas por whitespace, SIN placeholders: valores estaticos de la definicion) y damage (solo si esta seteado). Los strings resuelven con `viewer` mas los placeholders locales `phs`.
-- `public SnItem name(String name)` - Display name; renderizado por el pipeline de texto, no-italico salvo pedido.
-- `public SnItem lore(List<String> lines)` - Agrega lineas de lore (null se convierte en ""); cada una pasa por el pipeline de texto.
-- `public SnItem lore(String... lines)` - Conveniencia varargs de la anterior.
-- `public SnItem amount(int amount)` - Cantidad del stack, con piso 1 al construir.
-- `public SnItem glow()` - Brillo de encantamiento. Usa `setEnchantmentGlintOverride` si existe (1.20.5+, via `SnCompat.probe`); en 1.20.4 degrada a un encantamiento vanilla real (`LURE` nivel 1, solo si no hay encantamientos) mas `HIDE_ENCHANTS`, con UN WARN.
-- `public SnItem enchant(String id, int level)` - Agrega un encantamiento por id leniente (key de Registry o nombre legacy de Bukkit).
-- `public SnItem flags(List<String> names)` - Agrega ItemFlags por nombre. `HIDE_ALL` expande a `ItemFlag.values()` de este server; un nombre desconocido intenta el alias `HIDE_POTION_EFFECTS`/`HIDE_ADDITIONAL_TOOLTIP` (bidireccional) antes de UN WARN.
-- `public SnItem hideAllTooltipFlags()` - Agrega cada flag de ocultado de tooltip conocido por este server (array `TOOLTIP_FLAGS` de 10 nombres, resueltos uno por uno con `valueOf` en try/catch; los ausentes se saltean sin WARN).
-- `public SnItem color(String color)` - Tinte para metas con color (armadura de cuero, pociones). Acepta `"R, G, B"` y hex `"RRGGBB"`/`"#RRGGBB"`; un material sin soporte de tintado o un color mal formado logue UN WARN y se ignora.
-- `public SnItem trim(String pattern, String material)` - Trim de armadura; los dos valores deben venir juntos, `NONE` o vacio desactiva. El lookup prefiere `RegistryAccess` (RegistryKey.TRIM_PATTERN/TRIM_MATERIAL, solo si `SnVersion.supports(20, 6)`) con los campos legacy `Registry.TRIM_*` (deprecados desde 1.20.6) como fallback leniente; un meta que no es `ArmorMeta` o un trim invalido WARNea una vez y se ignora.
-- `public SnItem potionEffects(List<String> effects)` - Efectos de pocion custom para items con `PotionMeta`. Forma plana de la spec `[effect-id, level, duration]`; level default 1 (el amplifier es `level - 1`) y duration default 200 ticks.
-- `public SnItem modelData(int modelData)` - Custom model data; solo estampa el meta cuando fue seteado explicitamente.
-- `public SnItem headBase64(String value)` - Textura de cabeza aceptada por `HeadUtil.extractTextureValue`; requiere `PLAYER_HEAD` (otro material WARNea y se ignora).
-- `public SnItem skullOwner(String nameOrUuid)` - Cabeza por jugador (nombre o UUID, trimmed; null/blank es no-op); requiere `PLAYER_HEAD`. Resolucion en `build()`: primero `UUID.fromString` en try/catch -> `Bukkit.getOfflinePlayer(UUID)` (no bloqueante); si no parsea como UUID -> `Bukkit.getOfflinePlayerIfCached(nombre)`. PROHIBIDO `Bukkit.getOfflinePlayer(String)` (puede bloquear el main thread con lookup HTTP). Cache miss: WARN unico y cabeza default. Precedencia: si tambien hay `headBase64`, gana skull-owner y la textura base64 se ignora con WARN unico (`skull-owner-conflict`). La skin la aplica `HeadUtil.applyOwner`.
-- `public SnItem attribute(String attributeId, String operation, double amount, @Nullable String slotGroup)` - Agrega una linea de attribute modifier (ids trimmed; attributeId u operation null/blank se ignoran). El atributo resuelve leniente via `attributeKeyCandidates` (ver logica interna); la operation es un nombre de `AttributeModifier.Operation` (ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1); slotGroup es un nombre de `EquipmentSlotGroup` (null/blank = ANY).
-- `public SnItem damage(int damage)` - Durabilidad VANILLA gastada inicial; clamp a `[0, maxDurability]` al aplicar. Independiente del sistema `custom-durability` de ItemDef. Material sin durabilidad vanilla o meta que no es `Damageable` WARNea una vez y se ignora.
-- `public SnItem unbreakable(boolean unbreakable)` - Flag vanilla unbreakable.
-- `public SnItem maxStackSize(int maxStackSize)` - Max stack size via probe de `setMaxStackSize` (1.20.5+); en 1.20.4 el valor se omite con UN WARN (que ya emite el probe). El valor se clampa a 1..99 al aplicar.
-- `public SnItem equipmentSlot(String slot)` - Slot declarado de la spec (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET). Validado lenientemente en `build()` con UN WARN ante typos; el stack en si no se altera, el enforcement pertenece a la capa de definicion.
-- `public ItemStack build()` - Construye el stack aplicando cada campo configurado con degradacion leniente; si el meta es null (materiales sin meta) devuelve el stack pelado.
-- `public static @Nullable EquipmentSlot parseEquipmentSlot(String raw)` - Nombre de spec a `EquipmentSlot` leniente: `MAINHAND` mapea a `HAND` y `OFFHAND` a `OFF_HAND`; nombre desconocido devuelve null.
+- `public static SnItem builder(Material material)` - Starts the builder; a null material falls to `STONE`.
+- `public static SnItem fromConfig(SnYml yml, @Nullable Player viewer, Ph... phs)` - Reads every appearance field from the yml root; delegates to the path overload.
+- `public static SnItem fromConfig(SnYml yml, @Nullable String path, @Nullable Player viewer, Ph... phs)` - Maps every appearance field of the spec under `path`: display-name, material (with the head convention `texture-`/`basehead-`/`base64-` detected via `HeadUtil.extractTextureValue`, which forces `PLAYER_HEAD`), custom-model-data (only if set), amount, glow, lore, enchantments, flags, color, trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size, equipment-slot, skull-owner (goes through `yml.getString(..., viewer)` + `applyLocals(phs)`, so `skull-owner: "%player_name%"` resolves per viewer), attributes (`ATTRIBUTE OPERATION amount [slot-group]` lines tokenized by whitespace, WITHOUT placeholders: static values of the definition) and damage (only if set). Strings resolve with `viewer` plus the local placeholders `phs`.
+- `public SnItem name(String name)` - Display name; rendered by the text pipeline, non-italic unless requested.
+- `public SnItem lore(List<String> lines)` - Adds lore lines (null becomes ""); each goes through the text pipeline.
+- `public SnItem lore(String... lines)` - Varargs convenience of the above.
+- `public SnItem amount(int amount)` - Stack amount, floored at 1 when building.
+- `public SnItem glow()` - Enchantment glint. Uses `setEnchantmentGlintOverride` if it exists (1.20.5+, via `SnCompat.probe`); on 1.20.4 it degrades to a real vanilla enchantment (`LURE` level 1, only if there are no enchantments) plus `HIDE_ENCHANTS`, with ONE WARN.
+- `public SnItem enchant(String id, int level)` - Adds an enchantment by lenient id (Registry key or legacy Bukkit name).
+- `public SnItem flags(List<String> names)` - Adds ItemFlags by name. `HIDE_ALL` expands to this server's `ItemFlag.values()`; an unknown name tries the `HIDE_POTION_EFFECTS`/`HIDE_ADDITIONAL_TOOLTIP` alias (bidirectional) before ONE WARN.
+- `public SnItem hideAllTooltipFlags()` - Adds every tooltip-hiding flag known to this server (the 10-name `TOOLTIP_FLAGS` array, resolved one by one with `valueOf` in try/catch; absent ones skip without WARN).
+- `public SnItem color(String color)` - Tint for colorable metas (leather armor, potions). Accepts `"R, G, B"` and hex `"RRGGBB"`/`"#RRGGBB"`; a material without tint support or a malformed color logs ONE WARN and is ignored.
+- `public SnItem trim(String pattern, String material)` - Armor trim; the two values must come together, `NONE` or empty disables. The lookup prefers `RegistryAccess` (RegistryKey.TRIM_PATTERN/TRIM_MATERIAL, only if `SnVersion.supports(20, 6)`) with the legacy `Registry.TRIM_*` fields (deprecated since 1.20.6) as a lenient fallback; a meta that is not `ArmorMeta` or an invalid trim WARNs once and is ignored.
+- `public SnItem potionEffects(List<String> effects)` - Custom potion effects for items with `PotionMeta`. Flat spec form `[effect-id, level, duration]`; level default 1 (the amplifier is `level - 1`) and duration default 200 ticks.
+- `public SnItem modelData(int modelData)` - Custom model data; it only stamps the meta when explicitly set.
+- `public SnItem headBase64(String value)` - Head texture accepted by `HeadUtil.extractTextureValue`; requires `PLAYER_HEAD` (another material WARNs and is ignored).
+- `public SnItem skullOwner(String nameOrUuid)` - Head by player (name or UUID, trimmed; null/blank is a no-op); requires `PLAYER_HEAD`. Resolution in `build()`: first `UUID.fromString` in try/catch -> `Bukkit.getOfflinePlayer(UUID)` (non-blocking); if it does not parse as UUID -> `Bukkit.getOfflinePlayerIfCached(name)`. `Bukkit.getOfflinePlayer(String)` is FORBIDDEN (it can block the main thread with an HTTP lookup). Cache miss: single WARN and default head. Precedence: if `headBase64` is also present, skull-owner wins and the base64 texture is ignored with a single WARN (`skull-owner-conflict`). The skin is applied by `HeadUtil.applyOwner`.
+- `public SnItem attribute(String attributeId, String operation, double amount, @Nullable String slotGroup)` - Adds an attribute modifier line (trimmed ids; a null/blank attributeId or operation is ignored). The attribute resolves leniently via `attributeKeyCandidates` (see internal logic); the operation is an `AttributeModifier.Operation` name (ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1); slotGroup is an `EquipmentSlotGroup` name (null/blank = ANY).
+- `public SnItem damage(int damage)` - Initial spent VANILLA durability; clamped to `[0, maxDurability]` when applied. Independent from ItemDef's `custom-durability` system. A material without vanilla durability or a meta that is not `Damageable` WARNs once and is ignored.
+- `public SnItem unbreakable(boolean unbreakable)` - Vanilla unbreakable flag.
+- `public SnItem maxStackSize(int maxStackSize)` - Max stack size via the `setMaxStackSize` probe (1.20.5+); on 1.20.4 the value is omitted with ONE WARN (already emitted by the probe). The value clamps to 1..99 when applied.
+- `public SnItem equipmentSlot(String slot)` - Declared spec slot (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET). Validated leniently in `build()` with ONE WARN on typos; the stack itself is not altered, enforcement belongs to the definition layer.
+- `public ItemStack build()` - Builds the stack applying every configured field with lenient degradation; if the meta is null (meta-less materials) it returns the bare stack.
+- `public static @Nullable EquipmentSlot parseEquipmentSlot(String raw)` - Lenient spec name to `EquipmentSlot`: `MAINHAND` maps to `HAND` and `OFFHAND` to `OFF_HAND`; an unknown name returns null.
 
-#### Logica interna
-- `readEnchantments` y `applyPotionEffects` caminan la forma plana `[id, nivel, ...]` de la spec: `tokenize` parte cada entrada por espacios/comas/punto-y-coma, asi la forma plana y la inline parsean igual. Un numero sin id previo WARNea con el formato esperado y se ignora.
-- `resolveMaterial`: `Material.matchMaterial` primero, despues `Registry.MATERIAL` por NamespacedKey; invalido WARNea y usa `STONE`.
-- `resolveEnchant`/`resolveEffect`: Registry por key y fallback `getByName` legacy (deprecado a proposito, resuelve nombres tipo `FAST_DIGGING`).
-- `attributeKeyCandidates(String)` (package-private, puro, testeado en `SnItemAttributeParseTest`): normaliza (trim, lower, `-`->`_`, quita `minecraft:`) y devuelve en orden sin duplicados: (1) el normalizado tal cual, (2) sin prefijo `generic_`/`player_`/`zombie_` (keys 1.21.2+), (3) la forma con punto en el primer `_` si tenia prefijo (keys pre-1.21.3, ej `generic.movement_speed`), (4) `generic.` + la forma pelada (alias inverso: `ARMOR` resuelve como `generic.armor` en servers viejos). `resolveAttribute` itera los candidatos contra `Registry.ATTRIBUTE`; primer hit gana. Esto implementa el alias bidireccional `GENERIC_ARMOR` <-> `ARMOR` del rename 1.21.2+ sin tablas hardcodeadas.
-- `buildModifier`: doble rama. Moderna (gateada por `SnVersion.supports(21, 0)` + catch de Throwable, porque `SnCompat.probe` solo cubre metodos, no constructores): `new AttributeModifier(NamespacedKey.fromString("snlib:" + keyName), amount, op, EquipmentSlotGroup)` con key deterministica `snlib:attr_<i>_<attr-sanitizado>` (namespace fijo `snlib` via `fromString`: SnItem es un builder estatico sin referencia a plugin). Legacy (1.20.4 o Throwable): constructor deprecado con `UUID.nameUUIDFromBytes(keyName)` y `legacySlot` (package-private testeado: null/blank/ANY/ARMOR/BODY -> null = cualquier slot; el resto delega en `parseEquipmentSlot`).
-- `ItemFlag` se trata como enum abierto: `valueOf` individual en try/catch, nunca switch/EnumSet, para tolerar ramas de version distintas.
-- `warnOnce(tag, message)` dedupica los WARN en el set estatico `WARNED` (prefijo `[SnLib] ` via `Bukkit.getLogger()`). Estatico server-wide permitido por el contrato de SnLib: registra hechos de los registries de ESTE server, no de un consumidor.
+#### Internal logic
+- `readEnchantments` and `applyPotionEffects` walk the spec's flat `[id, level, ...]` form: `tokenize` splits each entry by spaces/commas/semicolons, so the flat and inline forms parse the same. A number without a preceding id WARNs with the expected format and is ignored.
+- `resolveMaterial`: `Material.matchMaterial` first, then `Registry.MATERIAL` by NamespacedKey; invalid WARNs and uses `STONE`.
+- `resolveEnchant`/`resolveEffect`: Registry by key with the legacy `getByName` fallback (deprecated on purpose, resolves names like `FAST_DIGGING`).
+- `attributeKeyCandidates(String)` (package-private, pure, tested in `SnItemAttributeParseTest`): normalizes (trim, lower, `-`->`_`, strips `minecraft:`) and returns in order without duplicates: (1) the normalized form as-is, (2) without the `generic_`/`player_`/`zombie_` prefix (1.21.2+ keys), (3) the dotted form at the first `_` if it had a prefix (pre-1.21.3 keys, e.g. `generic.movement_speed`), (4) `generic.` + the bare form (inverse alias: `ARMOR` resolves as `generic.armor` on old servers). `resolveAttribute` iterates the candidates against `Registry.ATTRIBUTE`; first hit wins. This implements the bidirectional `GENERIC_ARMOR` <-> `ARMOR` alias of the 1.21.2+ rename without hardcoded tables.
+- `buildModifier`: dual branch. Modern (gated by `SnVersion.supports(21, 0)` + a Throwable catch, because `SnCompat.probe` only covers methods, not constructors): `new AttributeModifier(NamespacedKey.fromString("snlib:" + keyName), amount, op, EquipmentSlotGroup)` with the deterministic key `snlib:attr_<i>_<sanitized-attr>` (fixed `snlib` namespace via `fromString`: SnItem is a static builder with no plugin reference). Legacy (1.20.4 or Throwable): the deprecated constructor with `UUID.nameUUIDFromBytes(keyName)` and `legacySlot` (package-private, tested: null/blank/ANY/ARMOR/BODY -> null = any slot; the rest delegates to `parseEquipmentSlot`).
+- `ItemFlag` is treated as an open enum: individual `valueOf` in try/catch, never switch/EnumSet, to tolerate different version branches.
+- `warnOnce(tag, message)` dedupes the WARNs in the static `WARNED` set (`[SnLib] ` prefix via `Bukkit.getLogger()`). Server-wide static allowed by the SnLib contract: it records facts about THIS server's registries, not a consumer's.
 
-#### Notas y gotchas
-- El campo `TOOLTIP_FLAGS` es privado; incluye nombres de varias ramas de version (`HIDE_POTION_EFFECTS` y `HIDE_ADDITIONAL_TOOLTIP` a la vez) porque no todos existen en todos los servers.
-- `glow()` sobre un item ya encantado en 1.20.4 no agrega `LURE` (solo si `!meta.hasEnchants()`).
+#### Notes and gotchas
+- The `TOOLTIP_FLAGS` field is private; it includes names from several version branches (`HIDE_POTION_EFFECTS` and `HIDE_ADDITIONAL_TOOLTIP` at once) because not all exist on every server.
+- `glow()` on an already-enchanted item in 1.20.4 does not add `LURE` (only if `!meta.hasEnchants()`).
 
 ### ItemDef
 `src/main/java/com/sn/lib/item/ItemDef.java`
 
-Definicion inmutable de un item fisico que cubre la spec dorada completa: apariencia, propiedades de comportamiento (droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown), campos de modo locked (locked, no-drop, no-manual-equip, obtain-via), durabilidad custom, las 12 listas de acciones de interaccion con sus callbacks Java (right/left x plano/shift/block/air/shift-block/shift-air: las 8 de v1.0.0 mas las 4 variantes shift-posicionales de 1.1.0) con el flag de prioridad `shift-overrides-generic`, requirements de interaccion con deny-actions, acciones de pickup/drop, held effects, equipment slot y receta. `builder()` es un constructor universal de primera clase: todo campo es seteable programaticamente sin archivo YML. Las definiciones respaldadas por YML re-leen su seccion de apariencia en cada `ItemRegistry.create`, asi los placeholders resuelven por viewer. `max-stack-size` pertenece a la capa de apariencia (`SnItem.maxStackSize`); no se duplica aca. Los interact-requirements se parsean UNA vez en construccion a un arbol `Requirement` inmutable via `RequirementEngine.parse`.
+Immutable definition of a physical item covering the full golden spec: appearance, behavior properties (droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown), locked-mode fields (locked, no-drop, no-manual-equip, obtain-via), custom durability, the 12 interaction action lists with their Java callbacks (right/left x plain/shift/block/air/shift-block/shift-air: the 8 from v1.0.0 plus the 4 shift-positional variants of 1.1.0) with the priority flag `shift-overrides-generic`, interaction requirements with deny-actions, pickup/drop actions, held effects, equipment slot and recipe. `builder()` is a first-class universal constructor: every field is settable programmatically without a YML file. YML-backed definitions re-read their appearance section on each `ItemRegistry.create`, so placeholders resolve per viewer. `max-stack-size` belongs to the appearance layer (`SnItem.maxStackSize`); it is not duplicated here. Interact-requirements parse ONCE at construction into an immutable `Requirement` tree via `RequirementEngine.parse`.
 
-- `public static Builder builder()` - Arranca el builder programatico universal; no requiere YML.
-- `static @Nullable ItemDef fromYml(SnYml yml, String path, Consumer<String> warn)` - (package-private) Parsea la definicion completa de la seccion en `path`; los warnings van a `warn`. Devuelve null si la seccion no existe (con WARN "item ignorado"). Defaults: droppable/moveable/placeable/tradeable/despawnable true, keep-on-death false, cooldown 0, locked/no-drop/no-manual-equip false, obtain-via "", shift-overrides-generic true.
-- `ItemStack buildStack(@Nullable Player viewer, Ph... phs)` - (package-private) Construye el stack fisico sin el tag de id: definicion YML re-lee su seccion de apariencia con viewer y phs; definicion programatica renderiza su `SnItem` capturado o clona su template; sin nada de eso devuelve `new ItemStack(Material.STONE)`.
-- `public boolean droppable()` - Si el jugador puede dropear el item.
-- `public boolean moveable()` - Si el item puede moverse en inventarios.
-- `public boolean placeable()` - Si el item puede colocarse como bloque.
-- `public boolean tradeable()` - Si el item puede tradearse con aldeanos.
-- `public boolean despawnable()` - Si el item despawnea al quedar en el suelo.
-- `public boolean keepOnDeath()` - Si el item se conserva al morir y se devuelve al respawnear.
-- `public int cooldownTicks()` - Cooldown entre interacciones en ticks; 0 lo desactiva (piso 0 en construccion).
-- `public boolean locked()` - Si el item esta clavado a su slot (modo locked).
-- `public boolean noDrop()` - Alias duro de `droppable: false`; bloquea drops y arrastres afuera.
-- `public boolean noManualEquip()` - Si el equipado manual a slots de armadura u offhand esta bloqueado.
-- `public ObtainMode obtainVia()` - Como puede entrar legitimamente en circulacion.
-- `public int durabilityMax()` - Maximo de durabilidad custom; 0 desactiva el sistema (piso 0).
-- `public int durabilityDamagePerUse()` - Durabilidad perdida por uso; piso 1.
-- `public String durabilityLoreFormat()` - Formato de la linea de lore con `%durability%`/`%max_durability%`; vacio la oculta.
-- `public List<String> breakActions()` - Acciones que corren cuando la durabilidad custom llega a 0.
-- `public List<String> rightClickActions()` - Acciones de click derecho.
-- `public List<String> leftClickActions()` - Acciones de click izquierdo.
-- `public List<String> shiftRightClickActions()` - Acciones de shift + click derecho.
-- `public List<String> shiftLeftClickActions()` - Acciones de shift + click izquierdo.
-- `public List<String> rightClickBlockActions()` - Acciones de click derecho sobre bloque.
-- `public List<String> rightClickAirActions()` - Acciones de click derecho al aire.
-- `public List<String> leftClickBlockActions()` - Acciones de click izquierdo sobre bloque.
-- `public List<String> leftClickAirActions()` - Acciones de click izquierdo al aire.
-- `public List<String> shiftRightClickBlockActions()` - Acciones de shift + click derecho sobre bloque.
-- `public List<String> shiftRightClickAirActions()` - Acciones de shift + click derecho al aire.
-- `public List<String> shiftLeftClickBlockActions()` - Acciones de shift + click izquierdo sobre bloque.
-- `public List<String> shiftLeftClickAirActions()` - Acciones de shift + click izquierdo al aire.
-- `public boolean shiftOverridesGeneric()` - Regla de prioridad entre una variante shift declarada y su variante base. True (default): en shift-click, la variante shift CON comportamiento corre EN LUGAR de la generica/posicional simple. False: corren AMBAS, la shift primero y la base despues, listas y callbacks en ese orden. Aplica igual a las shift-posicionales sobre las posicionales simples.
-- `public List<String> interactRequirements()` - Lineas crudas de requirements tal como se declararon.
-- `public Requirement interactRequirement()` - Arbol de requirements parseado una vez; nunca null.
-- `public List<String> denyActions()` - Acciones que corren cuando los requirements no se cumplen.
-- `public List<String> pickupActions()` - Acciones al recoger el item.
-- `public List<String> dropActions()` - Acciones al dropear el item.
-- `public List<String> heldEffectsMainhand()` - Lineas de efecto (`"EFFECT amplifier"`) aplicadas con el item en mano principal.
-- `public List<String> heldEffectsOffhand()` - Lineas de efecto aplicadas con el item en offhand.
-- `public List<String> heldEffectsArmor()` - Lineas de efecto aplicadas con el item puesto como armadura.
-- `public String equipmentSlotName()` - Nombre de slot declarado en la spec; vacio permite cualquier slot.
-- `public @Nullable EquipmentSlot equipmentSlot()` - Slot parseado, o null cuando no hay restriccion o el nombre era invalido.
-- `public @Nullable Recipe recipe()` - Receta de crafteo del item, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onRightClick()` - Callback Java de click derecho, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onLeftClick()` - Callback Java de click izquierdo, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClick()` - Callback Java de shift + click derecho, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClick()` - Callback Java de shift + click izquierdo, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onRightClickBlock()` - Callback Java de click derecho sobre bloque, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onRightClickAir()` - Callback Java de click derecho al aire, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onLeftClickBlock()` - Callback Java de click izquierdo sobre bloque, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onLeftClickAir()` - Callback Java de click izquierdo al aire, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickBlock()` - Callback Java de shift + click derecho sobre bloque, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickAir()` - Callback Java de shift + click derecho al aire, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickBlock()` - Callback Java de shift + click izquierdo sobre bloque, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickAir()` - Callback Java de shift + click izquierdo al aire, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onApply()` - Hook Java que corre despues de que `ItemRegistry.apply` inyecta el item, o null.
-- `public @Nullable BiConsumer<Player, ItemStack> onRemove()` - Hook Java que corre despues de que `ItemRegistry.unapply` remueve el item, o null.
+- `public static Builder builder()` - Starts the universal programmatic builder; requires no YML.
+- `static @Nullable ItemDef fromYml(SnYml yml, String path, Consumer<String> warn)` - (package-private) Parses the complete definition from the section at `path`; warnings go to `warn`. Returns null if the section does not exist (with an "item ignored" WARN). Defaults: droppable/moveable/placeable/tradeable/despawnable true, keep-on-death false, cooldown 0, locked/no-drop/no-manual-equip false, obtain-via "", shift-overrides-generic true.
+- `ItemStack buildStack(@Nullable Player viewer, Ph... phs)` - (package-private) Builds the physical stack without the id tag: a YML definition re-reads its appearance section with viewer and phs; a programmatic definition renders its captured `SnItem` or clones its template; with neither it returns `new ItemStack(Material.STONE)`.
+- `public boolean droppable()` - Whether the player can drop the item.
+- `public boolean moveable()` - Whether the item can move in inventories.
+- `public boolean placeable()` - Whether the item can be placed as a block.
+- `public boolean tradeable()` - Whether the item can be traded with villagers.
+- `public boolean despawnable()` - Whether the item despawns when left on the ground.
+- `public boolean keepOnDeath()` - Whether the item is kept on death and returned on respawn.
+- `public int cooldownTicks()` - Cooldown between interactions in ticks; 0 disables it (floored at 0 in construction).
+- `public boolean locked()` - Whether the item is pinned to its slot (locked mode).
+- `public boolean noDrop()` - Hard alias of `droppable: false`; blocks drops and drag-outs.
+- `public boolean noManualEquip()` - Whether manual equipping to armor slots or offhand is blocked.
+- `public ObtainMode obtainVia()` - How it can legitimately enter circulation.
+- `public int durabilityMax()` - Custom durability maximum; 0 disables the system (floored at 0).
+- `public int durabilityDamagePerUse()` - Durability lost per use; floored at 1.
+- `public String durabilityLoreFormat()` - Format of the lore line with `%durability%`/`%max_durability%`; empty hides it.
+- `public List<String> breakActions()` - Actions run when custom durability reaches 0.
+- `public List<String> rightClickActions()` - Right-click actions.
+- `public List<String> leftClickActions()` - Left-click actions.
+- `public List<String> shiftRightClickActions()` - Shift + right-click actions.
+- `public List<String> shiftLeftClickActions()` - Shift + left-click actions.
+- `public List<String> rightClickBlockActions()` - Right-click-on-block actions.
+- `public List<String> rightClickAirActions()` - Right-click-in-air actions.
+- `public List<String> leftClickBlockActions()` - Left-click-on-block actions.
+- `public List<String> leftClickAirActions()` - Left-click-in-air actions.
+- `public List<String> shiftRightClickBlockActions()` - Shift + right-click-on-block actions.
+- `public List<String> shiftRightClickAirActions()` - Shift + right-click-in-air actions.
+- `public List<String> shiftLeftClickBlockActions()` - Shift + left-click-on-block actions.
+- `public List<String> shiftLeftClickAirActions()` - Shift + left-click-in-air actions.
+- `public boolean shiftOverridesGeneric()` - Priority rule between a declared shift variant and its base variant. True (default): on shift-click, the shift variant WITH behavior runs INSTEAD of the plain generic/positional one. False: BOTH run, shift first and base after, lists and callbacks in that order. It applies equally to the shift-positionals over the plain positionals.
+- `public List<String> interactRequirements()` - Raw requirement lines as declared.
+- `public Requirement interactRequirement()` - Requirement tree parsed once; never null.
+- `public List<String> denyActions()` - Actions run when the requirements are not met.
+- `public List<String> pickupActions()` - Actions on picking up the item.
+- `public List<String> dropActions()` - Actions on dropping the item.
+- `public List<String> heldEffectsMainhand()` - Effect lines (`"EFFECT amplifier"`) applied with the item in the main hand.
+- `public List<String> heldEffectsOffhand()` - Effect lines applied with the item in the offhand.
+- `public List<String> heldEffectsArmor()` - Effect lines applied with the item worn as armor.
+- `public String equipmentSlotName()` - Slot name declared in the spec; empty allows any slot.
+- `public @Nullable EquipmentSlot equipmentSlot()` - Parsed slot, or null when there is no restriction or the name was invalid.
+- `public @Nullable Recipe recipe()` - The item's crafting recipe, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onRightClick()` - Right-click Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onLeftClick()` - Left-click Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClick()` - Shift + right-click Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClick()` - Shift + left-click Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onRightClickBlock()` - Right-click-on-block Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onRightClickAir()` - Right-click-in-air Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onLeftClickBlock()` - Left-click-on-block Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onLeftClickAir()` - Left-click-in-air Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickBlock()` - Shift + right-click-on-block Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftRightClickAir()` - Shift + right-click-in-air Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickBlock()` - Shift + left-click-on-block Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onShiftLeftClickAir()` - Shift + left-click-in-air Java callback, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onApply()` - Java hook running after `ItemRegistry.apply` injects the item, or null.
+- `public @Nullable BiConsumer<Player, ItemStack> onRemove()` - Java hook running after `ItemRegistry.unapply` removes the item, or null.
 
-#### ItemDef.Builder (clase interna publica)
+#### ItemDef.Builder (public inner class)
 
-Builder universal: cada campo de la spec es seteable programaticamente. La apariencia viene de un `SnItem` capturado (renderizado en cada create) o de un `ItemStack` template fijo (clonado en cada create); setear uno anula el otro.
+Universal builder: every spec field is settable programmatically. Appearance comes from a captured `SnItem` (rendered on each create) or a fixed `ItemStack` template (cloned on each create); setting one cancels the other.
 
-- `public Builder item(SnItem item)` - Apariencia desde un builder SnItem, renderizado fresco en cada create.
-- `public Builder item(ItemStack stack)` - Apariencia desde un stack fijo, clonado en cada create.
+- `public Builder item(SnItem item)` - Appearance from an SnItem builder, freshly rendered on each create.
+- `public Builder item(ItemStack stack)` - Appearance from a fixed stack, cloned on each create.
 - `public Builder droppable(boolean droppable)` - Default true.
 - `public Builder moveable(boolean moveable)` - Default true.
 - `public Builder placeable(boolean placeable)` - Default true.
 - `public Builder tradeable(boolean tradeable)` - Default true.
 - `public Builder despawnable(boolean despawnable)` - Default true.
 - `public Builder keepOnDeath(boolean keepOnDeath)` - Default false.
-- `public Builder keepOnDeath()` - Atajo de `keepOnDeath(true)`.
-- `public Builder locked()` - Clava el item a su slot: ninguno de los 7 vectores de extraccion (click, drag, equip manual, hand swap, drop, drops de muerte, movimiento por hopper) puede sacarlo. Los stacks creados llevan el flag PDC `snlib_locked`.
-- `public Builder locked(boolean locked)` - Version parametrizada; default false.
-- `public Builder noDrop()` - Bloquea dropear el item (alias duro de `droppable: false`). Los stacks creados llevan el flag PDC `snlib_no_drop`.
-- `public Builder noDrop(boolean noDrop)` - Version parametrizada; default false.
-- `public Builder noManualEquip()` - Bloquea el equipado manual a slots de armadura. Los stacks creados llevan el flag PDC `snlib_no_manual_equip`.
-- `public Builder noManualEquip(boolean noManualEquip)` - Version parametrizada; default false.
-- `public Builder obtainVia(ObtainMode mode)` - Como puede entrar en circulacion; default `UNRESTRICTED` (null tambien cae ahi). Los stacks restringidos llevan la key PDC `snlib_obtain_via`.
-- `public Builder cooldownTicks(int cooldownTicks)` - Cooldown entre interacciones en ticks; default 0 (desactivado).
-- `public Builder customDurability(int max, int damagePerUse, String loreFormat, List<String> breakActions)` - Durabilidad custom separada de la vanilla: `max` 0 la desactiva, `loreFormat` renderiza `%durability%`/`%max_durability%` y `breakActions` corre al llegar a 0.
-- `public Builder rightClickActions(List<String> actions)` - Acciones de click derecho.
-- `public Builder leftClickActions(List<String> actions)` - Acciones de click izquierdo.
-- `public Builder shiftRightClickActions(List<String> actions)` - Acciones de shift + click derecho.
-- `public Builder shiftLeftClickActions(List<String> actions)` - Acciones de shift + click izquierdo.
-- `public Builder rightClickBlockActions(List<String> actions)` - Acciones de click derecho sobre bloque.
-- `public Builder rightClickAirActions(List<String> actions)` - Acciones de click derecho al aire.
-- `public Builder leftClickBlockActions(List<String> actions)` - Acciones de click izquierdo sobre bloque.
-- `public Builder leftClickAirActions(List<String> actions)` - Acciones de click izquierdo al aire.
-- `public Builder shiftRightClickBlockActions(List<String> actions)` - Acciones de shift + click derecho sobre bloque.
-- `public Builder shiftRightClickAirActions(List<String> actions)` - Acciones de shift + click derecho al aire.
-- `public Builder shiftLeftClickBlockActions(List<String> actions)` - Acciones de shift + click izquierdo sobre bloque.
-- `public Builder shiftLeftClickAirActions(List<String> actions)` - Acciones de shift + click izquierdo al aire.
-- `public Builder shiftOverridesGeneric(boolean shiftOverridesGeneric)` - Regla de prioridad shift-sobre-base; default true (en shift-click la variante shift declarada REEMPLAZA a su base), false corre ambas (shift primero, base despues). Aplica tambien a las shift-posicionales sobre las posicionales simples.
-- `public Builder interactRequirements(List<String> requirements)` - Expresiones de requirement chequeadas antes de correr cualquier accion de interaccion.
-- `public Builder denyActions(List<String> actions)` - Acciones cuando los requirements no se cumplen.
-- `public Builder pickupActions(List<String> actions)` - Acciones al recoger el item.
-- `public Builder dropActions(List<String> actions)` - Acciones al dropear el item.
-- `public Builder heldEffectsMainhand(List<String> effects)` - Lineas de efecto (`"EFFECT amplifier"`) en mano principal.
-- `public Builder heldEffectsOffhand(List<String> effects)` - Lineas de efecto en offhand.
-- `public Builder heldEffectsArmor(List<String> effects)` - Lineas de efecto como armadura.
-- `public Builder equipmentSlot(String slotName)` - Restriccion de slot (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET).
-- `public Builder recipe(Recipe recipe)` - Receta de crafteo del item.
-- `public Builder onRightClick(BiConsumer<Player, ItemStack> callback)` - Callback Java de click derecho, corre junto a la lista de acciones YML.
-- `public Builder onLeftClick(BiConsumer<Player, ItemStack> callback)` - Callback Java de click izquierdo.
-- `public Builder onShiftRightClick(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click derecho.
-- `public Builder onShiftLeftClick(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click izquierdo.
-- `public Builder onRightClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de click derecho sobre bloque.
-- `public Builder onRightClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de click derecho al aire.
-- `public Builder onLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de click izquierdo sobre bloque.
-- `public Builder onLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de click izquierdo al aire.
-- `public Builder onShiftRightClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click derecho sobre bloque.
-- `public Builder onShiftRightClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click derecho al aire.
-- `public Builder onShiftLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click izquierdo sobre bloque.
-- `public Builder onShiftLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Callback Java de shift + click izquierdo al aire.
-- `public Builder onApply(BiConsumer<Player, ItemStack> callback)` - Hook Java con el stack inyectado despues de `ItemRegistry.apply`.
-- `public Builder onRemove(BiConsumer<Player, ItemStack> callback)` - Hook Java con el stack removido despues de `ItemRegistry.unapply`.
-- `public ItemDef build()` - Construye la definicion inmutable.
+- `public Builder keepOnDeath()` - Shortcut for `keepOnDeath(true)`.
+- `public Builder locked()` - Pins the item to its slot: none of the 7 extraction vectors (click, drag, manual equip, hand swap, drop, death drops, hopper movement) can take it out. Created stacks carry the PDC flag `snlib_locked`.
+- `public Builder locked(boolean locked)` - Parameterized version; default false.
+- `public Builder noDrop()` - Blocks dropping the item (hard alias of `droppable: false`). Created stacks carry the PDC flag `snlib_no_drop`.
+- `public Builder noDrop(boolean noDrop)` - Parameterized version; default false.
+- `public Builder noManualEquip()` - Blocks manual equipping to armor slots. Created stacks carry the PDC flag `snlib_no_manual_equip`.
+- `public Builder noManualEquip(boolean noManualEquip)` - Parameterized version; default false.
+- `public Builder obtainVia(ObtainMode mode)` - How it can enter circulation; default `UNRESTRICTED` (null also falls there). Restricted stacks carry the PDC key `snlib_obtain_via`.
+- `public Builder cooldownTicks(int cooldownTicks)` - Cooldown between interactions in ticks; default 0 (disabled).
+- `public Builder customDurability(int max, int damagePerUse, String loreFormat, List<String> breakActions)` - Custom durability separate from vanilla's: `max` 0 disables it, `loreFormat` renders `%durability%`/`%max_durability%` and `breakActions` run when reaching 0.
+- `public Builder rightClickActions(List<String> actions)` - Right-click actions.
+- `public Builder leftClickActions(List<String> actions)` - Left-click actions.
+- `public Builder shiftRightClickActions(List<String> actions)` - Shift + right-click actions.
+- `public Builder shiftLeftClickActions(List<String> actions)` - Shift + left-click actions.
+- `public Builder rightClickBlockActions(List<String> actions)` - Right-click-on-block actions.
+- `public Builder rightClickAirActions(List<String> actions)` - Right-click-in-air actions.
+- `public Builder leftClickBlockActions(List<String> actions)` - Left-click-on-block actions.
+- `public Builder leftClickAirActions(List<String> actions)` - Left-click-in-air actions.
+- `public Builder shiftRightClickBlockActions(List<String> actions)` - Shift + right-click-on-block actions.
+- `public Builder shiftRightClickAirActions(List<String> actions)` - Shift + right-click-in-air actions.
+- `public Builder shiftLeftClickBlockActions(List<String> actions)` - Shift + left-click-on-block actions.
+- `public Builder shiftLeftClickAirActions(List<String> actions)` - Shift + left-click-in-air actions.
+- `public Builder shiftOverridesGeneric(boolean shiftOverridesGeneric)` - Shift-over-base priority rule; default true (on shift-click the declared shift variant REPLACES its base), false runs both (shift first, base after). It also applies to the shift-positionals over the plain positionals.
+- `public Builder interactRequirements(List<String> requirements)` - Requirement expressions checked before running any interaction action.
+- `public Builder denyActions(List<String> actions)` - Actions when the requirements are not met.
+- `public Builder pickupActions(List<String> actions)` - Actions on picking up the item.
+- `public Builder dropActions(List<String> actions)` - Actions on dropping the item.
+- `public Builder heldEffectsMainhand(List<String> effects)` - Effect lines (`"EFFECT amplifier"`) in the main hand.
+- `public Builder heldEffectsOffhand(List<String> effects)` - Effect lines in the offhand.
+- `public Builder heldEffectsArmor(List<String> effects)` - Effect lines as armor.
+- `public Builder equipmentSlot(String slotName)` - Slot restriction (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET).
+- `public Builder recipe(Recipe recipe)` - The item's crafting recipe.
+- `public Builder onRightClick(BiConsumer<Player, ItemStack> callback)` - Right-click Java callback, runs alongside the YML action list.
+- `public Builder onLeftClick(BiConsumer<Player, ItemStack> callback)` - Left-click Java callback.
+- `public Builder onShiftRightClick(BiConsumer<Player, ItemStack> callback)` - Shift + right-click Java callback.
+- `public Builder onShiftLeftClick(BiConsumer<Player, ItemStack> callback)` - Shift + left-click Java callback.
+- `public Builder onRightClickBlock(BiConsumer<Player, ItemStack> callback)` - Right-click-on-block Java callback.
+- `public Builder onRightClickAir(BiConsumer<Player, ItemStack> callback)` - Right-click-in-air Java callback.
+- `public Builder onLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Left-click-on-block Java callback.
+- `public Builder onLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Left-click-in-air Java callback.
+- `public Builder onShiftRightClickBlock(BiConsumer<Player, ItemStack> callback)` - Shift + right-click-on-block Java callback.
+- `public Builder onShiftRightClickAir(BiConsumer<Player, ItemStack> callback)` - Shift + right-click-in-air Java callback.
+- `public Builder onShiftLeftClickBlock(BiConsumer<Player, ItemStack> callback)` - Shift + left-click-on-block Java callback.
+- `public Builder onShiftLeftClickAir(BiConsumer<Player, ItemStack> callback)` - Shift + left-click-in-air Java callback.
+- `public Builder onApply(BiConsumer<Player, ItemStack> callback)` - Java hook with the injected stack after `ItemRegistry.apply`.
+- `public Builder onRemove(BiConsumer<Player, ItemStack> callback)` - Java hook with the removed stack after `ItemRegistry.unapply`.
+- `public ItemDef build()` - Builds the immutable definition.
 
-#### ItemDef.Recipe (clase interna publica)
+#### ItemDef.Recipe (public inner class)
 
-Declaracion inmutable de receta de la spec dorada. Los nombres de material se guardan crudos y los resuelve lenientemente la capa de carga de recetas (RecipeLoader).
+Immutable recipe declaration of the golden spec. Material names are stored raw and resolved leniently by the recipe-loading layer (RecipeLoader).
 
-- `public static Recipe shaped(List<String> shape, Map<Character, String> ingredients)` - Receta SHAPED de hasta tres filas y mapa simbolo-a-material.
-- `public static Recipe shapeless(List<String> ingredients)` - Receta SHAPELESS de lista plana de materiales.
-- `public static Recipe cooking(String type, String input, double experience, int cookingTimeTicks)` - Receta de coccion: `type` es FURNACE, SMOKING, BLASTING o CAMPFIRE.
-- `public static Recipe stonecutting(String input)` - Receta STONECUTTING de un unico material de entrada.
-- `static @Nullable Recipe fromSection(ConfigurationSection sec, Consumer<String> warn)` - (package-private) Parsea la seccion `recipe:`; tipo vacio o desconocido devuelve null (con WARN para el desconocido). SHAPED exige shape e ingredients; SHAPELESS exige ingredients; los tipos de coccion exigen input (defaults: experience 0.0, cooking-time 200); STONECUTTING exige input.
-- `public String type()` - Tipo: SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE o STONECUTTING.
-- `public List<String> shape()` - Filas de shape de una SHAPED; vacia en otro caso.
-- `public Map<Character, String> ingredients()` - Mapa simbolo-a-material de una SHAPED; vacio en otro caso.
-- `public List<String> shapelessIngredients()` - Lista plana de materiales de una SHAPELESS; vacia en otro caso.
-- `public @Nullable String input()` - Material de entrada de recetas de coccion y stonecutting, o null.
-- `public double experience()` - Experiencia otorgada por recetas de coccion.
-- `public int cookingTime()` - Tiempo de coccion en ticks.
+- `public static Recipe shaped(List<String> shape, Map<Character, String> ingredients)` - SHAPED recipe of up to three rows and a symbol-to-material map.
+- `public static Recipe shapeless(List<String> ingredients)` - SHAPELESS recipe from a flat material list.
+- `public static Recipe cooking(String type, String input, double experience, int cookingTimeTicks)` - Cooking recipe: `type` is FURNACE, SMOKING, BLASTING or CAMPFIRE.
+- `public static Recipe stonecutting(String input)` - STONECUTTING recipe from a single input material.
+- `static @Nullable Recipe fromSection(ConfigurationSection sec, Consumer<String> warn)` - (package-private) Parses the `recipe:` section; an empty or unknown type returns null (with a WARN for the unknown). SHAPED demands shape and ingredients; SHAPELESS demands ingredients; the cooking types demand input (defaults: experience 0.0, cooking-time 200); STONECUTTING demands input.
+- `public String type()` - Type: SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE or STONECUTTING.
+- `public List<String> shape()` - Shape rows of a SHAPED; empty otherwise.
+- `public Map<Character, String> ingredients()` - Symbol-to-material map of a SHAPED; empty otherwise.
+- `public List<String> shapelessIngredients()` - Flat material list of a SHAPELESS; empty otherwise.
+- `public @Nullable String input()` - Input material of cooking and stonecutting recipes, or null.
+- `public double experience()` - Experience granted by cooking recipes.
+- `public int cookingTime()` - Cooking time in ticks.
 
-#### Notas y gotchas
-- El constructor privado de ItemDef clona el template (`b.template.clone()`) y copia defensivamente cada lista via `copy()` (que filtra nulls y devuelve `List.copyOf`), garantizando inmutabilidad real.
-- El Javadoc de la clase incluye el checklist campo-por-campo de la spec dorada indicando donde parsea y quien ejecuta cada bloque (SnItem/ItemPropertyListener/LockedItemListener/DurabilityTracker/ItemInteractListener/RequirementEngine/HeldEffectsTask/RecipeLoader).
+#### Notes and gotchas
+- ItemDef's private constructor clones the template (`b.template.clone()`) and defensively copies each list via `copy()` (which filters nulls and returns `List.copyOf`), guaranteeing real immutability.
+- The class Javadoc includes the field-by-field checklist of the golden spec noting where each block parses and who executes it (SnItem/ItemPropertyListener/LockedItemListener/DurabilityTracker/ItemInteractListener/RequirementEngine/HeldEffectsTask/RecipeLoader).
 
 ### ItemRegistry
 `src/main/java/com/sn/lib/item/ItemRegistry.java`
 
-Registro de definiciones de items por contexto, alcanzado via `sn.items()`. Funciona con CERO archivos: definiciones 100% programaticas via `ItemDef.builder()`, desde una seccion YML via `register(String, SnYml)`, o en bloque desde el archivo de items via `loadAll`. Los stacks creados se taggean con la key PDC namespaceada por owner `snlib_item_id` (via `TagIo`), que es como el listener compartido resuelve cualquier stack de vuelta a su contexto duenio. El constructor crea el `EquipmentBackup`, el `RecipeLoader` y el `HeldEffectsTask` del contexto y se trackea en `ItemPropertyListener.track`.
+Per-context item definition registry, reached via `sn.items()`. It works with ZERO files: 100% programmatic definitions via `ItemDef.builder()`, from a YML section via `register(String, SnYml)`, or in bulk from the items file via `loadAll`. Created stacks are tagged with the owner-namespaced PDC key `snlib_item_id` (via `TagIo`), which is how the shared listener resolves any stack back to its owning context. The constructor creates the context's `EquipmentBackup`, `RecipeLoader` and `HeldEffectsTask` and tracks itself in `ItemPropertyListener.track`.
 
-Constantes publicas:
-- `public static final String TAG_KEY = "snlib_item_id"` - Key PDC con el id del item; namespaceada por plugin owner via TagIo.
-- `public static final String TAG_LOCKED = "snlib_locked"` - Flag PDC de stacks de una definicion locked.
-- `public static final String TAG_NO_DROP = "snlib_no_drop"` - Flag PDC de stacks no-drop.
-- `public static final String TAG_NO_MANUAL_EQUIP = "snlib_no_manual_equip"` - Flag PDC de stacks no-manual-equip.
-- `public static final String TAG_KEEP_ON_DEATH = "snlib_keep_on_death"` - Flag PDC de stacks keep-on-death.
-- `public static final String TAG_OBTAIN_VIA = "snlib_obtain_via"` - Key PDC con el modo de obtencion de definiciones restringidas.
+Public constants:
+- `public static final String TAG_KEY = "snlib_item_id"` - PDC key with the item id; namespaced by owning plugin via TagIo.
+- `public static final String TAG_LOCKED = "snlib_locked"` - PDC flag of stacks of a locked definition.
+- `public static final String TAG_NO_DROP = "snlib_no_drop"` - PDC flag of no-drop stacks.
+- `public static final String TAG_NO_MANUAL_EQUIP = "snlib_no_manual_equip"` - PDC flag of no-manual-equip stacks.
+- `public static final String TAG_KEEP_ON_DEATH = "snlib_keep_on_death"` - PDC flag of keep-on-death stacks.
+- `public static final String TAG_OBTAIN_VIA = "snlib_obtain_via"` - PDC key with the obtain mode of restricted definitions.
 
-Metodos:
-- `public ItemRegistry(Sn ctx)` - Crea el registro del contexto dado y lo trackea para la resolucion de owner.
-- `public void register(String id, SnYml yml)` - Parsea y registra la definicion de la seccion top-level `id` del yml; seccion faltante loguea UN WARN y no registra nada. Re-registrar un id reemplaza la definicion previa.
-- `public void register(String id, ItemDef def)` - Registra una definicion bajo `id`, reemplazando la previa. Id o def nulos WARNean y se ignoran. Una receta declarada se agrega al server bajo `snlib_recipe_<id>` (con lookup previo, asi re-registros nunca lanzan) y las lineas de held-effects arrancan el timer per-contexto de forma lazy.
-- `public void loadAll(SnYml itemsFile)` - Registra cada seccion top-level de `itemsFile` como una definicion; guarda la fuente para `reload()`.
-- `public void cancelTasks()` - Cancela las tareas per-contexto del modulo (el timer de held-effects); el flujo de reload las reinicia despues de re-leer las definiciones.
-- `public void reload()` - Re-registra cada definicion del archivo cargado por `loadAll` (parse fresco del yml recargado) y reinicia el timer de held-effects si queda alguna definicion trackeada. Las definiciones programaticas quedan registradas intactas.
-- `public void reloadRecipes()` - Ciclo de recetas del flujo de reload, SOLO main thread: remueve del server cada key de receta de este owner y re-agrega las recetas de cada definicion registrada.
-- `public @Nullable ItemDef def(String id)` - Definicion registrada bajo `id`, o null.
-- `public @Nullable ItemStack create(String id, @Nullable Player viewer, Ph... phs)` - Construye el stack fisico de `id`, taggeado con `snlib_item_id` namespaceado por owner, mas los flags de modo locked que declare la definicion. Los placeholders de apariencia resuelven contra `viewer` mas los locales `phs`. Definiciones con durabilidad custom salen sembradas a durabilidad completa con su linea de lore renderizada. Un id desconocido loguea UN WARN y devuelve null.
-- `public boolean apply(Player player, String id, EquipmentSlot slot)` - Inyecta el item registrado bajo `id` en el slot de equipamiento del jugador (el camino comando/API de `obtain-via: COMMAND_ONLY`). El item real desplazado se respalda write-through en el equipment backup, cuya restauracion corre en quit y en shutdown. Dispara un `SnArmourEquipEvent` cancelable (`EquipMethod.PICK_DROP`, marcado programatico via `LockedItemListener.markProgrammatic`) ANTES de tocar el slot y el hook `onApply` de la definicion despues. Devuelve true cuando el item quedo equipado.
-- `public boolean unapply(Player player, String id)` - Remueve cada instancia aplicada de `id` de los slots de equipamiento del jugador (los 6 de `PLAYER_SLOTS`), restaurando el item real respaldado de cada slot (null lo vacia). Dispara un `SnArmourEquipEvent` cancelable por slot y el hook `onRemove` despues de cada remocion. Devuelve true cuando al menos un slot fue restaurado.
-- `public int durability(ItemStack item)` - Durabilidad custom restante del stack; un stack sin tag de un item con durabilidad cuenta como llena. Devuelve -1 cuando el stack no fue creado por este contexto o su definicion no tiene durabilidad custom.
-- `public int damage(ItemStack item, int amount)` - Resta `amount` de durabilidad custom (piso 0), actualizando el tag y re-renderizando la linea de lore. Devuelve la durabilidad restante (0 = roto), o -1 si el stack no es de este contexto o no tiene durabilidad custom. Esta sobrecarga sin jugador NO corre break-actions ni remueve el stack; para una rotura programatica con jugador esta `damage(Player, ItemStack, int)`.
-- `public int damage(Player user, ItemStack item, int amount)` - Como `damage(ItemStack, int)` pero cuando ESTA llamada rompe el stack (estaba vivo, `before > 0`, y llego a 0) ademas corre las break-actions de la definicion y remueve el stack del inventario del jugador por IDENTIDAD via `DurabilityTracker.breakFor` (manos primero, despues los 36 slots de storage); si el caller paso una copia se loguea en debug y no se remueve nada. Un stack ya roto no re-dispara el flujo de rotura. `user` null delega en la sobrecarga de 2 args.
-- `public @Nullable String idOf(ItemStack item)` - Id registrado del stack cuando este contexto lo creo, o null.
-- `public boolean is(ItemStack item, String id)` - Si el stack es instancia del item registrado bajo `id`.
-- `public void give(Player player, String id, int amount)` - Da `amount` unidades del item, partiendo en chunks de max-stack; lo que no entra se dropea a los pies del jugador (via `InvUtil.giveItems`).
+Methods:
+- `public ItemRegistry(Sn ctx)` - Creates the registry of the given context and tracks it for owner resolution.
+- `public void register(String id, SnYml yml)` - Parses and registers the definition from the yml's top-level section `id`; a missing section logs ONE WARN and registers nothing. Re-registering an id replaces the previous definition.
+- `public void register(String id, ItemDef def)` - Registers a definition under `id`, replacing the previous one. Null id or def WARN and are ignored. A declared recipe adds to the server under `snlib_recipe_<id>` (with a prior lookup, so re-registrations never throw) and held-effects lines lazily start the per-context timer.
+- `public void loadAll(SnYml itemsFile)` - Registers every top-level section of `itemsFile` as a definition; stores the source for `reload()`.
+- `public void cancelTasks()` - Cancels the module's per-context tasks (the held-effects timer); the reload flow restarts them after re-reading the definitions.
+- `public void reload()` - Re-registers every definition of the file loaded by `loadAll` (fresh parse of the reloaded yml) and restarts the held-effects timer if any tracked definition remains. Programmatic definitions stay registered untouched.
+- `public void reloadRecipes()` - Recipe cycle of the reload flow, main thread ONLY: removes every recipe key of this owner from the server and re-adds the recipes of every registered definition.
+- `public @Nullable ItemDef def(String id)` - Definition registered under `id`, or null.
+- `public @Nullable ItemStack create(String id, @Nullable Player viewer, Ph... phs)` - Builds the physical stack of `id`, tagged with the owner-namespaced `snlib_item_id`, plus whatever locked-mode flags the definition declares. Appearance placeholders resolve against `viewer` plus the locals `phs`. Definitions with custom durability come out seeded at full durability with their lore line rendered. An unknown id logs ONE WARN and returns null.
+- `public boolean apply(Player player, String id, EquipmentSlot slot)` - Injects the item registered under `id` into the player's equipment slot (the command/API path of `obtain-via: COMMAND_ONLY`). The displaced real item is backed up write-through in the equipment backup, whose restoration runs on quit and on shutdown. It fires a cancelable `SnArmourEquipEvent` (`EquipMethod.PICK_DROP`, marked programmatic via `LockedItemListener.markProgrammatic`) BEFORE touching the slot and the definition's `onApply` hook after. Returns true when the item ended up equipped.
+- `public boolean unapply(Player player, String id)` - Removes every applied instance of `id` from the player's equipment slots (the 6 of `PLAYER_SLOTS`), restoring each slot's backed-up real item (null empties it). It fires a cancelable `SnArmourEquipEvent` per slot and the `onRemove` hook after each removal. Returns true when at least one slot was restored.
+- `public int durability(ItemStack item)` - Remaining custom durability of the stack; a tagless stack of a durability item counts as full. Returns -1 when the stack was not created by this context or its definition has no custom durability.
+- `public int damage(ItemStack item, int amount)` - Subtracts `amount` of custom durability (floored at 0), updating the tag and re-rendering the lore line. Returns the remaining durability (0 = broken), or -1 if the stack is not from this context or has no custom durability. This playerless overload does NOT run break-actions or remove the stack; for a programmatic break with a player there is `damage(Player, ItemStack, int)`.
+- `public int damage(Player user, ItemStack item, int amount)` - Like `damage(ItemStack, int)` but when THIS call breaks the stack (it was alive, `before > 0`, and reached 0) it additionally runs the definition's break-actions and removes the stack from the player's inventory by IDENTITY via `DurabilityTracker.breakFor` (hands first, then the 36 storage slots); if the caller passed a copy it logs to debug and removes nothing. An already-broken stack does not re-fire the break flow. A null `user` delegates to the 2-arg overload.
+- `public @Nullable String idOf(ItemStack item)` - The stack's registered id when this context created it, or null.
+- `public boolean is(ItemStack item, String id)` - Whether the stack is an instance of the item registered under `id`.
+- `public void give(Player player, String id, int amount)` - Gives `amount` units of the item, splitting into max-stack chunks; whatever does not fit drops at the player's feet (via `InvUtil.giveItems`).
 
-#### Notas y gotchas
-- `PLAYER_SLOTS` es una lista fija de los 6 slots de jugador (HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET): mantiene abierto el enum fuente (no itera `EquipmentSlot.values()`, que en versiones nuevas incluye BODY/SADDLE).
-- `defs` es un `ConcurrentHashMap` y `itemsSource` es volatile; el registro tolera lecturas concurrentes.
-- `apply` normaliza el item desplazado (null si es aire) antes de pasarlo al evento; `unapply` usa `backup.peek` para el evento y recien `backup.take` si el evento no fue cancelado.
+#### Notes and gotchas
+- `PLAYER_SLOTS` is a fixed list of the 6 player slots (HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET): it keeps the source enum open (it does not iterate `EquipmentSlot.values()`, which in newer versions includes BODY/SADDLE).
+- `defs` is a `ConcurrentHashMap` and `itemsSource` is volatile; the registry tolerates concurrent reads.
+- `apply` normalizes the displaced item (null if air) before passing it to the event; `unapply` uses `backup.peek` for the event and only `backup.take` if the event was not cancelled.
 
 ### ItemSerializer
 `src/main/java/com/sn/lib/item/ItemSerializer.java`
 
-Serializacion binaria de stacks que sobrevive amounts over-stacked. `ItemStack.serializeAsBytes()` clampa el amount al max stack size del material, perdiendo silenciosamente los amounts over-stacked (gotcha de SnLootBoxes). Por eso el amount real se escribe como prefijo big-endian de 4 bytes y el cuerpo se serializa con amount 1, asi `deserialize` restaura el amount original exacto. Clase final con constructor privado (solo estaticos).
+Binary stack serialization that survives over-stacked amounts. `ItemStack.serializeAsBytes()` clamps the amount to the material's max stack size, silently losing over-stacked amounts (the SnLootBoxes gotcha). Therefore the real amount is written as a 4-byte big-endian prefix and the body serializes with amount 1, so `deserialize` restores the exact original amount. Final class with a private constructor (statics only).
 
-- `public static byte[] serialize(ItemStack stack)` - Serializa a bytes: prefijo de amount de 4 bytes mas la forma byte de Paper de la copia con amount 1. Lanza `IllegalArgumentException` con stacks null o AIR, que no tienen forma byte.
-- `public static ItemStack deserialize(byte[] data)` - Restaura un stack de la salida de `serialize`, reaplicando el amount real aun cuando excede el max stack size del material (piso 1). Lanza `IllegalArgumentException` si data es null o tiene 4 bytes o menos.
-- `public static String serializeBase64(ItemStack stack)` - Forma Base64 de `serialize`, para almacenamiento en texto (yml, columnas de base de datos).
-- `public static ItemStack deserializeBase64(String data)` - Inversa de `serializeBase64`; lanza `IllegalArgumentException` con data null o en blanco.
+- `public static byte[] serialize(ItemStack stack)` - Serializes to bytes: a 4-byte amount prefix plus Paper's byte form of the amount-1 copy. Throws `IllegalArgumentException` on null or AIR stacks, which have no byte form.
+- `public static ItemStack deserialize(byte[] data)` - Restores a stack from `serialize`'s output, reapplying the real amount even when it exceeds the material's max stack size (floored at 1). Throws `IllegalArgumentException` if data is null or 4 bytes or fewer.
+- `public static String serializeBase64(ItemStack stack)` - Base64 form of `serialize`, for text storage (yml, database columns).
+- `public static ItemStack deserializeBase64(String data)` - Inverse of `serializeBase64`; throws `IllegalArgumentException` on null or blank data.
 
 ### ObtainMode
 `src/main/java/com/sn/lib/item/ObtainMode.java`
 
-Enum de como un item registrado puede entrar legitimamente en circulacion (campo de spec `obtain-via`).
+Enum of how a registered item may legitimately enter circulation (spec field `obtain-via`).
 
-Valores:
-- `UNRESTRICTED` - Sin restriccion; todo camino de adquisicion permitido. Default de la spec (`""`).
-- `COMMAND_ONLY` - Solo via comando o API del plugin; los demas caminos (crafteo, pickup de mobs y similares) los cancela la capa de enforcement de items locked.
+Values:
+- `UNRESTRICTED` - No restriction; every acquisition path allowed. Spec default (`""`).
+- `COMMAND_ONLY` - Only via the plugin's command or API; the other paths (crafting, mob pickup and similar) are cancelled by the locked-items enforcement layer.
 
-Metodos:
-- `static ObtainMode parse(@Nullable String raw, @Nullable Consumer<String> warn)` - (package-private) Parse leniente: null o blank da `UNRESTRICTED`; normaliza mayusculas y `-` a `_`; un valor desconocido manda UN warning a `warn` y tambien da `UNRESTRICTED`.
+Methods:
+- `static ObtainMode parse(@Nullable String raw, @Nullable Consumer<String> warn)` - (package-private) Lenient parse: null or blank yields `UNRESTRICTED`; normalizes uppercase and `-` to `_`; an unknown value sends ONE warning to `warn` and also yields `UNRESTRICTED`.
 
 ### ItemPropertyListener (internal)
 `src/main/java/com/sn/lib/item/internal/ItemPropertyListener.java`
 
-Listener unico compartido, propiedad de SnLib, que enforcea las propiedades de comportamiento de los items registrados (droppable/no-drop, moveable, placeable, tradeable, despawnable, keep-on-death), la restriccion best-effort de `equipment-slot` (click directo a slot incompatible, auto-equip por shift-click y equips por dispenser; el vector de auto-equip por click derecho vive en el interact listener) y corre las listas de acciones de pickup/drop. Inscripto en el ListenerHub; el `registerEvents` ocurre UNICAMENTE en el bootstrap de SnLibPlugin. La resolucion de owner es por PDC: el namespace de la key `snlib_item_id` mapea de vuelta al plugin consumidor y su `ItemRegistry` trackeado en un `TenantRegistry` multi-tenant estatico (el sweeper de tenants borra la key entera al deshabilitarse el owner). Contrato de hot-path: este listener ve CADA evento de inventario del server de todos los consumidores, asi que cada handler hace quick-exit en capas: null/air primero, despues `hasItemMeta()`, despues el tag PDC, despues la logica. `ItemSpawnEvent` filtra por `hasItemMeta()` antes que nada.
+Single shared listener, owned by SnLib, that enforces the behavior properties of registered items (droppable/no-drop, moveable, placeable, tradeable, despawnable, keep-on-death), the best-effort `equipment-slot` restriction (direct click to an incompatible slot, shift-click auto-equip and dispenser equips; the right-click auto-equip vector lives in the interact listener) and runs the pickup/drop action lists. Enrolled in the ListenerHub; the `registerEvents` happens SOLELY in the SnLibPlugin bootstrap. Owner resolution is via PDC: the namespace of the `snlib_item_id` key maps back to the consumer plugin and its `ItemRegistry` tracked in a static multi-tenant `TenantRegistry` (the tenant sweeper deletes the whole key when the owner disables). Hot-path contract: this listener sees EVERY inventory event of the server across all consumers, so each handler quick-exits in layers: null/air first, then `hasItemMeta()`, then the PDC tag, then the logic. `ItemSpawnEvent` filters by `hasItemMeta()` before anything else.
 
-- `public static void track(JavaPlugin owner, ItemRegistry registry)` - Trackea el registro de un contexto para que los tags PDC resuelvan a su owner.
-- `public void onDrop(PlayerDropItemEvent event)` - Cancela el drop si `!droppable()` o `noDrop()`; si es dropeable corre las drop-actions.
-- `public void onInventoryClick(InventoryClickEvent event)` - Cancela el click si el item actual, el cursor, el hotbar (NUMBER_KEY via `getHotbarButton`, SWAP_OFFHAND via el item de offhand) o el enforcement de equipment-slot lo deniegan (no-moveable, o no-tradeable dentro del inventario MERCHANT incluyendo `MOVE_TO_OTHER_INVENTORY`).
-- `public void onDispenseArmor(BlockDispenseArmorEvent event)` - Vector dispenser del enforcement de equipment-slot: cancela equips cuyo destino vanilla no coincide con el slot declarado.
-- `public void onInventoryDrag(InventoryDragEvent event)` - Cancela el drag si `!moveable()`, o si `!tradeable()` y algun raw slot cae en el top de un inventario MERCHANT.
-- `public void onBlockPlace(BlockPlaceEvent event)` - Cancela la colocacion si `!placeable()`.
-- `public void onDeath(PlayerDeathEvent event)` - (priority HIGH) Saca de los drops los stacks keep-on-death y los guarda en el stash `keptOnDeath` por UUID; respeta `getKeepInventory()`.
-- `public void onRespawn(PlayerRespawnEvent event)` - (priority MONITOR) Devuelve el stash keep-on-death al jugador via `InvUtil.giveItems`.
-- `public void onItemSpawn(ItemSpawnEvent event)` - Si el item spawneado no es despawnable, setea `setUnlimitedLifetime(true)` en la entidad.
-- `public void onPickup(EntityPickupItemEvent event)` - Cancela el pickup por entidades no-jugador de items registrados; para jugadores corre las pickup-actions.
-- `record Match(JavaPlugin owner, ItemRegistry registry, ItemDef def, String id)` - (package-private) Item registrado detras de un stack: plugin owner, su registro, definicion e id.
-- `static @Nullable Match match(@Nullable ItemStack item)` - (package-private) Resolucion con quick-exit en capas: null/air, `hasItemMeta`, tag PDC (recorre las keys buscando `snlib_item_id`), lookup en el registro del owner cuyo nombre en minusculas coincide con el namespace.
-- `static @Nullable EquipmentSlot vanillaEquipSlot(@Nullable ItemStack stack)` - (package-private) Destino de auto-equip vanilla del material, matcheado por sufijo de nombre (`_HELMET`/`_HEAD`/`_SKULL`/`CARVED_PUMPKIN` -> HEAD, `_CHESTPLATE`/`ELYTRA` -> CHEST, `_LEGGINGS` -> LEGS, `_BOOTS` -> FEET); Material tratado como enum abierto, nunca switch sobre sus constantes.
+- `public static void track(JavaPlugin owner, ItemRegistry registry)` - Tracks a context's registry so PDC tags resolve to their owner.
+- `public void onDrop(PlayerDropItemEvent event)` - Cancels the drop if `!droppable()` or `noDrop()`; if droppable it runs the drop-actions.
+- `public void onInventoryClick(InventoryClickEvent event)` - Cancels the click if the current item, the cursor, the hotbar (NUMBER_KEY via `getHotbarButton`, SWAP_OFFHAND via the offhand item) or the equipment-slot enforcement deny it (non-moveable, or non-tradeable inside the MERCHANT inventory including `MOVE_TO_OTHER_INVENTORY`).
+- `public void onDispenseArmor(BlockDispenseArmorEvent event)` - Dispenser vector of the equipment-slot enforcement: cancels equips whose vanilla destination does not match the declared slot.
+- `public void onInventoryDrag(InventoryDragEvent event)` - Cancels the drag if `!moveable()`, or if `!tradeable()` and some raw slot falls in the top of a MERCHANT inventory.
+- `public void onBlockPlace(BlockPlaceEvent event)` - Cancels placement if `!placeable()`.
+- `public void onDeath(PlayerDeathEvent event)` - (priority HIGH) Takes keep-on-death stacks out of the drops and stores them in the `keptOnDeath` stash by UUID; respects `getKeepInventory()`.
+- `public void onRespawn(PlayerRespawnEvent event)` - (priority MONITOR) Returns the keep-on-death stash to the player via `InvUtil.giveItems`.
+- `public void onItemSpawn(ItemSpawnEvent event)` - If the spawned item is not despawnable, sets `setUnlimitedLifetime(true)` on the entity.
+- `public void onPickup(EntityPickupItemEvent event)` - Cancels pickups of registered items by non-player entities; for players it runs the pickup-actions.
+- `record Match(JavaPlugin owner, ItemRegistry registry, ItemDef def, String id)` - (package-private) The registered item behind a stack: owning plugin, its registry, definition and id.
+- `static @Nullable Match match(@Nullable ItemStack item)` - (package-private) Layered quick-exit resolution: null/air, `hasItemMeta`, PDC tag (walks the keys looking for `snlib_item_id`), lookup in the registry of the owner whose lowercased name matches the namespace.
+- `static @Nullable EquipmentSlot vanillaEquipSlot(@Nullable ItemStack stack)` - (package-private) The material's vanilla auto-equip destination, matched by name suffix (`_HELMET`/`_HEAD`/`_SKULL`/`CARVED_PUMPKIN` -> HEAD, `_CHESTPLATE`/`ELYTRA` -> CHEST, `_LEGGINGS` -> LEGS, `_BOOTS` -> FEET); Material treated as an open enum, never a switch over its constants.
 
-#### Notas y gotchas
-- El enforcement de equipment-slot en clicks solo aplica en la vista de inventario propio (`InventoryType.CRAFTING`); los raw slots 5-8 son armadura y el 45 es offhand.
-- Las acciones se corren via `SnLib.context(match.owner()).actions().run(...)`: el contexto del OWNER del item, no el del server.
-- El stash `keptOnDeath` esta acotado por jugadores muertos esperando respawn; no es data per-consumidor (por eso el estado de instancia esta permitido).
+#### Notes and gotchas
+- The equipment-slot click enforcement only applies in the own-inventory view (`InventoryType.CRAFTING`); raw slots 5-8 are armor and 45 is the offhand.
+- Actions run via `SnLib.context(match.owner()).actions().run(...)`: the item's OWNER context, not the server's.
+- The `keptOnDeath` stash is bounded by dead players awaiting respawn; it is not per-consumer data (which is why the instance state is allowed).
 
 ### ItemInteractListener (internal)
 `src/main/java/com/sn/lib/item/internal/ItemInteractListener.java`
 
-Listener unico compartido, propiedad de SnLib, que despacha las interacciones de items. Inscripto en el ListenerHub; `registerEvents` UNICAMENTE en el bootstrap de SnLibPlugin. Solo consulta `PlayerInteractEvent.getItem()` y `getHand()`, asi cada despacho pertenece al evento cuya mano lleva el item y un dual-fire (mano principal + offhand) nunca corre doble un item. Mismo contrato de hot-path con quick-exit en capas.
+Single shared listener, owned by SnLib, that dispatches item interactions. Enrolled in the ListenerHub; `registerEvents` SOLELY in the SnLibPlugin bootstrap. It only consults `PlayerInteractEvent.getItem()` and `getHand()`, so each dispatch belongs to the event whose hand carries the item and a dual-fire (main hand + offhand) never runs an item twice. Same hot-path contract with layered quick exits.
 
-- `public void onInteract(PlayerInteractEvent event)` - (priority HIGH) Flujo por interaccion: (0) ignora `Action.PHYSICAL`, item null/air/sin meta, mano null, stack sin match o contexto caido; un auto-equip incompatible denegado (vector click derecho del equipment-slot) CORTA todo el flujo con return (sin cooldown, sin requirement, sin dispatch, sin durabilidad); (1) el cooldown del item (categoria `"item:" + id` via `ctx.cooldowns().tryUseTicks`) retorna silenciosamente mientras enfria; (2) los interact-requirements evaluan con un resolver de locals mas PAPI; si no se cumplen, las deny-actions corren con el `ActionContext` REAL de la interaccion (ClickType + superficie BLOCK/AIR), asi los guards de click y de superficie dentro de esa lista evaluan igual que en un click de GUI (fix de comportamiento del changelog 1.1.0: antes corrian sin contexto de click y esos guards omitian su linea en silencio; lineas guardadas antes muertas ahora corren cuando matchean); (3) despachan las variantes que correspondan, cada una corriendo su lista de acciones YML por el ActionEngine Y su callback Java. Un uso exitoso resta durabilidad custom despues; a 0 el flujo de rotura pasa SIEMPRE por `DurabilityTracker.breakFor(..., context)` con el contexto real (mismo fix), corre las break-actions y vacia la mano que uso el item.
+- `public void onInteract(PlayerInteractEvent event)` - (priority HIGH) Per-interaction flow: (0) ignores `Action.PHYSICAL`, null/air/meta-less items, null hand, unmatched stack or a downed context; a denied incompatible auto-equip (the equipment-slot right-click vector) CUTS the whole flow with a return (no cooldown, no requirement, no dispatch, no durability); (1) the item's cooldown (category `"item:" + id` via `ctx.cooldowns().tryUseTicks`) returns silently while cooling; (2) the interact-requirements evaluate with a locals-plus-PAPI resolver; if unmet, the deny-actions run with the REAL `ActionContext` of the interaction (ClickType + BLOCK/AIR surface), so click and surface guards inside that list evaluate just like in a GUI click (behavior fix of the 1.1.0 changelog: they used to run without click context and those guards silently skipped their line; previously dead guarded lines now run when they match); (3) the applicable variants dispatch, each running its YML action list through the ActionEngine AND its Java callback. A successful use subtracts custom durability afterwards; at 0 the break flow ALWAYS goes through `DurabilityTracker.breakFor(..., context)` with the real context (same fix), runs the break-actions and empties the hand that used the item.
 
-#### Logica interna
-- `dispatch`: corre el par generico y despues el par posicional block/air de la superficie clickeada, que corre EN ADICION al generico. Las 12 variantes se emparejan bajo UNA regla uniforme de prioridad shift (`runPair`): en shift-click, una variante shift CON comportamiento (lista no vacia O callback) corre EN LUGAR de su variante base; sin comportamiento cae a la base; con `shift-overrides-generic: false` corren AMBAS (shift primero, base despues) en las dos fases; sin shift solo corre la base de cada par. El `ActionContext` lleva el `ClickType` calculado (RIGHT/LEFT/SHIFT_RIGHT/SHIFT_LEFT segun `player.isSneaking()`) y el `ClickSurface` (BLOCK/AIR segun la `Action` del evento).
-- `denyIncompatibleAutoEquip`: en right-click, si el destino de auto-equip vanilla del material no es el slot declarado, setea `setUseItemInHand(Event.Result.DENY)` y devuelve true; `onInteract` retorna ahi mismo, asi el equip denegado no consume cooldown, no gasta durabilidad y no corre ninguna accion ni callback. Devuelve false en todos los otros caminos (no right-click, sin slot declarado, slot vanilla compatible o null).
-- `applyDurability`: resta `damage-per-use` via `DurabilityTracker.damage`; si queda > 0 re-setea el item en la mano usada, si llega a 0 delega en `DurabilityTracker.breakFor(ctx, def, player, item, hand, context)` con el contexto real de la interaccion, asi los guards de click/superficie dentro de las break-actions evaluan (corre las break-actions y vacia esa mano).
+#### Internal logic
+- `dispatch`: runs the generic pair and then the positional block/air pair of the clicked surface, which runs IN ADDITION to the generic. The 12 variants pair up under ONE uniform shift priority rule (`runPair`): on shift-click, a shift variant WITH behavior (non-empty list OR callback) runs INSTEAD of its base variant; without behavior it falls to the base; with `shift-overrides-generic: false` BOTH run (shift first, base after) in both phases; without shift only each pair's base runs. The `ActionContext` carries the computed `ClickType` (RIGHT/LEFT/SHIFT_RIGHT/SHIFT_LEFT per `player.isSneaking()`) and the `ClickSurface` (BLOCK/AIR per the event's `Action`).
+- `denyIncompatibleAutoEquip`: on right-click, if the material's vanilla auto-equip destination is not the declared slot, it sets `setUseItemInHand(Event.Result.DENY)` and returns true; `onInteract` returns right there, so the denied equip consumes no cooldown, spends no durability and runs no action or callback. Returns false on all other paths (not right-click, no declared slot, compatible or null vanilla slot).
+- `applyDurability`: subtracts `damage-per-use` via `DurabilityTracker.damage`; if > 0 remains it re-sets the item in the used hand, if it reaches 0 it delegates to `DurabilityTracker.breakFor(ctx, def, player, item, hand, context)` with the interaction's real context, so click/surface guards inside the break-actions evaluate (runs the break-actions and empties that hand).
 
 ### DurabilityTracker (internal)
 `src/main/java/com/sn/lib/item/internal/DurabilityTracker.java`
 
-Estado de durabilidad custom de items registrados, separado del danio vanilla. La durabilidad restante vive en la key PDC namespaceada por owner `snlib_durability` (int), sembrada a `custom-durability.max` al crear el stack. Cada aplicacion de danio re-renderiza la linea `lore-format` con `%durability%`/`%max_durability%` resueltos; la posicion de la linea se recuerda en una segunda key PDC int (`snlib_durability_line`, privada) para que los re-renders reemplacen in-place. Llegar a 0 se reporta al caller: el flujo de rotura (break-actions + remocion del stack) esta centralizado en `breakFor`, compartido por el interact listener y por la sobrecarga programatica `ItemRegistry.damage(Player, ItemStack, int)`. Clase final de solo estaticos.
+Custom durability state of registered items, separate from vanilla damage. The remaining durability lives in the owner-namespaced PDC key `snlib_durability` (int), seeded to `custom-durability.max` when the stack is created. Each damage application re-renders the `lore-format` line with `%durability%`/`%max_durability%` resolved; the line's position is remembered in a second int PDC key (`snlib_durability_line`, private) so re-renders replace in place. Reaching 0 is reported to the caller: the break flow (break-actions + stack removal) is centralized in `breakFor`, shared by the interact listener and the programmatic overload `ItemRegistry.damage(Player, ItemStack, int)`. Final statics-only class.
 
-Constantes publicas:
-- `public static final String DURABILITY_KEY = "snlib_durability"` - Key PDC con la durabilidad restante; namespaceada por plugin owner.
+Public constants:
+- `public static final String DURABILITY_KEY = "snlib_durability"` - PDC key with the remaining durability; namespaced by owning plugin.
 
-Metodos:
-- `public static void initialize(JavaPlugin owner, ItemDef def, ItemStack stack)` - Siembra el tag a max completo y renderiza la linea de lore inicial. No-op si la definicion no tiene durabilidad custom o el stack ya lleva el tag.
-- `public static int durability(JavaPlugin owner, ItemDef def, ItemStack stack)` - Durabilidad restante; un stack sin tag cuenta como llena. Devuelve -1 si la definicion no tiene durabilidad custom o el stack no tiene meta.
-- `public static int damage(JavaPlugin owner, ItemDef def, ItemStack stack, int amount)` - Resta `amount` (piso 0), actualiza el tag y re-renderiza la linea de lore. Devuelve la restante (0 = roto), el valor actual intacto si `amount` no es positivo, o -1 sin durabilidad custom.
-- `public static boolean breakFor(Sn ctx, ItemDef def, Player player, ItemStack stack, @Nullable EquipmentSlot hand, @Nullable ActionContext context)` - Flujo de rotura compartido de un stack que llego a 0: (1) corre las break-actions de la definicion con `context` cuando esta presente, para que los guards de click/superficie vean el click real (el interact listener pasa el contexto real de la interaccion, fix 1.1.0; la sobrecarga programatica `ItemRegistry.damage(Player, ItemStack, int)` pasa null porque no hay click); (2) remueve el stack: con `hand` no-null (flujo interact) vacia esa mano y devuelve true; con `hand` null (flujo programatico) busca el stack por IDENTIDAD con fallback a `equals` (en Paper los getters de inventario devuelven un wrapper espejo nuevo por llamada, asi la identidad sola practicamente nunca matchea; un match por equals es el mismo estado de item roto) en mano principal, despues offhand y despues los 36 slots de storage (indices de `getStorageContents` coinciden con los de `setItem`). Si no lo encuentra loguea una nota de debug y devuelve false sin remover nada.
+Methods:
+- `public static void initialize(JavaPlugin owner, ItemDef def, ItemStack stack)` - Seeds the tag to full max and renders the initial lore line. No-op if the definition has no custom durability or the stack already carries the tag.
+- `public static int durability(JavaPlugin owner, ItemDef def, ItemStack stack)` - Remaining durability; a tagless stack counts as full. Returns -1 if the definition has no custom durability or the stack has no meta.
+- `public static int damage(JavaPlugin owner, ItemDef def, ItemStack stack, int amount)` - Subtracts `amount` (floored at 0), updates the tag and re-renders the lore line. Returns the remainder (0 = broken), the current value untouched if `amount` is not positive, or -1 without custom durability.
+- `public static boolean breakFor(Sn ctx, ItemDef def, Player player, ItemStack stack, @Nullable EquipmentSlot hand, @Nullable ActionContext context)` - Shared break flow of a stack that reached 0: (1) runs the definition's break-actions with `context` when present, so click/surface guards see the real click (the interact listener passes the interaction's real context, 1.1.0 fix; the programmatic overload `ItemRegistry.damage(Player, ItemStack, int)` passes null because there is no click); (2) removes the stack: with a non-null `hand` (interact flow) it empties that hand and returns true; with a null `hand` (programmatic flow) it looks for the stack by IDENTITY with an `equals` fallback (on Paper the inventory getters return a fresh mirror wrapper per call, so identity alone practically never matches; an equals match is the same broken-item state) in the main hand, then offhand and then the 36 storage slots (`getStorageContents` indices match `setItem`'s). If not found it logs a debug note and returns false without removing anything.
 
-#### Notas y gotchas
-- `renderLore` reemplaza la linea en el indice recordado solo si sigue siendo valido (`0 <= index < lore.size()`); si no, la agrega al final y recuerda la nueva posicion.
-- La linea de lore se renderiza por `SnText.color(SnText.applyLocals(...))` con `Ph.of("durability", ...)` y `Ph.of("max_durability", ...)`, no-italica salvo pedido.
+#### Notes and gotchas
+- `renderLore` replaces the line at the remembered index only if still valid (`0 <= index < lore.size()`); otherwise it appends it at the end and remembers the new position.
+- The lore line renders via `SnText.color(SnText.applyLocals(...))` with `Ph.of("durability", ...)` and `Ph.of("max_durability", ...)`, non-italic unless requested.
 
 ### HeldEffectsTask (internal)
 `src/main/java/com/sn/lib/item/internal/HeldEffectsTask.java`
 
-Timer sync per-contexto que aplica los held-effects de los items registrados. Es un TIMER, no un listener: nunca pasa por el ListenerHub. Lazy por disenio: solo arranca cuando una definicion trackeada declara al menos una linea de held-effect. Cada 40 ticks (`PERIOD_TICKS`, constante privada) revisa mano principal, offhand y armadura puesta de cada jugador online contra las definiciones de su propio contexto (id PDC namespaceado por owner, asi los contextos nunca interfieren) y aplica los `PotionEffect` que matcheen, ambient y sin particulas, con duracion 80 ticks (`DURATION_TICKS`, privada: 60 mas margen) que sobrevive al periodo de barrido, asi el efecto es continuo mientras se sostiene y expira solo al soltarlo.
+Per-context sync timer that applies registered items' held effects. It is a TIMER, not a listener: it never goes through the ListenerHub. Lazy by design: it only starts when a tracked definition declares at least one held-effect line. Every 40 ticks (`PERIOD_TICKS`, private constant) it checks each online player's main hand, offhand and worn armor against its own context's definitions (owner-namespaced PDC id, so contexts never interfere) and applies the matching `PotionEffect`s, ambient and particle-free, with a duration of 80 ticks (`DURATION_TICKS`, private: 60 plus margin) that outlives the sweep period, so the effect is continuous while held and expires only on release.
 
-- `public HeldEffectsTask(Sn ctx, ItemRegistry registry)` - Constructor; no arranca nada.
-- `public void track(String id, ItemDef def)` - Trackea (o re-trackea) una definicion: parsea sus lineas de held-effect UNA vez (nunca por tick) y arranca el timer lazy con la primera definicion que tenga alguna. Una definicion sin held-effects borra cualquier tracking previo del mismo id.
-- `public synchronized void stop()` - Cancela el timer; la proxima definicion trackeada con held-effects lo reinicia.
-- `public synchronized void restart()` - Reinicia el timer cuando queda alguna definicion trackeada; el camino de re-track del reload.
+- `public HeldEffectsTask(Sn ctx, ItemRegistry registry)` - Constructor; starts nothing.
+- `public void track(String id, ItemDef def)` - Tracks (or re-tracks) a definition: parses its held-effect lines ONCE (never per tick) and lazily starts the timer with the first definition that has any. A definition without held effects removes any previous tracking of the same id.
+- `public synchronized void stop()` - Cancels the timer; the next tracked definition with held effects restarts it.
+- `public synchronized void restart()` - Restarts the timer when some tracked definition remains; the reload's re-track path.
 
-#### Logica interna
-- Las lineas tienen forma `"EFFECT amplifier"`; ids de efecto o amplificadores invalidos WARNean UNA vez (set `warned` propio del task, logger del plugin del contexto) y se saltean; el amplificador invalido usa 0.
-- `apply` hace el quick-exit en capas: null/air, `hasItemMeta`, id PDC de este contexto (`registry.idOf`), efectos trackeados.
-- `resolveEffect`: Registry por NamespacedKey con fallback `getByName` legacy.
-- El timer se crea via `ctx.scheduler().timer(PERIOD_TICKS, PERIOD_TICKS, this::tick)` (main thread).
+#### Internal logic
+- Lines have the form `"EFFECT amplifier"`; invalid effect ids or amplifiers WARN ONCE (the task's own `warned` set, the context plugin's logger) and are skipped; an invalid amplifier uses 0.
+- `apply` does the layered quick-exit: null/air, `hasItemMeta`, this context's PDC id (`registry.idOf`), tracked effects.
+- `resolveEffect`: Registry by NamespacedKey with the legacy `getByName` fallback.
+- The timer is created via `ctx.scheduler().timer(PERIOD_TICKS, PERIOD_TICKS, this::tick)` (main thread).
 
 ### RecipeLoader (internal)
 `src/main/java/com/sn/lib/item/internal/RecipeLoader.java`
 
-Loader per-contexto de las recetas declaradas por definiciones de items: SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE y STONECUTTING (7 tipos). Cada receta registra bajo `NamespacedKey(plugin, "snlib_recipe_" + itemId)` con el plugin consumidor como owner, y SIEMPRE hace lookup de la key antes de registrar (gate `Bukkit.getRecipe(key) == null`) para que un segundo enable nunca lance. Las keys registradas se trackean en un `TenantRegistry` estatico cuyo callback de sweep remueve la receta del server (`Bukkit::removeRecipe`): el sweeper de tenants limpia las recetas de un owner al deshabilitarse, y `unregisterAll()`/`registerAll` le dan al reload manager su ciclo de unregister/re-register. Los materiales de ingredientes resuelven lenientemente con WARN.
+Per-context loader of the recipes declared by item definitions: SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE and STONECUTTING (7 types). Each recipe registers under `NamespacedKey(plugin, "snlib_recipe_" + itemId)` with the consumer plugin as owner, and it ALWAYS looks up the key before registering (gate `Bukkit.getRecipe(key) == null`) so a second enable never throws. Registered keys are tracked in a static `TenantRegistry` whose sweep callback removes the recipe from the server (`Bukkit::removeRecipe`): the tenant sweeper cleans an owner's recipes on disable, and `unregisterAll()`/`registerAll` give the reload manager its unregister/re-register cycle. Ingredient materials resolve leniently with a WARN.
 
-- `public RecipeLoader(JavaPlugin plugin, ItemRegistry registry)` - Constructor con el owner y su registro.
-- `public void register(String itemId, ItemDef def)` - Registra la receta declarada por `def` bajo `snlib_recipe_<itemId>`; una definicion sin receta es no-op. Si la key ya existe en el server solo la trackea (nunca re-agrega). El stack resultado es el item creado por el registro (id PDC incluido, `registry.create(itemId, null)`). Declaraciones invalidas WARNean y no registran nada; `addRecipe` rechazado o `IllegalStateException`/`IllegalArgumentException` tambien WARNean.
-- `public void registerAll(Map<String, ItemDef> defs)` - Registra la receta de cada definicion; la mitad re-register del reload manager.
-- `public void unregisterAll()` - Remueve del server cada key de receta de este owner.
-- `public static void unregisterAll(Plugin owner)` - Remueve del server cada key de receta de `owner` (camino de teardown).
+- `public RecipeLoader(JavaPlugin plugin, ItemRegistry registry)` - Constructor with the owner and its registry.
+- `public void register(String itemId, ItemDef def)` - Registers the recipe declared by `def` under `snlib_recipe_<itemId>`; a recipeless definition is a no-op. If the key already exists on the server it only tracks it (never re-adds). The result stack is the registry-created item (PDC id included, `registry.create(itemId, null)`). Invalid declarations WARN and register nothing; a rejected `addRecipe` or `IllegalStateException`/`IllegalArgumentException` also WARN.
+- `public void registerAll(Map<String, ItemDef> defs)` - Registers each definition's recipe; the re-register half of the reload manager.
+- `public void unregisterAll()` - Removes every recipe key of this owner from the server.
+- `public static void unregisterAll(Plugin owner)` - Removes every recipe key of `owner` from the server (teardown path).
 
-#### Logica interna
-- `build` despacha por tipo: SHAPED aplica shape e ingredientes (un ingrediente invalido descarta la receta ENTERA); SHAPELESS omite ingredientes invalidos individualmente pero descarta la receta si no quedo ninguno valido; coccion mapea a `FurnaceRecipe`/`SmokingRecipe`/`BlastingRecipe`/`CampfireRecipe` con `cookingTime` piso 1; STONECUTTING crea `StonecuttingRecipe`.
-- `keyFor` normaliza el id al charset de keys (`[^a-z0-9/._-]` -> `_`); un id que igual no genera key valida WARNea y se ignora.
-- `resolveMaterial`: `matchMaterial` directo y despues con mayusculas y espacios/guiones normalizados a `_`.
+#### Internal logic
+- `build` dispatches by type: SHAPED applies shape and ingredients (an invalid ingredient discards the WHOLE recipe); SHAPELESS skips invalid ingredients individually but discards the recipe if none valid remain; cooking maps to `FurnaceRecipe`/`SmokingRecipe`/`BlastingRecipe`/`CampfireRecipe` with `cookingTime` floored at 1; STONECUTTING creates a `StonecuttingRecipe`.
+- `keyFor` normalizes the id to the key charset (`[^a-z0-9/._-]` -> `_`); an id that still yields no valid key WARNs and is ignored.
+- `resolveMaterial`: direct `matchMaterial` and then with uppercase and spaces/hyphens normalized to `_`.
 
 ### LockedItemListener (internal)
 `src/main/java/com/sn/lib/item/internal/LockedItemListener.java`
 
-Listener unico compartido, propiedad de SnLib, que enforcea el modo locked de items registrados (patron EdToolsArmors 2.0): una pieza locked queda clavada a su slot y no puede salir por ninguno de los siete vectores de extraccion. Tambien escucha `SnArmourEquipEvent` para bloquear equips ajenos de items `COMMAND_ONLY`: solo `ItemRegistry.apply` (que marca el cambio como programatico por una ventana de un tick) puede equiparlos. Inscripto en el ListenerHub; `registerEvents` UNICAMENTE en el bootstrap de SnLibPlugin. Mismo contrato de hot-path via `ItemPropertyListener.match`. El keep-on-death de items NO locked lo enforcea el property listener; el vector de muerte de aca cubre piezas locked, que nunca entran en circulacion por drops.
+Single shared listener, owned by SnLib, that enforces the locked mode of registered items (EdToolsArmors 2.0 pattern): a locked piece stays pinned to its slot and cannot leave through any of the seven extraction vectors. It also listens to `SnArmourEquipEvent` to block foreign equips of `COMMAND_ONLY` items: only `ItemRegistry.apply` (which marks the change as programmatic for a one-tick window) can equip them. Enrolled in the ListenerHub; `registerEvents` SOLELY in the SnLibPlugin bootstrap. Same hot-path contract via `ItemPropertyListener.match`. Keep-on-death of NON-locked items is enforced by the property listener; the death vector here covers locked pieces, which never enter circulation via drops.
 
-- `public static void markProgrammatic(UUID uuid, EquipmentSlot slot)` - Marca el slot del jugador como cambiado programaticamente para la ventana del tick actual (mapa estatico `PROGRAMMATIC` de `ApplyMark(slot, tick)`).
-- `static boolean isProgrammatic(UUID uuid, EquipmentSlot slot)` - (package-private) Si el cambio de slot matchea una marca programatica viva. Las marcas expiran despues de UN tick: la fuente primaria de armadura hace eco de un setItem programatico al tick siguiente, asi la ventana cubre el evento sintetico y su eco.
-- `public void onInventoryClick(InventoryClickEvent event)` - Vector 1: un locked en el cursor o bajo el click (slots de armadura incluidos) nunca se mueve; tambien deniega hotbar (NUMBER_KEY/SWAP_OFFHAND) y equip manual (drop de cursor a slot ARMOR o shift-click de pieza de armadura en la vista propia) de piezas no-manual-equip.
-- `public void onInventoryDrag(InventoryDragEvent event)` - Vector 2: drags de una pieza locked, o de una no-manual-equip hacia los raw slots 5-8 (armadura de la vista propia, constantes privadas `ARMOR_RAW_FIRST`/`ARMOR_RAW_LAST`).
-- `public void onInteract(PlayerInteractEvent event)` - Vector 3: equip manual por click derecho de una pieza de armadura no-manual-equip o locked; deniega con `setUseItemInHand(Event.Result.DENY)`.
-- `public void onSwapHands(PlayerSwapHandItemsEvent event)` - Vector 4: cancela swaps de mano que involucren una pieza locked en cualquiera de las dos manos.
-- `public void onDrop(PlayerDropItemEvent event)` - Vector 5: piezas no-drop y locked se quedan en el inventario.
-- `public void onDeath(PlayerDeathEvent event)` - Vector 6 (priority HIGH): las piezas locked se sacan de los drops de muerte y se stashean por UUID; respeta `getKeepInventory()`.
-- `public void onRespawn(PlayerRespawnEvent event)` - Vector 6, segunda mitad (priority MONITOR): las piezas locked sacadas vuelven al respawnear via `InvUtil.giveItems`.
-- `public void onHopperMove(InventoryMoveItemEvent event)` - Vector 7: hoppers y cualquier movimiento contenedor-a-contenedor de una pieza locked se cancela.
-- `public void onArmourEquip(SnArmourEquipEvent event)` - Bloquea equips ajenos de piezas COMMAND_ONLY (solo `ItemRegistry.apply` puede equiparlas, detectado por la marca programatica) y equips por dispenser de piezas locked o no-manual-equip; es la unica fuente cancelable vinculante del evento sintetizado.
+- `public static void markProgrammatic(UUID uuid, EquipmentSlot slot)` - Marks the player's slot as programmatically changed for the current tick's window (static `PROGRAMMATIC` map of `ApplyMark(slot, tick)`).
+- `static boolean isProgrammatic(UUID uuid, EquipmentSlot slot)` - (package-private) Whether the slot change matches a live programmatic mark. Marks expire after ONE tick: the primary armor source echoes a programmatic setItem on the next tick, so the window covers the synthetic event and its echo.
+- `public void onInventoryClick(InventoryClickEvent event)` - Vector 1: a locked item on the cursor or under the click (armor slots included) never moves; it also denies hotbar (NUMBER_KEY/SWAP_OFFHAND) and manual equip (cursor drop onto an ARMOR slot or shift-click of an armor piece in the own view) of no-manual-equip pieces.
+- `public void onInventoryDrag(InventoryDragEvent event)` - Vector 2: drags of a locked piece, or of a no-manual-equip one toward raw slots 5-8 (the own view's armor, private constants `ARMOR_RAW_FIRST`/`ARMOR_RAW_LAST`).
+- `public void onInteract(PlayerInteractEvent event)` - Vector 3: manual right-click equip of a no-manual-equip or locked armor piece; denies with `setUseItemInHand(Event.Result.DENY)`.
+- `public void onSwapHands(PlayerSwapHandItemsEvent event)` - Vector 4: cancels hand swaps involving a locked piece in either hand.
+- `public void onDrop(PlayerDropItemEvent event)` - Vector 5: no-drop and locked pieces stay in the inventory.
+- `public void onDeath(PlayerDeathEvent event)` - Vector 6 (priority HIGH): locked pieces are taken out of the death drops and stashed by UUID; respects `getKeepInventory()`.
+- `public void onRespawn(PlayerRespawnEvent event)` - Vector 6, second half (priority MONITOR): the extracted locked pieces return on respawn via `InvUtil.giveItems`.
+- `public void onHopperMove(InventoryMoveItemEvent event)` - Vector 7: hoppers and any container-to-container movement of a locked piece is cancelled.
+- `public void onArmourEquip(SnArmourEquipEvent event)` - Blocks foreign equips of COMMAND_ONLY pieces (only `ItemRegistry.apply` can equip them, detected via the programmatic mark) and dispenser equips of locked or no-manual-equip pieces; it is the synthesized event's only binding cancelable source.
 
-#### Notas y gotchas
-- `manualEquipDenied(def)` devuelve true tambien para `COMMAND_ONLY`: COMMAND_ONLY implica no-equip-manual. `PlayerArmorChangeEvent` llega post-hecho (no vinculante), asi que la negativa tiene que ocurrir en los vectores de click/drag/interact.
-- `isArmourPiece` matchea piezas equipables por sufijo del nombre del Material (enum tratado como abierto: chequeos de nombre, nunca switch/EnumSet sobre sus constantes).
-- El mapa estatico `PROGRAMMATIC` esta justificado como estatico server-wide: marcas transitorias de un tick, no data per-consumidor.
+#### Notes and gotchas
+- `manualEquipDenied(def)` also returns true for `COMMAND_ONLY`: COMMAND_ONLY implies no manual equip. `PlayerArmorChangeEvent` arrives post-hoc (non-binding), so the denial has to happen in the click/drag/interact vectors.
+- `isArmourPiece` matches equipable pieces by Material name suffix (enum treated as open: name checks, never switch/EnumSet over its constants).
+- The static `PROGRAMMATIC` map is justified as a server-wide static: one-tick transient marks, not per-consumer data.
 
 ### EquipmentBackup (internal)
 `src/main/java/com/sn/lib/item/internal/EquipmentBackup.java`
 
-Backup per-contexto de los items reales desplazados por `ItemRegistry.apply`, con restauracion GARANTIZADA en quit (registrado en el QuitCleanupListener) y en shutdown (`restoreAll`, invocado por el teardown del contexto). La persistencia es write-through y default-on: cada store escribe el item desplazado en el `data/equipment-backup.yml` del contexto via `SnYml.save` (que pasa a sincronico durante el teardown por el flag shutting-down del contexto) y cada take/restore lo borra, asi un crash sin onDisable nunca pierde el item real. Las entradas persistidas se recargan en construccion; el unico opt-out es no declarar el modulo yml, que degrada a backups en memoria con UN WARN en el primer uso.
+Per-context backup of the real items displaced by `ItemRegistry.apply`, with GUARANTEED restoration on quit (registered in the QuitCleanupListener) and on shutdown (`restoreAll`, invoked by the context teardown). Persistence is write-through and default-on: every store writes the displaced item into the context's `data/equipment-backup.yml` via `SnYml.save` (which turns synchronous during teardown due to the context's shutting-down flag) and every take/restore deletes it, so a crash without onDisable never loses the real item. Persisted entries reload at construction; the only opt-out is not declaring the yml module, which degrades to in-memory backups with ONE WARN on first use.
 
-- `public EquipmentBackup(Sn ctx)` - Crea el servicio de backup de un contexto, recarga sus entradas persistidas y registra el callback de restore en quit. Monta el store via `ctx.yml().data("data/equipment-backup.yml")`; sin modulo yml (`UnsupportedOperationException`) queda null.
-- `public void store(Player player, EquipmentSlot slot, @Nullable ItemStack displaced)` - Respalda el item desplazado del slot, write-through (memoria + Base64 de `ItemSerializer.serializeBase64` en el yml bajo `backups.<uuid>.<SLOT>`). Un slot vacio no guarda nada, asi una entrada persistida de un crash previo queda autoritativa; una pieza locked aplicada por la lib nunca se respalda (no es el item real del jugador).
-- `public @Nullable ItemStack peek(UUID uuid, EquipmentSlot slot)` - Copia del item respaldado del slot sin consumirlo, o null.
-- `public @Nullable ItemStack take(UUID uuid, EquipmentSlot slot)` - Consume el item respaldado del slot, borrando su entrada persistida (la rama del jugador entera si era la ultima), o null.
-- `public void restore(UUID uuid)` - Restaura cada slot respaldado del jugador: la pieza locked aplicada por ESTE owner (o un slot vacio) se reemplaza por el item real; cualquier otro ocupante se respeta y el item real se da al inventario en su lugar (`InvUtil.giveItems`). Los jugadores offline se saltean para que sus entradas persistidas sobrevivan a la proxima sesion. Idempotente: un kick dispara kick y quit y la segunda pasada no encuentra nada. Marca cada slot como programatico antes de tocarlo.
-- `public static void restoreAll(Plugin owner)` - Restaura los backups de cada jugador online del owner; el punto de entrada del teardown. Durante el teardown el save write-through corre sincronico.
+- `public EquipmentBackup(Sn ctx)` - Creates a context's backup service, reloads its persisted entries and registers the quit restore callback. Mounts the store via `ctx.yml().data("data/equipment-backup.yml")`; without the yml module (`UnsupportedOperationException`) it stays null.
+- `public void store(Player player, EquipmentSlot slot, @Nullable ItemStack displaced)` - Backs up the slot's displaced item, write-through (memory + Base64 from `ItemSerializer.serializeBase64` in the yml under `backups.<uuid>.<SLOT>`). An empty slot stores nothing, so a persisted entry from a previous crash stays authoritative; a locked piece applied by the lib is never backed up (it is not the player's real item).
+- `public @Nullable ItemStack peek(UUID uuid, EquipmentSlot slot)` - A copy of the slot's backed-up item without consuming it, or null.
+- `public @Nullable ItemStack take(UUID uuid, EquipmentSlot slot)` - Consumes the slot's backed-up item, deleting its persisted entry (the whole player branch if it was the last), or null.
+- `public void restore(UUID uuid)` - Restores each backed-up slot of the player: the locked piece applied by THIS owner (or an empty slot) is replaced by the real item; any other occupant is respected and the real item goes to the inventory instead (`InvUtil.giveItems`). Offline players are skipped so their persisted entries survive to the next session. Idempotent: a kick fires kick and quit and the second pass finds nothing. It marks each slot programmatic before touching it.
+- `public static void restoreAll(Plugin owner)` - Restores the backups of every online player of the owner; the teardown entry point. During teardown the write-through save runs synchronously.
 
-#### Notas y gotchas
-- El estatico `BACKUPS` (`TenantRegistry<EquipmentBackup>`) esta justificado: instancias de backup keyeadas por owner para el teardown.
-- `loadPersisted` tolera entradas rotas (UUID invalido, slot invalido, Base64 corrupto) con un WARN por entrada ("Backup de equipamiento ilegible...") y las ignora.
-- El WARN de degradacion a memoria ("EquipmentBackup sin modulo yml declarado...") se emite una sola vez (`AtomicBoolean.compareAndSet`).
+#### Notes and gotchas
+- The static `BACKUPS` (`TenantRegistry<EquipmentBackup>`) is justified: backup instances keyed by owner for the teardown.
+- `loadPersisted` tolerates broken entries (invalid UUID, invalid slot, corrupt Base64) with one WARN per entry ("Unreadable equipment backup...") and ignores them.
+- The memory-degradation WARN ("EquipmentBackup without the yml module declared...") is emitted exactly once (`AtomicBoolean.compareAndSet`).
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME en el codigo del modulo. Limitaciones documentadas en el codigo:
+There are no TODO/FIXME markers in the module's code. Limitations documented in the code:
 
-- El enforcement de `equipment-slot` cubre click directo, shift-click auto-equip, dispenser y right-click auto-equip; el vector right-click esta cerrado: un equip denegado corta todo el flujo de interaccion (sin dispatch, sin cooldown, sin durabilidad) via ItemInteractListener.denyIncompatibleAutoEquip.
-- `ItemRegistry.damage(ItemStack, int)` (sin jugador) NO corre break-actions ni remueve el stack al llegar a 0; la sobrecarga `damage(Player, ItemStack, int)` cubre la rotura programatica (break-actions + remocion por identidad via `DurabilityTracker.breakFor`), siempre que el caller pase el stack ORIGINAL del inventario (una copia solo loguea en debug).
-- `PlayerArmorChangeEvent` llega post-hecho (no vinculante), por eso la negativa de equip manual de piezas COMMAND_ONLY/no-manual-equip tiene que ocurrir en los vectores de click/drag/interact (LockedItemListener.manualEquipDenied).
-- Sin el modulo yml declarado, EquipmentBackup degrada a backups solo en memoria con UN WARN: un crash sin onDisable puede perder el item real desplazado.
-- Compat 1.20.4: `glow()` degrada a un encantamiento real (LURE) mas HIDE_ENCHANTS, y `max-stack-size` se omite; ambos con UN WARN via probe de SnCompat.
-- `ItemStack.serializeAsBytes()` clampa amounts over-stacked (gotcha SnLootBoxes); ItemSerializer existe exactamente para eso, con su prefijo de amount de 4 bytes.
-- La ventana programatica de LockedItemListener dura UN tick (cubre el evento sintetico y su eco); un setItem programatico externo fuera de `ItemRegistry.apply`/`EquipmentBackup.restore` que no llame `markProgrammatic` seria cancelado para piezas COMMAND_ONLY.
-
+- The `equipment-slot` enforcement covers direct click, shift-click auto-equip, dispenser and right-click auto-equip; the right-click vector is closed: a denied equip cuts the whole interaction flow (no dispatch, no cooldown, no durability) via ItemInteractListener.denyIncompatibleAutoEquip.
+- `ItemRegistry.damage(ItemStack, int)` (playerless) does NOT run break-actions or remove the stack at 0; the `damage(Player, ItemStack, int)` overload covers programmatic breaking (break-actions + identity removal via `DurabilityTracker.breakFor`), provided the caller passes the ORIGINAL inventory stack (a copy only logs to debug).
+- `PlayerArmorChangeEvent` arrives post-hoc (non-binding), which is why the manual-equip denial of COMMAND_ONLY/no-manual-equip pieces has to happen in the click/drag/interact vectors (LockedItemListener.manualEquipDenied).
+- Without the yml module declared, EquipmentBackup degrades to memory-only backups with ONE WARN: a crash without onDisable can lose the displaced real item.
+- 1.20.4 compat: `glow()` degrades to a real enchantment (LURE) plus HIDE_ENCHANTS, and `max-stack-size` is omitted; both with ONE WARN via the SnCompat probe.
+- `ItemStack.serializeAsBytes()` clamps over-stacked amounts (SnLootBoxes gotcha); ItemSerializer exists exactly for that, with its 4-byte amount prefix.
+- LockedItemListener's programmatic window lasts ONE tick (covers the synthetic event and its echo); an external programmatic setItem outside `ItemRegistry.apply`/`EquipmentBackup.restore` that does not call `markProgrammatic` would be cancelled for COMMAND_ONLY pieces.
 ---
 
-# (Seccion 12 de la documentacion de SnLib v1.1.0)
+# (Section 12 of the SnLib v1.1.0 documentation)
 
 ## 12. GUI
 
-Modulo de menus declarativos de SnLib (`com.sn.lib.gui`), accesible por contexto via `sn.guis()`. Cada archivo `.yml` de la carpeta `guis/` del plugin consumidor se parsea a una `GuiDef` inmutable (golden spec `docs/menu-example.yml`), y cada viewer que abre un menu recibe SU PROPIA `GuiSession` con su propio `Inventory`, su propio `SnGuiHolder` y su propio estado de pagina: N jugadores en el mismo GUI son N sesiones independientes, no hay inventario compartido por GUI. La identificacion de inventarios de la libreria es SIEMPRE `holder instanceof SnGuiHolder` (nunca por titulo, que se resuelve por viewer y puede colisionar entre plugins). Dos listeners compartidos e internos (registrados UNA sola vez en el bootstrap de SnLibPlugin via ListenerHub) despachan clicks/cierres y aplican la proteccion anti-robo sobre stacks marcados con la PDC key `snlib_gui_item`. Todo el modulo es main-thread only; las sesiones abiertas se registran por owner en un `TenantRegistry`, garantizando no-interferencia entre plugins consumidores.
+SnLib's declarative menu module (`com.sn.lib.gui`), accessible per context via `sn.guis()`. Each `.yml` file in the consumer plugin's `guis/` folder parses into an immutable `GuiDef` (golden spec `docs/menu-example.yml`), and each viewer opening a menu gets THEIR OWN `GuiSession` with its own `Inventory`, its own `SnGuiHolder` and its own page state: N players on the same GUI are N independent sessions, there is no per-GUI shared inventory. Library inventory identification is ALWAYS `holder instanceof SnGuiHolder` (never by title, which resolves per viewer and can collide across plugins). Two shared internal listeners (registered ONCE in the SnLibPlugin bootstrap via ListenerHub) dispatch clicks/closes and apply the anti-theft protection over stacks marked with the PDC key `snlib_gui_item`. The whole module is main-thread only; open sessions register per owner in a `TenantRegistry`, guaranteeing non-interference between consumer plugins.
 
 ### SnGuiHolder
 `src/main/java/com/sn/lib/gui/SnGuiHolder.java`
 
-`InventoryHolder` de todo inventario GUI que crea la libreria: uno por `GuiSession`, compartido por cada inventario que esa sesion recrea. Implementa `OwnedHolder` (modulo tenant), por lo que transporta el plugin owner: asi el tenant sweeper y el listener de quit cleanup cierran inventarios de exactamente UN owner. Constructor package-private (`SnGuiHolder(Plugin owner, String guiId, GuiSession session)`); el campo `inventory` es `volatile`.
+`InventoryHolder` of every GUI inventory the library creates: one per `GuiSession`, shared by every inventory that session recreates. It implements `OwnedHolder` (tenant module), so it carries the owning plugin: that is how the tenant sweeper and the quit cleanup listener close inventories of exactly ONE owner. Package-private constructor (`SnGuiHolder(Plugin owner, String guiId, GuiSession session)`); the `inventory` field is `volatile`.
 
-- `public Plugin owner()` - Plugin consumidor cuyo contexto abrio este GUI (override de `OwnedHolder`).
-- `public String guiId()` - Id de la definicion del GUI (nombre de archivo sin extension).
-- `public GuiSession session()` - Sesion per-viewer detras de este holder.
-- `public Inventory getInventory()` - Inventario actual de la sesion; lanza `IllegalStateException` ("La sesion del gui '<id>' aun no creo su inventario") si la sesion todavia no lo creo.
-- `void inventory(Inventory inventory)` (package-private) - Intercambia el inventario de respaldo; solo la sesion duenia lo llama.
+- `public Plugin owner()` - Consumer plugin whose context opened this GUI (override of `OwnedHolder`).
+- `public String guiId()` - Id of the GUI definition (file name without extension).
+- `public GuiSession session()` - The per-viewer session behind this holder.
+- `public Inventory getInventory()` - The session's current inventory; throws `IllegalStateException` ("The session of gui '<id>' has not created its inventory yet") if the session has not created it yet.
+- `void inventory(Inventory inventory)` (package-private) - Swaps the backing inventory; only the owning session calls it.
 
-#### Notas y gotchas
-- La sesion recrea el inventario ante cambios de titulo o tamanio manteniendo ESTE mismo holder, asi la identificacion `instanceof` sobrevive cada recreacion.
+#### Notes and gotchas
+- The session recreates the inventory on title or size changes keeping THIS same holder, so the `instanceof` identification survives every recreation.
 
 ### GuiItemDef
 `src/main/java/com/sn/lib/gui/GuiItemDef.java`
 
-Un item de una definicion de GUI: toda la seccion de apariencia del golden spec mas `slots`, `update-interval` por item, requirements de vista/click y listas de acciones de click/deny. La apariencia NO se pre-construye: la definicion guarda su seccion yml y la relee en cada `render`, asi nombre, lore y todo string se resuelven por viewer via el pipeline de SnYml (locals, PAPI, `[rgb]`, `[center]`, MiniMessage). Los requirements se parsean UNA vez al load desde la seccion cruda (bypassean la resolucion de placeholders, asi los tokens llegan intactos a la evaluacion); las lineas de accion quedan crudas para el action engine, que las resuelve en runtime.
+One item of a GUI definition: the entire appearance section of the golden spec plus `slots`, per-item `update-interval`, view/click requirements and click/deny action lists. Appearance is NOT pre-built: the definition keeps its yml section and re-reads it on every `render`, so name, lore and every string resolve per viewer through the SnYml pipeline (locals, PAPI, `[rgb]`, `[center]`, MiniMessage). Requirements parse ONCE at load from the raw section (they bypass placeholder resolution, so tokens reach evaluation intact); action lines stay raw for the action engine, which resolves them at runtime.
 
-Matriz per-click (1.1.0): ademas de los genericos `click-actions`/`click-requirements`/`deny-actions`, cinco keys de click (`right`, `left`, `shift-right`, `shift-left`, `middle`) leen cada una tres listas opcionales (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`; 15 keys en total, matriz 5x3 guardada en un `EnumMap` inmutable del enum package-private `ClickKey` con el record privado `PerClick(actions, requirement, denyActions)`). Una lista cuenta como declarada solo si es no vacia; un requirement especifico se parsea UNA vez y solo si su lista es no vacia (uno ausente queda null para poder caer al generico). La resolucion es campo por campo y especifico-sobre-generico: gana la entrada shift exacta del click, despues la entrada del lado (RIGHT agrupa RIGHT/SHIFT_RIGHT; LEFT agrupa LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, consistente con `ClickType.isLeftClick()`; MIDDLE va solo), y al final el campo generico. Cada campo cae al generico de forma independiente: un item puede declarar `right-click-actions` sin `right-click-requirements` y su requirement resuelve igual del `click-requirements` generico.
+Per-click matrix (1.1.0): besides the generic `click-actions`/`click-requirements`/`deny-actions`, five click keys (`right`, `left`, `shift-right`, `shift-left`, `middle`) each read three optional lists (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`; 15 keys total, a 5x3 matrix stored in an immutable `EnumMap` of the package-private `ClickKey` enum with the private record `PerClick(actions, requirement, denyActions)`). A list counts as declared only if non-empty; a specific requirement parses ONCE and only if its list is non-empty (an absent one stays null so it can fall to the generic). Resolution is field-by-field and specific-over-generic: the click's exact shift entry wins, then the side entry (RIGHT groups RIGHT/SHIFT_RIGHT; LEFT groups LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, consistent with `ClickType.isLeftClick()`; MIDDLE goes alone), and finally the generic field. Each field falls to the generic independently: an item can declare `right-click-actions` without `right-click-requirements` and its requirement still resolves from the generic `click-requirements`.
 
-Enum package-private `NavKind` (rol de navegacion, detectado de las listas de acciones al parsear): `NONE`, `PREVIOUS`, `NEXT`.
+Package-private enum `NavKind` (navigation role, detected from the action lists when parsing): `NONE`, `PREVIOUS`, `NEXT`.
 
-- `static @Nullable GuiItemDef parse(SnYml yml, String path, String id, @Nullable Map<Character, int[]> layout, Consumer<String> warn)` (package-private) - Parsea el item en `path`; los warnings van a `warn`. Devuelve null cuando la seccion no existe ("No existe la seccion '<path>' en <archivo>; item ignorado"). Parsea slots via `SlotParser`, `update-interval` (clamp a >= 0), `view-requirements`/`click-requirements` via `RequirementEngine`, `click-actions`/`deny-actions` y la matriz per-click (una entrada por key de click que declaro al menos una de sus tres listas); detecta `NavKind` buscando `[previous-page]`/`[next-page]` en TODAS las listas de acciones (la generica y las cinco entradas per-click) y, si es item de navegacion y existe la subseccion `nav-disabled`, la parsea recursivamente como override (con `layout` null: key no aplica ahi). El parametro `layout` (1.1.0) es el mapa caracter -> slots del `layout:` del menu (mapa vacio para un menu sin layout, null en templates y nav-disabled) y resuelve el campo `key:` como alternativa a `slots:`: key vacio no cambia nada; `layout` null WARNea "Item '<id>': 'key' no aplica en esta seccion; se ignora" y el item se parsea normal; con slots ya declarados WARNea "Item '<id>': declara 'slots' y 'key'; gana slots y se ignora key"; key con trim de largo distinto de 1 WARNea "Item '<id>': key 'RAW' invalido (debe ser 1 caracter); item ignorado" y devuelve null; caracter ausente del mapa (cubre tambien el menu sin layout) WARNea "Item '<id>': key 'C' no aparece en layout; item ignorado" y devuelve null; caracter presente asigna `slots = layout.get(c).clone()`, asi una key que aparece en N celdas renderiza en las N (reemplaza los fillKey/fillEmptyKey de otras libs sin API extra). Devolver null en los casos de ignorado evita el doble WARN con el chequeo `hasSlots()` de `GuiDef.parse`.
-- `public List<String> clickActionsFor(@Nullable ClickType click)` - Lineas de accion para el click dado: gana la entrada shift declarada, despues la del lado, despues el `clickActions()` generico. Un click null resuelve a la lista generica.
-- `public Requirement clickRequirementFor(@Nullable ClickType click)` - Requirement para el click dado, misma resolucion shift -> lado -> `clickRequirement()` generico; nunca null. Cada campo resuelve independiente (una lista de acciones especifica puede emparejarse con el requirement generico).
-- `public List<String> denyActionsFor(@Nullable ClickType click)` - Lineas de deny para el click dado, misma resolucion shift -> lado -> `denyActions()` generico.
-- `boolean specificActionsFor(@Nullable ClickType click)` (package-private) - True cuando el click resuelve sus acciones de una lista especifica declarada (entrada shift o de lado) en vez del fallback generico; lo consume el gate de strict-clicks de `GuiSession.runClick`.
-- `static @Nullable ClickKey shiftKey(@Nullable ClickType click)` / `static @Nullable ClickKey sideKey(@Nullable ClickType click)` / `static boolean basicClick(@Nullable ClickType click)` (package-private) - Mapeos puros de resolucion: key shift exacta (solo SHIFT_RIGHT/SHIFT_LEFT), key de lado (RIGHT agrupa RIGHT/SHIFT_RIGHT; LEFT agrupa LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE; MIDDLE solo; los clicks de teclado y desconocidos, NUMBER_KEY/DROP/CONTROL_DROP/SWAP_OFFHAND/UNKNOWN, no tienen lado y devuelven null) y el predicado de los 4 clicks basicos de mouse (LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT). Cubiertos por `ClickResolutionTest`.
-- `public String id()` - Id del item (su key dentro de `items:` o `templates:`).
-- `public int[] slots()` - Slots donde renderiza (copia defensiva via `clone()`); vacio para templates, cuyos slots vienen de los binds.
-- `boolean hasSlots()` (package-private) - True cuando el item declaro al menos un slot.
-- `public int updateInterval()` - Intervalo de re-render por item en ticks; 0 desactiva el timer del item.
-- `public Requirement viewRequirement()` - Requirement que decide si el item renderiza para un viewer; pasa siempre cuando esta ausente.
-- `public Requirement clickRequirement()` - Requirement que gatea clicks; si falla se corren los `denyActions()` en su lugar.
-- `public List<String> clickActions()` - Lineas de accion crudas ejecutadas en un click que pasa el click requirement.
-- `public List<String> denyActions()` - Lineas de accion crudas ejecutadas cuando el click requirement falla.
-- `NavKind navKind()` (package-private) - Rol de navegacion; las sesiones gatean flechas deshabilitadas a traves de el.
-- `@Nullable GuiItemDef navDisabled()` (package-private) - Override de apariencia renderizado EN LUGAR de este item de navegacion cuando no hay pagina a la que ir (primera pagina para previous, ultima para next), o null si no se declaro. Un item de navegacion deshabilitado nunca dispara ninguna accion.
-- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Construye el stack fisico para `viewer` releyendo cada campo de apariencia de la seccion yml (via `SnItem.fromConfig(yml, path, viewer, phs).build()`), asi los placeholders resuelven por viewer mas los locals extra `phs`.
+- `static @Nullable GuiItemDef parse(SnYml yml, String path, String id, @Nullable Map<Character, int[]> layout, Consumer<String> warn)` (package-private) - Parses the item at `path`; warnings go to `warn`. Returns null when the section does not exist ("Section '<path>' does not exist in <file>; item ignored"). Parses slots via `SlotParser`, `update-interval` (clamped to >= 0), `view-requirements`/`click-requirements` via `RequirementEngine`, `click-actions`/`deny-actions` and the per-click matrix (one entry per click key that declared at least one of its three lists); it detects `NavKind` by looking for `[previous-page]`/`[next-page]` in ALL the action lists (the generic one and the five per-click entries) and, if it is a navigation item and the `nav-disabled` subsection exists, parses it recursively as an override (with a null `layout`: key does not apply there). The `layout` parameter (1.1.0) is the character -> slots map of the menu's `layout:` (an empty map for a layoutless menu, null for templates and nav-disabled) and resolves the `key:` field as an alternative to `slots:`: an empty key changes nothing; a null `layout` WARNs "Item '<id>': 'key' does not apply in this section; ignored" and the item parses normally; with slots already declared it WARNs "Item '<id>': declares 'slots' and 'key'; slots wins and key is ignored"; a key whose trim is not exactly 1 character WARNs "Item '<id>': key 'RAW' invalid (must be 1 character); item ignored" and returns null; a character absent from the map (which also covers the layoutless menu) WARNs "Item '<id>': key 'C' does not appear in layout; item ignored" and returns null; a present character assigns `slots = layout.get(c).clone()`, so a key appearing in N cells renders in all N (replacing other libs' fillKey/fillEmptyKey without extra API). Returning null in the ignored cases avoids the double WARN with `GuiDef.parse`'s `hasSlots()` check.
+- `public List<String> clickActionsFor(@Nullable ClickType click)` - Action lines for the given click: the declared shift entry wins, then the side one, then the generic `clickActions()`. A null click resolves to the generic list.
+- `public Requirement clickRequirementFor(@Nullable ClickType click)` - Requirement for the given click, same shift -> side -> generic `clickRequirement()` resolution; never null. Each field resolves independently (a specific action list can pair with the generic requirement).
+- `public List<String> denyActionsFor(@Nullable ClickType click)` - Deny lines for the given click, same shift -> side -> generic `denyActions()` resolution.
+- `boolean specificActionsFor(@Nullable ClickType click)` (package-private) - True when the click resolves its actions from a declared specific list (shift or side entry) instead of the generic fallback; consumed by `GuiSession.runClick`'s strict-clicks gate.
+- `static @Nullable ClickKey shiftKey(@Nullable ClickType click)` / `static @Nullable ClickKey sideKey(@Nullable ClickType click)` / `static boolean basicClick(@Nullable ClickType click)` (package-private) - Pure resolution mappings: the exact shift key (only SHIFT_RIGHT/SHIFT_LEFT), the side key (RIGHT groups RIGHT/SHIFT_RIGHT; LEFT groups LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE; MIDDLE alone; keyboard and unknown clicks, NUMBER_KEY/DROP/CONTROL_DROP/SWAP_OFFHAND/UNKNOWN, have no side and return null) and the predicate of the 4 basic mouse clicks (LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT). Covered by `ClickResolutionTest`.
+- `public String id()` - The item's id (its key inside `items:` or `templates:`).
+- `public int[] slots()` - Slots where it renders (defensive copy via `clone()`); empty for templates, whose slots come from binds.
+- `boolean hasSlots()` (package-private) - True when the item declared at least one slot.
+- `public int updateInterval()` - Per-item re-render interval in ticks; 0 disables the item's timer.
+- `public Requirement viewRequirement()` - Requirement deciding whether the item renders for a viewer; always passes when absent.
+- `public Requirement clickRequirement()` - Requirement gating clicks; if it fails the `denyActions()` run instead.
+- `public List<String> clickActions()` - Raw action lines executed on a click that passes the click requirement.
+- `public List<String> denyActions()` - Raw action lines executed when the click requirement fails.
+- `NavKind navKind()` (package-private) - Navigation role; sessions gate disabled arrows through it.
+- `@Nullable GuiItemDef navDisabled()` (package-private) - Appearance override rendered INSTEAD of this navigation item when there is no page to go to (first page for previous, last for next), or null if not declared. A disabled navigation item never fires any action.
+- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Builds the physical stack for `viewer` re-reading every appearance field of the yml section (via `SnItem.fromConfig(yml, path, viewer, phs).build()`), so placeholders resolve per viewer plus the extra locals `phs`.
 
 ### GuiDef
 `src/main/java/com/sn/lib/gui/GuiDef.java`
 
-Definicion inmutable de UN GUI, parseada desde un archivo bajo `guis/` siguiendo el golden spec (`docs/menu-example.yml`): `title`, `rows`, `inventory-type` leniente, `open-sound`, `close-sound` (1.1.0), `close-actions` (1.1.0), `update-interval` de menu, los flags opt-in `pagination` y `strict-clicks`, el layout ASCII opcional (`layout:` + `paged-key:`, 1.1.0), la seccion `items:` y la seccion `templates:`. Ambos flags se resuelven UNA vez al load y por defecto son `false`; acciones de pagina y binds paginados sobre sesiones de un GUI no paginado son no-ops. La definicion y sus templates son inmutables y compartidos por cada `GuiSession` per-viewer. El Javadoc de la clase incluye el checklist campo por campo del golden spec (que campo parsea que clase).
+Immutable definition of ONE GUI, parsed from a file under `guis/` following the golden spec (`docs/menu-example.yml`): `title`, `rows`, lenient `inventory-type`, `open-sound`, `close-sound` (1.1.0), `close-actions` (1.1.0), menu `update-interval`, the opt-in flags `pagination` and `strict-clicks`, the optional ASCII layout (`layout:` + `paged-key:`, 1.1.0), the `items:` section and the `templates:` section. Both flags resolve ONCE at load and default to `false`; page actions and paginated binds over sessions of an unpaginated GUI are no-ops. The definition and its templates are immutable and shared by every per-viewer `GuiSession`. The class Javadoc includes the field-by-field checklist of the golden spec (which class parses which field).
 
-- `static GuiDef parse(Sn ctx, String id, SnYml yml)` (package-private) - Parsea el archivo entero; todo campo malformado emite WARN con prefijo `[gui <id>]` y hace fallback, nunca lanza. Archivo vacio/ilegible: WARN "Archivo vacio o ilegible; se usa un gui por defecto sin items" y devuelve un GUI default (titulo "Menu", 3 filas, sin items, `pagedSlots` vacio). `rows` fuera de 1-6 WARNea y usa 3 (chequeo que solo aplica SIN layout). Items sin slots validos WARNean ("Item '<key>' sin slots validos; no se renderiza") y se descartan; los templates se parsean sin exigir slots. El loop de items pasa el mapa de keys del layout a `GuiItemDef.parse` (mapa vacio cuando no hay layout, NUNCA null para items); el loop de templates pasa null (key no aplica a templates).
-- Layout ASCII (1.1.0, `truncateLayout` + `layoutKeys`): `layout:` es una lista opcional de 1-6 strings de hasta 9 caracteres, leida de arriba hacia abajo sobre la grilla de cofre de 9 columnas (celda fila i / columna j = slot i*9+j, misma geometria que `GuiMask`). Lista vacia = sin layout (mapa de keys vacio, `pagedSlots` vacio, parse identico byte a byte a v1.0.0). Mas de 6 filas: WARN "layout tiene N filas; se truncan a 6"; fila con mas de 9 caracteres: WARN "fila I del layout tiene N caracteres; se trunca a 9" (I 1-based). El espacio ' ' nunca entra al mapa de keys; una key que aparece en N celdas acumula las N en orden row-major. Con layout presente, `rows` deriva de la cantidad de filas truncadas; un `rows:` declarado con valor distinto WARNea "rows X contradice layout de Y filas; usando Y". Layout + `inventory-type` no-cofre WARNea "layout asume grilla de cofre de 9 columnas; con inventory-type X los slots fuera de rango no se renderizan" (renderItem ya saltea slots >= size).
-- `paged-key:` (1.1.0, `parsePagedKey`): un caracter del layout a nivel menu cuyas celdas son el destino del overload de `bindPaged` sin `int[]`. Sin layout: WARN "paged-key declarado sin layout; ignorado". Trim con largo distinto de 1: WARN "paged-key 'RAW' invalido (debe ser 1 caracter); ignorado". Caracter ausente del layout: WARN "paged-key 'C' no aparece en layout; ignorado". Valido pero con `pagination: false`: WARN "paged-key declarado con pagination false; bindPaged quedara ignorado hasta activar pagination" y el valor SE GUARDA igual (el gate real es el existente de `bindPaged`).
-- `public int[] pagedSlots()` - Slots destino del `bindPaged` por `paged-key` del layout (copia defensiva via `clone()`); vacio cuando el menu no declara paged-key.
-- `public String id()` - Id del GUI: su nombre de archivo sin la extension `.yml`.
-- `public String title()` - Titulo crudo; las sesiones resuelven sus placeholders por viewer al render.
-- `public int rows()` - Filas del cofre (1-6); solo se usa cuando `inventoryType()` es null.
-- `public @Nullable InventoryType inventoryType()` - Tipo de inventario no-cofre, o null para un cofre dimensionado por `rows()`.
-- `public String openSound()` - Spec de sonido de apertura (`"SOUND_ID [vol] [pitch]"`); vacio no reproduce nada.
-- `public String closeSound()` (1.1.0) - Spec de sonido reproducido al viewer en el cierre del menu (`"SOUND_ID [vol] [pitch]"`, default ""); vacio no suena.
-- `public List<String> closeActions()` (1.1.0) - Lineas de accion del ActionEngine corridas al cierre natural del menu (default vacia, guardada con `List.copyOf`); vacia no corre nada. La semantica de ejecucion (cuando corren y cuando no) vive en `GuiSession.handleClose`.
-- `public int updateInterval()` - Intervalo de re-render del menu en ticks; 0 desactiva el timer del menu.
-- `public boolean pagination()` - Si este menu opto por paginacion; default false.
-- `public boolean strictClicks()` - Si este menu opto por strict clicks; default false (compat total con v1.0.0). Con true, un click fuera de los cuatro clicks basicos de mouse (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) se descarta salvo que una lista de acciones especifica declarada lo cubra (el gate concreto vive en `GuiSession.runClick`).
-- `public List<GuiItemDef> items()` - Items de la seccion `items:`, en orden de declaracion.
-- `public @Nullable GuiTemplate template(String templateId)` - Template declarado bajo `templates:` con el id dado, o null (tambien null si `templateId` es null).
-- `public Map<String, GuiTemplate> templates()` - Todos los templates de la seccion `templates:`, por id.
+- `static GuiDef parse(Sn ctx, String id, SnYml yml)` (package-private) - Parses the whole file; every malformed field emits a WARN prefixed `[gui <id>]` and falls back, never throwing. Empty/unreadable file: WARN "Empty or unreadable file; using a default gui with no items" and returns a default GUI (title "Menu", 3 rows, no items, empty `pagedSlots`). `rows` outside 1-6 WARNs and uses 3 (a check that only applies WITHOUT a layout). Items without valid slots WARN ("Item '<key>' without valid slots; not rendered") and are discarded; templates parse without requiring slots. The items loop passes the layout's key map to `GuiItemDef.parse` (an empty map when there is no layout, NEVER null for items); the templates loop passes null (key does not apply to templates).
+- ASCII layout (1.1.0, `truncateLayout` + `layoutKeys`): `layout:` is an optional list of 1-6 strings of up to 9 characters, read top-down over the 9-column chest grid (cell row i / column j = slot i*9+j, same geometry as `GuiMask`). An empty list = no layout (empty key map, empty `pagedSlots`, byte-identical parse to v1.0.0). More than 6 rows: WARN "layout has N rows; truncating to 6"; a row longer than 9 characters: WARN "layout row I has N characters; truncating to 9" (I 1-based). The space ' ' never enters the key map; a key appearing in N cells accumulates all N in row-major order. With a layout present, `rows` derives from the truncated row count; a declared `rows:` with a different value WARNs "rows X contradicts a layout of Y rows; using Y". Layout + a non-chest `inventory-type` WARNs "layout assumes the 9-column chest grid; with inventory-type X out-of-range slots do not render" (renderItem already skips slots >= size).
+- `paged-key:` (1.1.0, `parsePagedKey`): a menu-level layout character whose cells are the destination of the `bindPaged` overload without `int[]`. Without a layout: WARN "paged-key declared without a layout; ignored". A trim whose length is not 1: WARN "paged-key 'RAW' invalid (must be 1 character); ignored". A character absent from the layout: WARN "paged-key 'C' does not appear in layout; ignored". Valid but with `pagination: false`: WARN "paged-key declared with pagination false; bindPaged will stay ignored until pagination is enabled" and the value IS stored anyway (the real gate is the existing `bindPaged` one).
+- `public int[] pagedSlots()` - Destination slots of the layout `paged-key` `bindPaged` (defensive copy via `clone()`); empty when the menu declares no paged-key.
+- `public String id()` - GUI id: its file name without the `.yml` extension.
+- `public String title()` - Raw title; sessions resolve its placeholders per viewer at render.
+- `public int rows()` - Chest rows (1-6); only used when `inventoryType()` is null.
+- `public @Nullable InventoryType inventoryType()` - Non-chest inventory type, or null for a chest sized by `rows()`.
+- `public String openSound()` - Opening sound spec (`"SOUND_ID [vol] [pitch]"`); empty plays nothing.
+- `public String closeSound()` (1.1.0) - Sound spec played to the viewer on menu close (`"SOUND_ID [vol] [pitch]"`, default ""); empty plays nothing.
+- `public List<String> closeActions()` (1.1.0) - ActionEngine action lines run on the menu's natural close (default empty, stored with `List.copyOf`); empty runs nothing. The execution semantics (when they run and when not) live in `GuiSession.handleClose`.
+- `public int updateInterval()` - Menu re-render interval in ticks; 0 disables the menu timer.
+- `public boolean pagination()` - Whether this menu opted into pagination; default false.
+- `public boolean strictClicks()` - Whether this menu opted into strict clicks; default false (full v1.0.0 compat). With true, a click outside the four basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) is discarded unless a declared specific action list covers it (the concrete gate lives in `GuiSession.runClick`).
+- `public List<GuiItemDef> items()` - Items of the `items:` section, in declaration order.
+- `public @Nullable GuiTemplate template(String templateId)` - Template declared under `templates:` with the given id, or null (also null if `templateId` is null).
+- `public Map<String, GuiTemplate> templates()` - All templates of the `templates:` section, by id.
 
-#### Notas y gotchas
-- Resolucion leniente de `inventory-type`: vacio o `CHEST` devuelven null (cofre por rows); nombres desconocidos WARNean ("inventory-type invalido '<raw>'; usando CHEST") y caen a cofre. Se resuelve con `InventoryType.valueOf` individual en try/catch, nunca con switch, para que el enum quede abierto entre versiones de Minecraft.
+#### Notes and gotchas
+- Lenient `inventory-type` resolution: empty or `CHEST` return null (chest by rows); unknown names WARN ("invalid inventory-type '<raw>'; using CHEST") and fall to chest. Resolved with an individual `InventoryType.valueOf` in try/catch, never a switch, so the enum stays open across Minecraft versions.
 
 ### GuiMask
 `src/main/java/com/sn/lib/gui/GuiMask.java`
 
-Helper puro (final, constructor privado, cero Bukkit, testeable en JUnit plano como `SlotParser`) que traduce una mascara ASCII a indices de slot de cofre para menus armados por codigo; la contraparte programatica del `layout:` de los YML.
+Pure helper (final, private constructor, zero Bukkit, testable in plain JUnit like `SlotParser`) that translates an ASCII mask to chest slot indices for code-built menus; the programmatic counterpart of the YML `layout:`.
 
-- `public static int[] slots(char key, String... rows)` - Variante varargs; delega en la de List (`rows` null devuelve vacio).
-- `public static int[] slots(char key, List<String> rows)` - Slots de cada celda de la mascara que contiene `key`, en orden row-major ascendente. Geometria 6x9: las filas se leen de arriba hacia abajo sobre la grilla de cofre de 9 columnas (celda fila i / columna j = slot i*9+j); maximo 6 filas (las sobrantes se ignoran) y 9 caracteres por fila (los sobrantes se ignoran). Una fila null o vacia cuenta como fila de celdas vacias (conserva su indice de fila); lista null devuelve vacio. El espacio ' ' es SIEMPRE celda vacia: `slots(' ', ...)` devuelve vacio aunque la mascara tenga espacios. Key ausente devuelve vacio; sin duplicados posibles (cada celda es unica). Uso tipico: `session.bindPaged("tpl", data, GuiMask.slots('d', "         ", " ddddddd ", " ddddddd "), mapper)` y `session.bind(GuiMask.slots('x', rows)[0], template)`. Cubierta por `GuiMaskTest`.
+- `public static int[] slots(char key, String... rows)` - Varargs variant; delegates to the List one (null `rows` returns empty).
+- `public static int[] slots(char key, List<String> rows)` - Slots of every mask cell containing `key`, in ascending row-major order. 6x9 geometry: rows read top-down over the 9-column chest grid (cell row i / column j = slot i*9+j); at most 6 rows (extras ignored) and 9 characters per row (extras ignored). A null or empty row counts as a row of empty cells (keeps its row index); a null list returns empty. The space ' ' is ALWAYS an empty cell: `slots(' ', ...)` returns empty even if the mask has spaces. A missing key returns empty; no duplicates possible (each cell is unique). Typical use: `session.bindPaged("tpl", data, GuiMask.slots('d', "         ", " ddddddd ", " ddddddd "), mapper)` and `session.bind(GuiMask.slots('x', rows)[0], template)`. Covered by `GuiMaskTest`.
 
 ### GuiManager
 `src/main/java/com/sn/lib/gui/GuiManager.java`
 
-Modulo GUI de un contexto consumidor, alcanzado via `sn.guis()`. `load()` crea la carpeta `guis/` y carga UN GUI por archivo (el id es el nombre sin extension). Las sesiones abiertas se registran por owner en un `TenantRegistry`, asi el disable de un consumidor cierra exactamente los GUIs de ese consumidor (no-interferencia); el quit cleanup corre por el quit listener compartido. Main-thread only, como todo el modulo.
+GUI module of a consumer context, reached via `sn.guis()`. `load()` creates the `guis/` folder and loads ONE GUI per file (the id is the name without extension). Open sessions register per owner in a `TenantRegistry`, so a consumer's disable closes exactly that consumer's GUIs (non-interference); quit cleanup runs through the shared quit listener. Main-thread only, like the whole module.
 
-Constantes y estaticos:
-- `public static final String ITEM_TAG = "snlib_gui_item"` - Nombre de la PDC key estampada en cada stack GUI renderizado (payload `"<guiId>:<slot>"`), namespaceada por plugin owner via TagIo; el listener de proteccion anti-robo resuelve los stacks marcados a traves de ella.
-- `static final TenantRegistry<GuiSession> SESSIONS` (package-private) - Estatico server-wide justificado: sesiones GUI abiertas por plugin owner. El callback de sweep (`GuiSession::close`) cierra cada sesion (cancela timers, destrackea el holder, force-cierra al viewer) cuando su owner key se remueve (disable del consumidor).
+Constants and statics:
+- `public static final String ITEM_TAG = "snlib_gui_item"` - Name of the PDC key stamped on every rendered GUI stack (payload `"<guiId>:<slot>"`), namespaced by owning plugin via TagIo; the anti-theft protection listener resolves marked stacks through it.
+- `static final TenantRegistry<GuiSession> SESSIONS` (package-private) - Justified server-wide static: open GUI sessions per owning plugin. The sweep callback (`GuiSession::close`) closes each session (cancels timers, untracks the holder, force-closes on the viewer) when its owner key is removed (consumer disable).
 
-Metodos:
-- `public GuiManager(Sn ctx)` - Crea el modulo para el contexto dado y engancha su quit cleanup via `QuitCleanupListener.register(plugin, this::closeSessionsOf)`.
-- `public void load()` - Crea `guis/` si falta y (re)parsea un GUI por archivo `.yml` (orden alfabetico por nombre). Requiere el modulo yml: sin el, WARN "guis() declarado sin config(): la carpeta guis/ no se puede cargar y sn.guis() queda vacio" y retorna. Si no puede crear la carpeta: WARN "No se pudo crear la carpeta <path>". I/O sincronico por disenio: corre solo en onEnable y en el flujo de reload. Los mounts de archivos se cachean en un `ConcurrentHashMap` (`mounts`), asi el reload puede re-leer del disco.
-- `public @Nullable Gui get(String id)` - GUI cargado bajo `id` (nombre de archivo sin extension, con `trim()`), o null.
-- `public void registerAction(String tag, ActionHandler handler)` - Registra un tag de accion de click custom para este contexto; azucar sobre `sn.actions().register`.
-- `public void reload()` - Recarga el modulo: cierra nativamente todo GUI abierto de este contexto (las sesiones son per-viewer, asi nadie queda con un inventario stale), re-lee del disco cada archivo montado, re-parsea las definiciones y levanta archivos nuevos (via `load()`).
-- `public List<GuiSession> openSessions()` - Snapshot de las sesiones abiertas de ESTE contexto; la fuente de reapertura del flujo de reload.
-- `public void closeAll()` - Cierra todas las sesiones GUI abiertas de ESTE contexto.
-- `public void closeAll(Plugin owner)` - Cierra todas las sesiones registradas por `owner`; las de cualquier otro plugin quedan intactas (no-interferencia).
-- `void warnOnce(String key, String message)` (package-private) - Loguea un warning de mal uso de GUI una vez por key para este contexto (gating de `bindPaged`).
-- `private void closeSessionsOf(UUID viewer)` - Cleanup de quit/kick: cierra las sesiones de este contexto del viewer que se va.
+Methods:
+- `public GuiManager(Sn ctx)` - Creates the module for the given context and hooks its quit cleanup via `QuitCleanupListener.register(plugin, this::closeSessionsOf)`.
+- `public void load()` - Creates `guis/` if missing and (re)parses one GUI per `.yml` file (alphabetical order by name). Requires the yml module: without it, WARN "guis() declared without config(): the guis/ folder cannot load and sn.guis() stays empty" and returns. If the folder cannot be created: WARN "Could not create the folder <path>". Synchronous I/O by design: it runs only in onEnable and the reload flow. File mounts cache in a `ConcurrentHashMap` (`mounts`), so the reload can re-read from disk.
+- `public @Nullable Gui get(String id)` - GUI loaded under `id` (file name without extension, `trim()`ed), or null.
+- `public void registerAction(String tag, ActionHandler handler)` - Registers a custom click action tag for this context; sugar over `sn.actions().register`.
+- `public void reload()` - Reloads the module: natively closes every open GUI of this context (sessions are per-viewer, so nobody keeps a stale inventory), re-reads each mounted file from disk, re-parses the definitions and picks up new files (via `load()`).
+- `public List<GuiSession> openSessions()` - Snapshot of THIS context's open sessions; the reopening source of the reload flow.
+- `public void closeAll()` - Closes all of THIS context's open GUI sessions.
+- `public void closeAll(Plugin owner)` - Closes all sessions registered by `owner`; those of any other plugin stay intact (non-interference).
+- `void warnOnce(String key, String message)` (package-private) - Logs a GUI misuse warning once per key for this context (the `bindPaged` gating).
+- `private void closeSessionsOf(UUID viewer)` - Quit/kick cleanup: closes this context's sessions of the departing viewer.
 
 ### Gui
 `src/main/java/com/sn/lib/gui/Gui.java`
 
-Una definicion de GUI cargada y sus sesiones vivas per-viewer. `open(Player)` da a cada viewer su PROPIA `GuiSession` (inventario propio, holder propio, estado de pagina propio) sobre la `GuiDef` inmutable compartida; abrir de nuevo para un viewer con sesion viva re-muestra esa sesion en vez de apilar una segunda. Main-thread only.
+A loaded GUI definition and its live per-viewer sessions. `open(Player)` gives each viewer their OWN `GuiSession` (own inventory, own holder, own page state) over the shared immutable `GuiDef`; re-opening for a viewer with a live session re-shows that session instead of stacking a second one. Main-thread only.
 
-- `public String id()` - Id del GUI: el nombre de archivo sin la extension `.yml`.
-- `public GuiDef def()` - Definicion parseada inmutable compartida por todas las sesiones.
-- `public void open(Player player)` - Abre el GUI para el jugador en la pagina 1.
-- `public void open(Player player, int page)` - Abre el GUI en la pagina dada (clampeada a minimo 1 y forzada a 1 mientras el menu no opto por paginacion). Una sesion viva del viewer se re-muestra en esa pagina (`reopen`); si no, se crea una sesion nueva, se registra por owner (`GuiManager.SESSIONS.add`) y se renderiza. `player` null es no-op.
-- `public @Nullable GuiTemplate template(String templateId)` - Template declarado bajo `templates:` con el id dado, o null.
-- `public @Nullable GuiSession session(Player player)` - Sesion viva del jugador en ESTE GUI, o null cuando no tiene.
-- `void removeSession(UUID viewer, GuiSession session)` (package-private) - Suelta el mapping de sesion de un viewer; solo lo llama la sesion que se cierra (remove condicional `Map.remove(key, value)` para no pisar una sesion mas nueva).
+- `public String id()` - GUI id: the file name without the `.yml` extension.
+- `public GuiDef def()` - Immutable parsed definition shared by all sessions.
+- `public void open(Player player)` - Opens the GUI for the player at page 1.
+- `public void open(Player player, int page)` - Opens the GUI at the given page (clamped to at least 1 and forced to 1 while the menu has not opted into pagination). A live session of the viewer re-shows at that page (`reopen`); otherwise a new session is created, registered per owner (`GuiManager.SESSIONS.add`) and rendered. A null `player` is a no-op.
+- `public @Nullable GuiTemplate template(String templateId)` - Template declared under `templates:` with the given id, or null.
+- `public @Nullable GuiSession session(Player player)` - The player's live session on THIS GUI, or null when they have none.
+- `void removeSession(UUID viewer, GuiSession session)` (package-private) - Releases a viewer's session mapping; only the closing session calls it (conditional `Map.remove(key, value)` so as not to clobber a newer session).
 
 ### GuiSession
 `src/main/java/com/sn/lib/gui/GuiSession.java`
 
-GUI vivo de UN viewer: cada viewer tiene su sesion con su PROPIO inventario, PROPIO `SnGuiHolder` y PROPIO estado de pagina, compartiendo la `GuiDef` inmutable y sus templates. El render es por viewer: view requirements, placeholders y titulo resuelven contra el player de esta sesion. Implementa `PageTarget` (modulo action): las operaciones de pagina estan gateadas por el flag opt-in `pagination` del menu. Main-thread only. Estado interno relevante: `baseSlots` (slot -> item declarado), `binds` (binds manuales por slot), `pagedPhs` (locals por slot paginado), `tasks` (task handles cancelables), y los volatiles `inventory`, `lastTitle`, `page`, `transitioningPage`, `closed`, `pagedBind`, `pagedSlots`, `manualTotalPages` (1.1.0, total declarado por `setTotalPages`; 0 = desconocido).
+ONE viewer's live GUI: each viewer has their session with their OWN inventory, OWN `SnGuiHolder` and OWN page state, sharing the immutable `GuiDef` and its templates. Rendering is per viewer: view requirements, placeholders and title resolve against this session's player. It implements `PageTarget` (action module): page operations are gated by the menu's opt-in `pagination` flag. Main-thread only. Relevant internal state: `baseSlots` (slot -> declared item), `binds` (manual binds per slot), `pagedPhs` (locals per paginated slot), `tasks` (cancelable task handles), and the volatiles `inventory`, `lastTitle`, `page`, `transitioningPage`, `closed`, `pagedBind`, `pagedSlots`, `manualTotalPages` (1.1.0, total declared by `setTotalPages`; 0 = unknown).
 
-- `void open()` (package-private) - Primera apertura: crea el inventario, renderiza, trackea el holder en el `TenantSweeper`, abre el inventario al viewer, reproduce el open-sound y arranca los timers.
-- `void reopen(int targetPage)` (package-private) - Re-entrada via `Gui.open` sobre una sesion existente: setea la pagina (forzada a 1 sin paginacion), hace `refreshMenu()` y re-abre el inventario si el viewer no lo estaba viendo; el open-sound solo suena si no estaba viendo.
-- `public Player viewer()` - Jugador duenio de esta sesion.
-- `public UUID viewerId()` - UUID del viewer de la sesion.
-- `public String guiId()` - Id del GUI de la definicion de respaldo.
-- `public int page()` - Pagina actual de ESTE viewer (1-based); siempre 1 mientras la paginacion este apagada.
-- `SnGuiHolder holder()` (package-private) - Holder compartido por cada inventario que esta sesion recrea.
-- `public boolean transitioningPage()` - True mientras la sesion intercambia inventarios (cambio de pagina o recreacion); el manejo de close del click listener saltea la remocion durante una transicion.
-- `public boolean closed()` - True una vez que la sesion se cerro y desregistro.
-- `public @Nullable GuiItemDef itemAt(int slot)` - Definicion renderizada en `slot` para este viewer con precedencia: bind de API, luego entrada paginada, luego item declarado del slot. Null para slot vacio.
-- `public void bind(int slot, GuiTemplate template, Ph... phs)` - Bindea un template a un slot de ESTA sesion con los placeholders locales dados y lo renderiza de inmediato. El bind sobrevive refreshes de pagina y recreaciones de inventario hasta ser sobreescrito; tiene precedencia sobre un item declarado en el mismo slot. Template null o slot negativo: no-op.
-- `public <T> void bindPaged(String templateId, List<T> data, int[] slots, BiConsumer<T, PhCollector> mapper)` - Bindea un data set paginado a ESTA sesion: un snapshot inmutable de `data` se pagina de a `slots.length` entradas y la pagina ACTUAL de este viewer renderiza en `slots` usando el template, una entrada por slot en orden. El mapper llena los placeholders locales de cada entrada; los slots sobrantes de una pagina corta quedan vacios. El bind sobrevive cambios de pagina y recreaciones hasta ser rebindeado; la pagina se clampea al total de paginas del snapshot, que ademas maneja el estado `nav-disabled` de los items de navegacion del YML. Con `pagination: false` (default del menu) la llamada se ignora con UN warning por GUI ("bindPaged en gui '<id>' ignorado: pagination false (opt-in por menu)"); template desconocido o slots vacios tambien WARNean una vez e ignoran. `mapper` null lanza NPE (`Objects.requireNonNull`).
-- `public <T> void bindPaged(String templateId, List<T> data, BiConsumer<T, PhCollector> mapper)` (1.1.0) - Variante SIN slots: usa como destino las celdas del `paged-key` declarado en el `layout:` del menu (`def.pagedSlots()`). Con un menu sin paged-key WARNea una vez ("bindPaged en gui '<id>' ignorado: el menu no declara paged-key en layout") y se ignora; si resuelve, delega en el overload con `int[]` con las mismas reglas (pagination opt-in, template existente).
-- `public void handleClick(int slot, ClickType click)` - Despacho de click invocado por el click listener compartido con un raw slot del top inventory: resuelve la definicion efectiva (bind manual, entrada paginada, item declarado), saltea items de navegacion deshabilitados y delega en `runClick`, que resuelve la matriz per-click de la definicion (acciones, requirement y deny por `ClickType`, especifico-sobre-generico campo por campo) y aplica el gate opt-in de strict-clicks del menu, con esta sesion como page target y el click type en el contexto. No-op si la sesion esta cerrada.
-- `public void handleClose()` - Manejo de cierre invocado por el click listener cuando el cliente del viewer cerro el inventario: mismo teardown que `close()` pero sin force-cerrar la pantalla; desde 1.1.0 ademas reproduce el `close-sound` del menu (inline: un sonido durante el InventoryCloseEvent es seguro) y agenda las `close-actions` al TICK SIGUIENTE via `ctx.scheduler().sync` (nunca inline: correr `[open]`-like dentro del propio InventoryCloseEvent reabre inventarios en medio del cierre y glitchea el cliente). Semantica garantizada por construccion: corren en el cierre natural (ESC) y en el `[close]` del action engine (una sola ejecucion por cierre); NO corren en transiciones de pagina/recreacion (el guard `transitioningPage()` del listener saltea `handleClose`); NO corren en el teardown programatico (`close()` del sweep/reload/quit-cleanup marca `closed` ANTES de force-cerrar, asi el close event posterior encuentra `teardown()` false). El task del tick siguiente re-chequea `viewer.isOnline()` y corre con `ActionContext` de click null (los click guards adentro se omiten con debug); el scheduling contra un owner deshabilitado se absorbe con `IllegalPluginAccessException` + nota de debug. Borde documentado: en un disconnect el server dispara InventoryCloseEvent antes de PlayerQuitEvent; el doble guard `isOnline()` corta el caso normal, pero los consumers deben escribir close-actions idempotentes. Las page actions dentro de close-actions son inutiles (la sesion ya esta cerrada).
-- `public void nextPage()` - (override `PageTarget`) Avanza una pagina y refresca; no-op con debug si la paginacion esta apagada, y no pasa de la ultima pagina CONOCIDA (un bind paginado vivo o un total declarado por `setTotalPages`).
-- `public void previousPage()` - (override) Retrocede una pagina si `page > 1` y refresca; no-op con debug sin paginacion.
-- `public void setPage(int targetPage)` - (override) Setea la pagina (minimo 1, clampeada al total conocido si hay bind paginado) y refresca; no-op con debug sin paginacion.
-- `public void refreshPage()` - (override) Re-renderiza el contenido del inventario actual; no-op con debug sin paginacion.
-- `public void refreshMenu()` - (override) Re-render completo SIN gate de paginacion; recrea el inventario cuando el titulo resuelto cambio (mismo holder y sesion, preservando pagina y binds), si no solo re-renderiza contenidos.
-- `public boolean paginationEnabled()` - (override) Devuelve el flag `pagination` de la definicion.
-- `public void setTotalPages(int total)` (1.1.0) - Declara el total de paginas de un GUI paginado a mano (refreshPage/acciones custom sin `bindPaged`): habilita el tope de `nextPage()` y el estado `nav-disabled` del item next. Valores <= 0 vuelven a "desconocido" (0). Un `bindPaged` vivo tiene precedencia sobre este valor. Requiere `pagination: true`; con pagination false es no-op con nota de debug (`set-total-pages`). Si el valor cambia, clampea la pagina actual al total nuevo y re-renderiza de inmediato (refresca el estado nav-disabled del next). Main-thread only.
-- `public void close()` - Cierra la sesion: cancela sus timers, la desregistra de los registries per-owner, destrackea el holder y force-cierra el inventario del viewer si esta sesion sigue en pantalla. Idempotente.
+- `void open()` (package-private) - First opening: creates the inventory, renders, tracks the holder in the `TenantSweeper`, opens the inventory to the viewer, plays the open-sound and starts the timers.
+- `void reopen(int targetPage)` (package-private) - Re-entry via `Gui.open` on an existing session: sets the page (forced to 1 without pagination), does `refreshMenu()` and re-opens the inventory if the viewer was not viewing it; the open-sound only plays if they were not viewing.
+- `public Player viewer()` - Player owning this session.
+- `public UUID viewerId()` - UUID of the session's viewer.
+- `public String guiId()` - GUI id of the backing definition.
+- `public int page()` - THIS viewer's current page (1-based); always 1 while pagination is off.
+- `SnGuiHolder holder()` (package-private) - Holder shared by every inventory this session recreates.
+- `public boolean transitioningPage()` - True while the session swaps inventories (page change or recreation); the click listener's close handling skips removal during a transition.
+- `public boolean closed()` - True once the session closed and unregistered.
+- `public @Nullable GuiItemDef itemAt(int slot)` - The definition rendered at `slot` for this viewer with precedence: API bind, then paginated entry, then the slot's declared item. Null for an empty slot.
+- `public void bind(int slot, GuiTemplate template, Ph... phs)` - Binds a template to a slot of THIS session with the given local placeholders and renders it immediately. The bind survives page refreshes and inventory recreations until overwritten; it takes precedence over an item declared on the same slot. A null template or negative slot: no-op.
+- `public <T> void bindPaged(String templateId, List<T> data, int[] slots, BiConsumer<T, PhCollector> mapper)` - Binds a paginated data set to THIS session: an immutable snapshot of `data` paginates in chunks of `slots.length` entries and this viewer's CURRENT page renders into `slots` using the template, one entry per slot in order. The mapper fills each entry's local placeholders; leftover slots of a short page stay empty. The bind survives page changes and recreations until rebound; the page clamps to the snapshot's total pages, which also drives the YML navigation items' `nav-disabled` state. With `pagination: false` (menu default) the call is ignored with ONE warning per GUI ("bindPaged on gui '<id>' ignored: pagination false (opt-in per menu)"); an unknown template or empty slots also WARN once and ignore. A null `mapper` throws NPE (`Objects.requireNonNull`).
+- `public <T> void bindPaged(String templateId, List<T> data, BiConsumer<T, PhCollector> mapper)` (1.1.0) - Slotless variant: uses as destination the cells of the `paged-key` declared in the menu's `layout:` (`def.pagedSlots()`). On a menu without a paged-key it WARNs once ("bindPaged on gui '<id>' ignored: the menu declares no paged-key in layout") and is ignored; if it resolves, it delegates to the `int[]` overload with the same rules (pagination opt-in, existing template).
+- `public void handleClick(int slot, ClickType click)` - Click dispatch invoked by the shared click listener with a top-inventory raw slot: it resolves the effective definition (manual bind, paginated entry, declared item), skips disabled navigation items and delegates to `runClick`, which resolves the definition's per-click matrix (actions, requirement and deny by `ClickType`, specific-over-generic field by field) and applies the menu's opt-in strict-clicks gate, with this session as the page target and the click type in the context. No-op if the session is closed.
+- `public void handleClose()` - Close handling invoked by the click listener when the viewer's client closed the inventory: same teardown as `close()` but without force-closing the screen; since 1.1.0 it additionally plays the menu's `close-sound` (inline: a sound during the InventoryCloseEvent is safe) and schedules the `close-actions` for the NEXT TICK via `ctx.scheduler().sync` (never inline: running `[open]`-like actions inside the InventoryCloseEvent itself reopens inventories mid-close and glitches the client). Semantics guaranteed by construction: they run on the natural close (ESC) and on the action engine's `[close]` (one execution per close); they do NOT run on page transitions/recreations (the listener's `transitioningPage()` guard skips `handleClose`); they do NOT run on programmatic teardown (`close()` from sweep/reload/quit-cleanup marks `closed` BEFORE force-closing, so the later close event finds `teardown()` false). The next-tick task re-checks `viewer.isOnline()` and runs with a null click `ActionContext` (click guards inside skip with debug); scheduling against a disabled owner is absorbed with `IllegalPluginAccessException` + a debug note. Documented edge: on a disconnect the server fires InventoryCloseEvent before PlayerQuitEvent; the double `isOnline()` guard cuts the normal case, but consumers must write idempotent close-actions. Page actions inside close-actions are useless (the session is already closed).
+- `public void nextPage()` - (`PageTarget` override) Advances one page and refreshes; no-op with debug if pagination is off, and it does not pass the last KNOWN page (a live paginated bind or a total declared by `setTotalPages`).
+- `public void previousPage()` - (override) Goes back one page if `page > 1` and refreshes; no-op with debug without pagination.
+- `public void setPage(int targetPage)` - (override) Sets the page (minimum 1, clamped to the known total if there is a paginated bind) and refreshes; no-op with debug without pagination.
+- `public void refreshPage()` - (override) Re-renders the current inventory's contents; no-op with debug without pagination.
+- `public void refreshMenu()` - (override) Full re-render WITHOUT the pagination gate; recreates the inventory when the resolved title changed (same holder and session, preserving page and binds), otherwise it only re-renders contents.
+- `public boolean paginationEnabled()` - (override) Returns the definition's `pagination` flag.
+- `public void setTotalPages(int total)` (1.1.0) - Declares the total pages of a manually paginated GUI (refreshPage/custom actions without `bindPaged`): it enables the `nextPage()` cap and the next item's `nav-disabled` state. Values <= 0 revert to "unknown" (0). A live `bindPaged` takes precedence over this value. Requires `pagination: true`; with pagination false it is a no-op with a debug note (`set-total-pages`). If the value changes, it clamps the current page to the new total and re-renders immediately (refreshing the next item's nav-disabled state). Main-thread only.
+- `public void close()` - Closes the session: cancels its timers, unregisters it from the per-owner registries, untracks the holder and force-closes the viewer's inventory if this session is still on screen. Idempotent.
 
-#### Logica interna
-- Gate de paginacion (`paginationBlocked(String operation)`): con `pagination: false` toda operacion de pagina es no-op registrada por el servicio de debug del contexto: `"GUI '<id>': <operation> ignorado, pagination false (opt-in por menu)"`.
-- Nav deshabilitado (`navDisabledNow`): previous se deshabilita en la pagina 1; next en la ultima pagina CONOCIDA (`knownTotalPages()` usa el bind paginado vivo si hay, con fallback al `manualTotalPages` de `setTotalPages`; 0 = desconocido, y en ese caso next nunca se deshabilita). Un item deshabilitado renderiza su override `nav-disabled` (si existe) y no dispara nada.
-- Nota de debug del nav next (1.1.0, `navUnknownNoted`): la PRIMERA vez que `renderItem` renderiza un nav NEXT con paginacion activa y total desconocido (`knownTotalPages() == 0`), se registra via debug "GUI '<id>': nav next con total de paginas desconocido; next nunca se deshabilita (usa bindPaged o setTotalPages)". Una vez por sesion (campo main-thread, sin volatile).
-- Cierre con feedback (1.1.0, `playCloseSound` + `runCloseActions`): `playCloseSound` es simetrico a `playOpenSound` (inline); `runCloseActions` agenda las lineas al tick siguiente via `ctx.scheduler().sync` con re-chequeo de `isOnline()` y `ActionContext` de click null, envolviendo el scheduling en try/catch de `IllegalPluginAccessException` con nota de debug ("close-actions de '<id>' descartadas: owner deshabilitado").
-- Recreacion (`recreate(Component title)`): setea `transitioningPage = true`, crea el inventario nuevo con el MISMO holder, re-renderiza, re-abre al viewer y baja el flag en `finally`; el guard evita que el `InventoryCloseEvent` del intercambio derribe la sesion.
-- `createInventory`: intenta el `inventory-type` declarado; ante `Throwable` WARNea una sola vez por sesion (`typeWarned`) "[gui <id>] inventory-type <X> no se pudo crear (<t>); usando CHEST" y cae a cofre `rows * 9`.
-- Render (`renderContents`): limpia el inventario y renderiza en tres fases con precedencia: items declarados (salteando slots tomados por binds o por el bind paginado), luego la pagina actual del bind paginado (salteando slots con bind manual, clampeando `page` al total), luego los binds manuales. El view requirement de cada definicion se testea contra el resolver del viewer (PAPI + locals); si falla, el slot queda en null.
-- Marker anti-robo (`stamp`): cada stack renderizado se estampa via `TagIo.set(stack, ctx.plugin(), GuiManager.ITEM_TAG, def.id() + ":" + slot)` (PDC key `snlib_gui_item`, namespaceada por plugin owner, payload `"<guiId>:<slot>"`).
-- Timers (`startTimers`): si `update-interval` de menu > 0 arranca un timer de menu; por cada item con `update-interval` > 0 arranca un timer de item. Ambos ticks primero chequean `closed`, y si el viewer ya no esta viendo el inventario cierran la sesion (auto-limpieza). El tick de menu llama `refreshMenu()`: re-evalua titulo (y por ende recrea el inventario preservando sesion, pagina y binds cuando cambio); el tick de item re-renderiza solo ese item.
-- Clicks (`runClick`): funnel unico de items declarados, binds manuales y entradas paginadas. Gate strict-clicks PRIMERO: con `strict-clicks: true`, un click fuera de los 4 basicos de mouse sin lista especifica declarada que lo cubra (`GuiItemDef.basicClick` + `specificActionsFor`) se descarta ANTES del test de requirement, con nota de debug: no corren ni las click actions ni las deny actions (el listener ya cancelo el evento). `middle-click-actions` habilita MIDDLE y una `left-click-actions` declarada habilita DOUBLE_CLICK y CREATIVE (un doble click vanilla son dos lefts; deliberado); NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND y UNKNOWN no tienen lista especifica posible y quedan siempre descartados en strict. Con strict false (default) el comportamiento es identico a v1.0.0. Pasado el gate, construye un `ActionContext(viewer, ctx, this, click, phs)` (sobrecarga de compat sin superficie: los clicks de GUI no tienen `ClickSurface`) y corre `clickActionsFor(click)` si `clickRequirementFor(click)` pasa, o `denyActionsFor(click)` si no, via `ctx.actions().run` (resolucion especifico-sobre-generico campo por campo).
-- Records privados: `Binding(GuiTemplate template, Ph[] phs)` (bind manual con sus locals capturados al bind) y `PagedBind<T>(GuiTemplate template, Pagination<T> pagination, int[] slots, BiConsumer<T, PhCollector> mapper)` (bind paginado vivo).
+#### Internal logic
+- Pagination gate (`paginationBlocked(String operation)`): with `pagination: false` every page operation is a no-op recorded by the context's debug service: `"GUI '<id>': <operation> ignored, pagination false (opt-in per menu)"`.
+- Disabled nav (`navDisabledNow`): previous disables on page 1; next on the last KNOWN page (`knownTotalPages()` uses the live paginated bind if any, falling back to `setTotalPages`' `manualTotalPages`; 0 = unknown, and in that case next never disables). A disabled item renders its `nav-disabled` override (if present) and fires nothing.
+- Next-nav debug note (1.1.0, `navUnknownNoted`): the FIRST time `renderItem` renders a NEXT nav with pagination on and an unknown total (`knownTotalPages() == 0`), it records via debug "GUI '<id>': next nav with unknown total pages; next never disables (use bindPaged or setTotalPages)". Once per session (main-thread field, no volatile).
+- Close feedback (1.1.0, `playCloseSound` + `runCloseActions`): `playCloseSound` is symmetric to `playOpenSound` (inline); `runCloseActions` schedules the lines for the next tick via `ctx.scheduler().sync` with an `isOnline()` re-check and a null click `ActionContext`, wrapping the scheduling in a try/catch of `IllegalPluginAccessException` with a debug note ("close-actions of '<id>' discarded: owner disabled").
+- Recreation (`recreate(Component title)`): sets `transitioningPage = true`, creates the new inventory with the SAME holder, re-renders, re-opens to the viewer and lowers the flag in a `finally`; the guard prevents the swap's `InventoryCloseEvent` from tearing the session down.
+- `createInventory`: tries the declared `inventory-type`; on `Throwable` it WARNs once per session (`typeWarned`) "[gui <id>] inventory-type <X> could not be created (<t>); using CHEST" and falls to a `rows * 9` chest.
+- Render (`renderContents`): clears the inventory and renders in three phases with precedence: declared items (skipping slots taken by binds or the paginated bind), then the paginated bind's current page (skipping slots with a manual bind, clamping `page` to the total), then the manual binds. Each definition's view requirement tests against the viewer's resolver (PAPI + locals); if it fails, the slot stays null.
+- Anti-theft marker (`stamp`): every rendered stack stamps via `TagIo.set(stack, ctx.plugin(), GuiManager.ITEM_TAG, def.id() + ":" + slot)` (PDC key `snlib_gui_item`, namespaced by owning plugin, payload `"<guiId>:<slot>"`).
+- Timers (`startTimers`): if the menu `update-interval` > 0 it starts a menu timer; for each item with `update-interval` > 0 it starts an item timer. Both ticks first check `closed`, and if the viewer is no longer viewing the inventory they close the session (self-cleanup). The menu tick calls `refreshMenu()`: it re-evaluates the title (and thus recreates the inventory preserving session, page and binds when it changed); the item tick re-renders only that item.
+- Clicks (`runClick`): the single funnel for declared items, manual binds and paginated entries. Strict-clicks gate FIRST: with `strict-clicks: true`, a click outside the 4 basic mouse clicks with no declared specific list covering it (`GuiItemDef.basicClick` + `specificActionsFor`) is discarded BEFORE the requirement test, with a debug note: neither the click actions nor the deny actions run (the listener already cancelled the event). `middle-click-actions` enables MIDDLE and a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE (a vanilla double click is two lefts; deliberate); NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND and UNKNOWN have no possible specific list and stay always discarded in strict. With strict false (default) behavior is identical to v1.0.0. Past the gate, it builds an `ActionContext(viewer, ctx, this, click, phs)` (the surfaceless compat overload: GUI clicks have no `ClickSurface`) and runs `clickActionsFor(click)` if `clickRequirementFor(click)` passes, or `denyActionsFor(click)` if not, via `ctx.actions().run` (specific-over-generic resolution field by field).
+- Private records: `Binding(GuiTemplate template, Ph[] phs)` (a manual bind with its locals captured at bind time) and `PagedBind<T>(GuiTemplate template, Pagination<T> pagination, int[] slots, BiConsumer<T, PhCollector> mapper)` (the live paginated bind).
 
-#### Notas y gotchas
-- El cierre "nativo" cubre todos los caminos: quit/kick (QuitCleanupListener -> `GuiManager.closeSessionsOf`), reload (`GuiManager.reload()` -> `closeAll()`), disable del consumidor (sweep del `TenantRegistry` con callback `GuiSession::close`) y cierre manual del cliente (`handleClose` via el click listener). En todos, timers cancelados y registries limpios. Solo el camino de `handleClose` (cierre natural o `[close]`) dispara `close-sound`/`close-actions`: los caminos programaticos marcan `closed` antes de force-cerrar y quedan excluidos por disenio (correr acciones durante shutdown es peligroso).
-- `renderPaged` limpia y repuebla `pagedPhs` en cada render, asi los locals que ve `handleClick` corresponden siempre a la pagina actual.
+#### Notes and gotchas
+- The "native" close covers all paths: quit/kick (QuitCleanupListener -> `GuiManager.closeSessionsOf`), reload (`GuiManager.reload()` -> `closeAll()`), consumer disable (`TenantRegistry` sweep with the `GuiSession::close` callback) and manual client close (`handleClose` via the click listener). In all of them, timers cancelled and registries clean. Only the `handleClose` path (natural close or `[close]`) fires `close-sound`/`close-actions`: the programmatic paths mark `closed` before force-closing and are excluded by design (running actions during shutdown is dangerous).
+- `renderPaged` clears and repopulates `pagedPhs` on every render, so the locals `handleClick` sees always correspond to the current page.
 
 ### GuiTemplate
 `src/main/java/com/sn/lib/gui/GuiTemplate.java`
 
-Item GUI reutilizable SIN slots, declarado bajo la seccion `templates:` de un archivo GUI: el usuario de config personaliza apariencia y acciones libremente mientras el plugin decide en runtime a que slot va cada template via `GuiSession.bind(int, GuiTemplate, Ph...)`. Soporta exactamente los mismos campos que un item regular excepto `slots:`, y tipicamente usa placeholders locales definidos por el plugin (por ejemplo `%index%`) provistos como pares `Ph` al bindear.
+A reusable GUI item WITHOUT slots, declared under a GUI file's `templates:` section: the config user customizes appearance and actions freely while the plugin decides at runtime which slot each template goes to via `GuiSession.bind(int, GuiTemplate, Ph...)`. It supports exactly the same fields as a regular item except `slots:`, and typically uses plugin-defined local placeholders (for example `%index%`) provided as `Ph` pairs at bind time.
 
-- `public String id()` - Id del template (su key dentro de la seccion `templates:`).
-- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Construye el stack fisico para `viewer` con los placeholders locales dados (delega en `GuiItemDef.render`).
-- `GuiItemDef item()` (package-private) - Definicion de respaldo (requirements y listas de acciones) usada por el flujo de click.
+- `public String id()` - Template id (its key inside the `templates:` section).
+- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Builds the physical stack for `viewer` with the given local placeholders (delegates to `GuiItemDef.render`).
+- `GuiItemDef item()` (package-private) - Backing definition (requirements and action lists) used by the click flow.
 
 ### Pagination
 `src/main/java/com/sn/lib/gui/Pagination.java`
 
-Pager inmutable 1-based sobre un snapshot fijo de datos (port del helper de paginacion de SnGens): la lista se copia una vez en la creacion y se corta por pagina on demand. Las paginas siempre se clampean: pedir una pagina menor a 1 devuelve la primera y pedir mas alla de `totalPages()` devuelve la ultima. Un data set vacio igual reporta una pagina (vacia), asi la matematica de navegacion nunca divide por cero.
+Immutable 1-based pager over a fixed data snapshot (port of SnGens' pagination helper): the list copies once at creation and slices per page on demand. Pages always clamp: asking for a page below 1 returns the first and asking beyond `totalPages()` returns the last. An empty data set still reports one (empty) page, so navigation math never divides by zero.
 
-- `public static <T> Pagination<T> of(List<T> data, int pageSize)` - Crea un pager sobre un snapshot de `data` (null significa vacio; los elementos deben ser no-null por `List.copyOf`) con `pageSize` entradas por pagina (valores menores a 1 se elevan a 1).
-- `public int pageSize()` - Entradas por pagina.
-- `public int size()` - Total de elementos del snapshot.
-- `public int totalPages()` - Total de paginas; al menos 1 aun con snapshot vacio.
-- `public List<T> page(int page)` - Slice de la pagina 1-based dada, clampeada al rango; posiblemente mas corta que `pageSize` (devuelve una vista via `subList`, o `List.of()` si esta vacia).
+- `public static <T> Pagination<T> of(List<T> data, int pageSize)` - Creates a pager over a snapshot of `data` (null means empty; elements must be non-null per `List.copyOf`) with `pageSize` entries per page (values below 1 raise to 1).
+- `public int pageSize()` - Entries per page.
+- `public int size()` - Total elements of the snapshot.
+- `public int totalPages()` - Total pages; at least 1 even with an empty snapshot.
+- `public List<T> page(int page)` - Slice of the given 1-based page, clamped to range; possibly shorter than `pageSize` (returns a view via `subList`, or `List.of()` if empty).
 
 ### PhCollector
 `src/main/java/com/sn/lib/gui/PhCollector.java`
 
-Acumulador de pares de placeholders locales entregado al mapper de `bindPaged`: el mapper llena un collector por entrada paginada y la sesion renderiza el template con los pares colectados.
+Local placeholder pair accumulator handed to `bindPaged`'s mapper: the mapper fills one collector per paginated entry and the session renders the template with the collected pairs.
 
-- `public PhCollector add(String key, Object value)` - Agrega un par via `Ph.of`; keys null o vacias se ignoran. Devuelve `this` (encadenable).
-- `public Ph[] toArray()` - Pares colectados en orden de insercion.
+- `public PhCollector add(String key, Object value)` - Adds a pair via `Ph.of`; null or empty keys are ignored. Returns `this` (chainable).
+- `public Ph[] toArray()` - Collected pairs in insertion order.
 
 ### GuiClickListener (internal)
 `src/main/java/com/sn/lib/gui/internal/GuiClickListener.java`
 
-Unico click listener compartido, propiedad de SnLib, para TODO GUI de la libreria de todos los consumidores. Inscripto en el ListenerHub; el `registerEvents` ocurre UNICAMENTE en el bootstrap de SnLibPlugin. Identificacion SIEMPRE por `holder instanceof SnGuiHolder`, nunca por titulo.
+The single shared click listener, owned by SnLib, for EVERY library GUI of every consumer. Enrolled in the ListenerHub; `registerEvents` happens SOLELY in the SnLibPlugin bootstrap. Identification is ALWAYS `holder instanceof SnGuiHolder`, never by title.
 
-- `public void onClick(InventoryClickEvent event)` - (`@EventHandler(priority = HIGH, ignoreCancelled = true)`) Clicks sobre un GUI de la libreria: `COLLECT_TO_CURSOR` (stacking por doble click) se cancela INCONDICIONALMENTE antes que nada, cerrando el vector de extraccion por doble click; despues se cancela todo click y, si el raw slot cae dentro del top inventory (`0 <= rawSlot < size`), se despacha a `holder.session().handleClick(rawSlot, event.getClick())`.
-- `public void onDrag(InventoryDragEvent event)` - (`@EventHandler(priority = HIGH, ignoreCancelled = true)`) Drags sobre un GUI de la libreria: siempre cancelados.
-- `public void onClose(InventoryCloseEvent event)` - (`@EventHandler`) Cierre natural: derriba la sesion (`handleClose`) SALVO que este intercambiando inventarios de un cambio de pagina o recreacion, guardado per-viewer por `GuiSession.transitioningPage()`.
+- `public void onClick(InventoryClickEvent event)` - (`@EventHandler(priority = HIGH, ignoreCancelled = true)`) Clicks on a library GUI: `COLLECT_TO_CURSOR` (double-click stacking) is cancelled UNCONDITIONALLY before anything else, closing the double-click extraction vector; then every click is cancelled and, if the raw slot falls inside the top inventory (`0 <= rawSlot < size`), it dispatches to `holder.session().handleClick(rawSlot, event.getClick())`.
+- `public void onDrag(InventoryDragEvent event)` - (`@EventHandler(priority = HIGH, ignoreCancelled = true)`) Drags on a library GUI: always cancelled.
+- `public void onClose(InventoryCloseEvent event)` - (`@EventHandler`) Natural close: it tears the session down (`handleClose`) UNLESS it is swapping inventories from a page change or recreation, guarded per viewer by `GuiSession.transitioningPage()`.
 
 ### GuiProtectionListener (internal)
 `src/main/java/com/sn/lib/gui/internal/GuiProtectionListener.java`
 
-Unico listener anti-robo compartido, propiedad de SnLib (generalizacion de la proteccion de EdToolsArmors): cualquier stack estampado con la PDC key marker `snlib_gui_item` (payload `"<guiId>:<slot>"`, namespaceada por plugin owner, por lo que la deteccion escanea las PDC keys POR NOMBRE a traves de todos los namespaces) es un item GUI renderizado y NUNCA debe circular fuera de un GUI de la libreria. Los stacks marcados se BORRAN al detectarse, no se devuelven. Inscripto en el ListenerHub; registro unico en el bootstrap de SnLibPlugin. Contrato de hot-path (este listener ve cada evento de inventario del server): cada chequeo hace quick-exit en capas: null/air primero, despues `hasItemMeta()`, despues el scan de PDC.
+The single shared anti-theft listener, owned by SnLib (generalization of the EdToolsArmors protection): any stack stamped with the PDC marker key `snlib_gui_item` (payload `"<guiId>:<slot>"`, namespaced by owning plugin, so detection scans PDC keys BY NAME across all namespaces) is a rendered GUI item and must NEVER circulate outside a library GUI. Marked stacks are DELETED on detection, not returned. Enrolled in the ListenerHub; single registration in the SnLibPlugin bootstrap. Hot-path contract (this listener sees every inventory event of the server): each check quick-exits in layers: null/air first, then `hasItemMeta()`, then the PDC scan.
 
-Estatico: `private static volatile boolean reactiveSweep` - toggle opt-in del sweep reactivo (server-wide justificado: no es dato per-consumer), apagado por defecto.
+Static: `private static volatile boolean reactiveSweep` - opt-in toggle of the reactive sweep (justified server-wide: not per-consumer data), off by default.
 
-- `public static void reactiveSweep(boolean enabled)` - Habilita o deshabilita el sweep reactivo en apertura de inventario y join de jugador.
-- `public void onInventoryClick(InventoryClickEvent event)` - (`priority = HIGH`) Vector 1: click sobre un stack marcado fuera de un GUI de la libreria lo borra (current item), cursor marcado se limpia, `NUMBER_KEY` borra el slot de hotbar destino si esta marcado, `SWAP_OFFHAND` borra la offhand marcada. Si actuo en algo, cancela el evento.
-- `public void onInventoryDrag(InventoryDragEvent event)` - Vector 2: drags de un stack marcado (old cursor) se cancelan.
-- `public void onInteract(PlayerInteractEvent event)` - (`priority = HIGHEST`) Vector 3: usar un stack marcado limpia esa mano y niega la interaccion (ambos results en `DENY`, que equivalen al cancel del evento de interaccion).
-- `public void onSwapHands(PlayerSwapHandItemsEvent event)` - (`priority = HIGHEST`) Vector 4: swaps de mano que involucran un stack marcado se cancelan y el stack se borra de la mano donde vive realmente (el item que iba a la main hand vive en la offhand actual, y viceversa).
-- `public void onDrop(PlayerDropItemEvent event)` - (`priority = HIGHEST`) Vector 5: los stacks marcados dropeados desaparecen (se remueve la entidad de drop); el drop NO se cancela.
-- `public void onDeath(PlayerDeathEvent event)` - Vector 6: los stacks marcados nunca llegan a los death drops (`removeIf` sobre la lista de drops).
-- `public void onItemSpawn(ItemSpawnEvent event)` - Vector 7, catch-all: una entidad de item marcada se remueve en el momento en que spawnea; filtra por `hasItemMeta()` antes que nada (hot-path).
-- `public void onInventoryOpen(InventoryOpenEvent event)` - Sweep reactivo (flag): abrir un inventario NO perteneciente a la libreria purga los stacks marcados de ese inventario. No-op si el flag esta apagado.
-- `public void onJoin(PlayerJoinEvent event)` - Sweep reactivo (flag): el inventario de un jugador que joinea se purga de stacks marcados.
+- `public static void reactiveSweep(boolean enabled)` - Enables or disables the reactive sweep on inventory open and player join.
+- `public void onInventoryClick(InventoryClickEvent event)` - (`priority = HIGH`) Vector 1: a click on a marked stack outside a library GUI deletes it (current item), a marked cursor is cleared, `NUMBER_KEY` deletes the destination hotbar slot if marked, `SWAP_OFFHAND` deletes the marked offhand. If it acted on anything, it cancels the event.
+- `public void onInventoryDrag(InventoryDragEvent event)` - Vector 2: drags of a marked stack (old cursor) are cancelled.
+- `public void onInteract(PlayerInteractEvent event)` - (`priority = HIGHEST`) Vector 3: using a marked stack clears that hand and denies the interaction (both results at `DENY`, which amounts to cancelling the interaction event).
+- `public void onSwapHands(PlayerSwapHandItemsEvent event)` - (`priority = HIGHEST`) Vector 4: hand swaps involving a marked stack are cancelled and the stack is deleted from the hand where it really lives (the item headed to the main hand lives in the current offhand, and vice versa).
+- `public void onDrop(PlayerDropItemEvent event)` - (`priority = HIGHEST`) Vector 5: dropped marked stacks disappear (the drop entity is removed); the drop is NOT cancelled.
+- `public void onDeath(PlayerDeathEvent event)` - Vector 6: marked stacks never reach the death drops (`removeIf` over the drop list).
+- `public void onItemSpawn(ItemSpawnEvent event)` - Vector 7, catch-all: a marked item entity is removed the moment it spawns; filters by `hasItemMeta()` before anything else (hot path).
+- `public void onInventoryOpen(InventoryOpenEvent event)` - Reactive sweep (flag): opening an inventory NOT belonging to the library purges marked stacks from that inventory. No-op if the flag is off.
+- `public void onJoin(PlayerJoinEvent event)` - Reactive sweep (flag): a joining player's inventory is purged of marked stacks.
 
-#### Logica interna
-- `private static void sweep(Inventory inventory)` - Recorre los contents y anula cada slot con stack marcado.
-- `private static boolean insideGui(@Nullable Inventory inventory)` - True si el holder del inventario es un `SnGuiHolder`.
-- `private static boolean marked(@Nullable ItemStack stack)` - Deteccion en capas con quick-exit: null/air, `hasItemMeta`, y despues un scan de PDC keys que matchea `snlib_gui_item` bajo CUALQUIER namespace (el stamp esta namespaceado por plugin owner, asi un lookup de namespace fijo lo perderia).
+#### Internal logic
+- `private static void sweep(Inventory inventory)` - Walks the contents and nulls every slot with a marked stack.
+- `private static boolean insideGui(@Nullable Inventory inventory)` - True if the inventory's holder is an `SnGuiHolder`.
+- `private static boolean marked(@Nullable ItemStack stack)` - Layered quick-exit detection: null/air, `hasItemMeta`, and then a PDC key scan that matches `snlib_gui_item` under ANY namespace (the stamp is namespaced by owning plugin, so a fixed-namespace lookup would miss it).
 
-### TODOs y limitaciones
-- No hay TODO/FIXME/placeholder en el codigo del modulo.
-- Limitaciones documentadas en el codigo:
-  - El total de paginas se conoce con un `bindPaged` vivo o con un total declarado via `GuiSession.setTotalPages(n)` (1.1.0, para paginado manual); sin ninguno de los dos, `knownTotalPages()` devuelve 0 = desconocido, el item de navegacion "next" nunca se deshabilita y `nextPage()` avanza sin tope superior (con nota de debug la primera vez que se renderiza el nav next en ese estado).
-  - `bindPaged`, las operaciones de pagina y los nav items requieren `pagination: true` en el YML del menu (opt-in por menu, default false): sin el flag son no-ops (bindPaged con WARN una vez por GUI; page ops con nota de debug).
-  - `GuiManager.load()` requiere el modulo yml del contexto (`config()`): sin el, `sn.guis()` queda vacio con un WARN.
-  - `load()`/`reload()` hacen I/O sincronico por disenio (solo en onEnable y en el flujo de reload).
-  - Todo el modulo es main-thread only.
-  - El sweep reactivo del listener de proteccion es opt-in y esta apagado por defecto.
-
+### TODOs and limitations
+- There are no TODO/FIXME/placeholder markers in the module's code.
+- Limitations documented in the code:
+  - The total page count is known with a live `bindPaged` or a total declared via `GuiSession.setTotalPages(n)` (1.1.0, for manual pagination); with neither, `knownTotalPages()` returns 0 = unknown, the "next" navigation item never disables and `nextPage()` advances without an upper cap (with a debug note the first time the next nav renders in that state).
+  - `bindPaged`, the page operations and the nav items require `pagination: true` in the menu YML (opt-in per menu, default false): without the flag they are no-ops (bindPaged with a once-per-GUI WARN; page ops with a debug note).
+  - `GuiManager.load()` requires the context's yml module (`config()`): without it, `sn.guis()` stays empty with a WARN.
+  - `load()`/`reload()` do synchronous I/O by design (only in onEnable and the reload flow).
+  - The whole module is main-thread only.
+  - The protection listener's reactive sweep is opt-in and off by default.
 ---
 
-## 13. Comandos
+## 13. Commands
 
-Modulo de comandos del contexto consumidor, alcanzado via `sn.commands()`. Provee un builder fluido de arboles root/subcomando (`SnCommands` -> `RootBuilder` -> `SubCommandBuilder`) que se materializa en un `RootCommand` de Bukkit con chequeo de permisos primero, validacion de cantidad de argumentos contra el usage generado, parsing tipado por `Arg` y help generado paginado con `Page`. Cada root inyecta por defecto los subcomandos `reload` y `help` (y `debug` si el spec lo declaro), reemplazables u omitibles con `withoutDefaults()`. El registro contra Bukkit lo hace `internal/BukkitCommandRegistry` con ownership por `Plugin` (reload-safe, sweep de tenant al deshabilitarse el consumidor) y refresco de arboles cliente via `updateCommands()`. La propia libreria registra su comando diagnostico `/snlib` por este mismo camino (`internal/SnLibCommand`). Toda la ejecucion y el tab-complete corren en el hilo principal del servidor (dispatch estandar de Bukkit).
+Command module of the consumer context, reached via `sn.commands()`. It provides a fluent root/subcommand tree builder (`SnCommands` -> `RootBuilder` -> `SubCommandBuilder`) that materializes into a Bukkit `RootCommand` with permission check first, argument count validation against the generated usage, typed parsing per `Arg` and generated paginated help with `Page`. Every root injects the `reload` and `help` subcommands by default (and `debug` if the spec declared it), replaceable or omittable with `withoutDefaults()`. Registration against Bukkit is done by `internal/BukkitCommandRegistry` with `Plugin` ownership (reload-safe, tenant sweep when the consumer disables) and client tree refresh via `updateCommands()`. The library itself registers its diagnostic `/snlib` command through this same path (`internal/SnLibCommand`). All execution and tab-complete run on the server's main thread (standard Bukkit dispatch).
 
 ### SnCommands
 `src/main/java/com/sn/lib/command/SnCommands.java`
 
-Modulo de comandos de un contexto consumidor. Cada root construido aca inyecta un subcomando `reload` (permiso `<plugin>.admin.reload`, delega en `Sn.reloadAll()` y confirma con `snlib.reload-done`) y un `help` generado; ambos son reemplazables declarando subcomandos con esos nombres y removibles via `withoutDefaults()`. Si el spec declaro `debugCommand()`, se inyecta ademas un subcomando `debug` (permiso `<plugin>.admin.debug`) que togglea el servicio de debug en runtime; ese esta gateado por el spec, no por el opt-out de defaults.
+Command module of a consumer context. Every root built here injects a `reload` subcommand (permission `<plugin>.admin.reload`, delegates to `Sn.reloadAll()` and confirms with `snlib.reload-done`) and a generated `help`; both are replaceable by declaring subcommands with those names and removable via `withoutDefaults()`. If the spec declared `debugCommand()`, a `debug` subcommand (permission `<plugin>.admin.debug`) is additionally injected that toggles the runtime debug service; that one is gated by the spec, not by the defaults opt-out.
 
-- `public SnCommands(Sn ctx, @Nullable SnLang lang, boolean debugCommand)` - constructor; lo instancia el contexto. `lang` puede ser null (renderizan los templates default `snlib.*` compartidos); `debugCommand` indica si el spec declaro el comando de debug.
-- `public RootBuilder root(String name)` - inicia un arbol root con ese nombre; valida no nulo y no vacio (`IllegalArgumentException` "Nombre de comando vacio").
-- `public void unregisterAll()` - desregistra todos los roots del plugin owner y refresca los arboles cliente; lo invoca el teardown del contexto.
-- `public void reregisterAll()` - re-registra todos los roots del plugin owner; es el paso de re-registro del flujo de reload del contexto.
+- `public SnCommands(Sn ctx, @Nullable SnLang lang, boolean debugCommand)` - constructor; instantiated by the context. `lang` may be null (the shared default `snlib.*` templates render); `debugCommand` says whether the spec declared the debug command.
+- `public RootBuilder root(String name)` - starts a root tree with that name; validates non-null and non-empty (`IllegalArgumentException` "Empty command name").
+- `public void unregisterAll()` - unregisters all of the owning plugin's roots and refreshes the client trees; invoked by the context teardown.
+- `public void reregisterAll()` - re-registers all of the owning plugin's roots; it is the re-registration step of the context's reload flow.
 
-#### SnCommands.RootBuilder (clase interna publica)
-Builder de un arbol root.
+#### SnCommands.RootBuilder (public inner class)
+Builder of a root tree.
 
-- `public RootBuilder aliases(String... aliases)` - agrega aliases al root (trim + lowercase `Locale.ROOT`).
-- `public RootBuilder permission(String permission)` - permiso del root, heredado por todo subcomando sin permiso propio. Sin permiso el root es publico.
-- `public RootBuilder description(String description)` - descripcion del root (null se normaliza a "").
-- `public SubCommandBuilder sub(String name)` - inicia un subcomando; se cierra con `SubCommandBuilder.and()`. Valida nombre no vacio.
-- `public RootBuilder withoutDefaults()` - omite los defaults `reload` y `help`. El consumidor DEBE entonces proveer sus propios reload y help: sn-core los declara obligatorios en todo root.
-- `public RootCommand register()` - construye el arbol, inyecta los defaults aplicables y lo registra contra Bukkit; devuelve el `RootCommand`.
+- `public RootBuilder aliases(String... aliases)` - adds aliases to the root (trim + lowercase `Locale.ROOT`).
+- `public RootBuilder permission(String permission)` - root permission, inherited by every subcommand without its own. Without a permission the root is public.
+- `public RootBuilder description(String description)` - root description (null normalizes to "").
+- `public SubCommandBuilder sub(String name)` - starts a subcommand; closed with `SubCommandBuilder.and()`. Validates a non-empty name.
+- `public RootBuilder withoutDefaults()` - omits the `reload` and `help` defaults. The consumer MUST then provide its own reload and help: sn-core declares them mandatory in every root.
+- `public RootCommand register()` - builds the tree, injects the applicable defaults and registers it against Bukkit; returns the `RootCommand`.
 
-**Notas y gotchas**
-- El nombre del root se normaliza con trim + lowercase en el constructor del builder.
-- `debug` NO se desactiva con `withoutDefaults()`: su unica llave es que el spec del contexto haya declarado `debugCommand()`.
+**Notes and gotchas**
+- The root name normalizes with trim + lowercase in the builder constructor.
+- `debug` is NOT disabled by `withoutDefaults()`: its only switch is whether the context's spec declared `debugCommand()`.
 
 ### RootCommand
 `src/main/java/com/sn/lib/command/RootCommand.java`
 
-Raiz de un arbol de comandos; extiende `org.bukkit.command.Command` e implementa `Registrable` (modulo de reload). Despacha a sus subcomandos con chequeo de permiso primero, valida la cantidad de argumentos contra el usage generado, parsea tipado via cada `Arg` y genera el help. Herencia de permisos: un subcomando sin permiso propio hereda el del root; un root sin permiso es publico. El tab-complete y el help generado listan SOLO los subcomandos visibles Y cuyo permiso efectivo tenga el sender. Los mensajes resuelven por el modulo lang del contexto si fue declarado; sin lang renderizan los templates default `snlib.*` embebidos en la libreria.
+Root of a command tree; extends `org.bukkit.command.Command` and implements `Registrable` (reload module). It dispatches to its subcommands with a permission check first, validates the argument count against the generated usage, parses typed via each `Arg` and generates the help. Permission inheritance: a subcommand without its own permission inherits the root's; a root without a permission is public. Tab-complete and the generated help list ONLY subcommands that are visible AND whose effective permission the sender has. Messages resolve through the context's lang module if declared; without lang the default `snlib.*` templates embedded in the library render.
 
-Constantes (privadas, pero definen el contrato observable):
-- `DEFAULT_MESSAGES` - mapa estatico de templates default que espeja `snlib-messages.yml` (static server-wide justificado por ser constante). Claves: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry`, `snlib.help.footer`.
-- `HELP_PAGE_SIZE = 8` - entradas por pagina del help generado.
+Constants (private, but they define the observable contract):
+- `DEFAULT_MESSAGES` - static map of default templates mirroring `snlib-messages.yml` (server-wide static justified by being constant). Keys: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry`, `snlib.help.footer`.
+- `HELP_PAGE_SIZE = 8` - entries per page of the generated help.
 
-Metodos publicos:
-- `public JavaPlugin owner()` - plugin consumidor dueño de este arbol.
-- `public void register()` - (override de `Registrable`) registra este root contra Bukkit bajo el plugin owner, via `BukkitCommandRegistry.register`.
-- `public void unregister()` - (override de `Registrable`) desregistra este root y refresca los arboles cliente.
-- `public boolean execute(CommandSender sender, String label, String[] args)` - dispatch completo (ver logica interna). Siempre devuelve `true`.
-- `public List<String> tabComplete(CommandSender sender, String alias, String[] args)` - tab gateado por permiso (ver logica interna).
+Public methods:
+- `public JavaPlugin owner()` - consumer plugin owning this tree.
+- `public void register()` - (override of `Registrable`) registers this root against Bukkit under the owning plugin, via `BukkitCommandRegistry.register`.
+- `public void unregister()` - (override of `Registrable`) unregisters this root and refreshes the client trees.
+- `public boolean execute(CommandSender sender, String label, String[] args)` - full dispatch (see internal logic). Always returns `true`.
+- `public List<String> tabComplete(CommandSender sender, String alias, String[] args)` - permission-gated tab (see internal logic).
 
-**Logica interna (execute)**
-1. Permiso del root: sin permiso el sender recibe `snlib.no-permission` y corta.
-2. Sin argumentos: envia el help (pagina 1).
-3. Resuelve el subcomando por nombre o alias (lowercase); desconocido -> `snlib.unknown-subcommand` con `{value}`.
-4. Permiso efectivo del sub (propio o el heredado del root); sin permiso -> `snlib.no-permission`.
-5. Si `subArgs.length < requiredArgs` -> `snlib.usage` con `{usage}` (usage custom o generado).
-6. Condiciones `when(index, predicate)`: cada condicion cuyo indice cae dentro de los tokens provistos se evalua sobre el token crudo; si falla -> `snlib.usage`. Una condicion sobre un opcional ausente se saltea (chequeo `at < subArgs.length`).
-7. Parsing tipado en orden de declaracion: por cada `Arg` declarado, mientras queden tokens, parsea y guarda en un `LinkedHashMap`. Si el ULTIMO arg declarado es greedy, el token es el join con espacios de todos los tokens restantes. Un `Arg.ArgParseException` envia su `langKey()` con sus `phs()` y corta.
-8. Sin executor declarado -> `snlib.usage`. El executor corre envuelto en try/catch `Throwable`: una falla se loguea `SEVERE` con "El subcomando '/<root> <sub>' fallo" y el stack trace, sin propagar al dispatcher de Bukkit.
+**Internal logic (execute)**
+1. Root permission: without permission the sender receives `snlib.no-permission` and it stops.
+2. No arguments: sends the help (page 1).
+3. Resolves the subcommand by name or alias (lowercase); unknown -> `snlib.unknown-subcommand` with `{value}`.
+4. The sub's effective permission (its own or the root's inherited one); without it -> `snlib.no-permission`.
+5. If `subArgs.length < requiredArgs` -> `snlib.usage` with `{usage}` (custom or generated usage).
+6. `when(index, predicate)` conditions: every condition whose index falls within the provided tokens evaluates over the raw token; on failure -> `snlib.usage`. A condition over an absent optional is skipped (the `at < subArgs.length` check).
+7. Typed parsing in declaration order: for each declared `Arg`, while tokens remain, it parses and stores in a `LinkedHashMap`. If the LAST declared arg is greedy, the token is the space-joined remainder. An `Arg.ArgParseException` sends its `langKey()` with its `phs()` and stops.
+8. No declared executor -> `snlib.usage`. The executor runs wrapped in a `Throwable` try/catch: a failure logs `SEVERE` with "Subcommand '/<root> <sub>' failed" and the stack trace, without propagating to Bukkit's dispatcher.
 
-**Logica interna (tabComplete)**
-- Sin el permiso del root devuelve lista vacia (el sender no ve NADA del arbol).
-- Con `args.length <= 1`: nombres de subcomandos visibles cuyo permiso efectivo tiene el sender, filtrados por prefijo y ordenados.
-- Para argumentos: gate de permiso del sub de nuevo; `argIndex = args.length - 2`; si el indice supera los args declarados, solo un ultimo arg greedy sigue sugiriendo; si no, delega en `Arg.suggest(sender, partial)` del arg posicional. Un `suggest` que devuelva null se normaliza a lista vacia.
+**Internal logic (tabComplete)**
+- Without the root permission it returns an empty list (the sender sees NOTHING of the tree).
+- With `args.length <= 1`: names of visible subcommands whose effective permission the sender has, filtered by prefix and sorted.
+- For arguments: the sub's permission gate again; `argIndex = args.length - 2`; if the index exceeds the declared args, only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial)`. A `suggest` returning null normalizes to an empty list.
 
-**Logica interna (help generado)**
-Header `snlib.help.header`, una entrada `snlib.help.entry` por subcomando visible y permitido (placeholders `{usage}` y `{permission}`, vacio si publico), paginado con `Page` en paginas de 8; el footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) aparece solo con mas de una pagina. El token de pagina de `/cmd help <page>` se parsea de `context.raw(0)`; cualquier cosa no parseable cae a pagina 1, y las paginas fuera de rango se clampean.
+**Internal logic (generated help)**
+Header `snlib.help.header`, one `snlib.help.entry` per visible and permitted subcommand (placeholders `{usage}` and `{permission}`, empty if public), paginated with `Page` in pages of 8; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
 
-**Notas y gotchas**
-- Los defaults se inyectan en el constructor solo si no existe ya un sub con ese nombre o alias (`hasSub`): un sub del consumidor llamado `reload`/`help`/`debug` reemplaza al default.
-- El permiso base de los defaults es `<nombre-del-plugin-en-lowercase>.admin.` + `reload`/`debug`. El `help` default no tiene permiso propio (hereda el del root si existe).
-- Tokens extra mas alla de los args declarados se ignoran silenciosamente (salvo greedy final que los consume).
-- Solo los args de la fabrica (`Args.SnArg`) pueden ser greedy: `isGreedy` hace instanceof de `Args.SnArg` y consulta `greedy()`.
-- El usage generado tiene forma `/root sub <requerido> [opcional]`, con `...` anexado al nombre del ultimo arg si es greedy.
+**Notes and gotchas**
+- Defaults inject in the constructor only if no sub with that name or alias already exists (`hasSub`): a consumer's sub named `reload`/`help`/`debug` replaces the default.
+- The defaults' base permission is `<lowercased-plugin-name>.admin.` + `reload`/`debug`. The default `help` has no permission of its own (it inherits the root's if any).
+- Extra tokens beyond the declared args are silently ignored (except a final greedy which consumes them).
+- Only factory args (`Args.SnArg`) can be greedy: `isGreedy` does an instanceof of `Args.SnArg` and queries `greedy()`.
+- The generated usage has the form `/root sub <required> [optional]`, with `...` appended to the last arg's name if greedy.
 
-#### RootCommand.Condition (record package-private)
-`record Condition(int index, Predicate<String> test)` - condicion declarativa sobre el token crudo en `index`, creada por `SubCommandBuilder.when(int, Predicate)`; un token que falla rechaza la invocacion con el mensaje de usage ANTES de cualquier parsing tipado.
+#### RootCommand.Condition (package-private record)
+`record Condition(int index, Predicate<String> test)` - declarative condition over the raw token at `index`, created by `SubCommandBuilder.when(int, Predicate)`; a failing token rejects the invocation with the usage message BEFORE any typed parsing.
 
-#### RootCommand.Sub (clase package-private)
-Nodo de subcomando inmutable construido por `SubCommandBuilder`: `name` (trim + lowercase), `aliases` (lowercased, copia inmutable), `permission` nullable, `usage` nullable, `description`, `visible`, `args` (`LinkedHashMap` inmutable, el orden de declaracion es el orden de parseo), `requiredArgs`, `conditions`, `executor` nullable. `static Sub of(String name, @Nullable String permission, String description, Consumer<CommandContext> executor)` fabrica los subs default (sin args, visibles).
+#### RootCommand.Sub (package-private class)
+Immutable subcommand node built by `SubCommandBuilder`: `name` (trim + lowercase), `aliases` (lowercased, immutable copy), nullable `permission`, nullable `usage`, `description`, `visible`, `args` (immutable `LinkedHashMap`, declaration order is parse order), `requiredArgs`, `conditions`, nullable `executor`. `static Sub of(String name, @Nullable String permission, String description, Consumer<CommandContext> executor)` fabricates the default subs (argless, visible).
 
 ### SubCommandBuilder
 `src/main/java/com/sn/lib/command/SubCommandBuilder.java`
 
-Builder de un subcomando dentro de una cadena `SnCommands.RootBuilder`; `and()` vuelve al root builder para declarar el siguiente subcomando o registrar el arbol.
+Builder of a subcommand within an `SnCommands.RootBuilder` chain; `and()` returns to the root builder to declare the next subcommand or register the tree.
 
-- `public SubCommandBuilder aliases(String... aliases)` - agrega aliases (trim + lowercase).
-- `public SubCommandBuilder permission(String permission)` - permiso propio; sin uno hereda el del root.
-- `public SubCommandBuilder usage(String usage)` - linea de usage mostrada en errores de argumentos; sin una se genera desde los args.
-- `public SubCommandBuilder description(String description)` - descripcion (null -> "").
-- `public SubCommandBuilder visible(boolean visible)` - si aparece en tab-complete y en el help generado.
-- `public SubCommandBuilder arg(String name, Arg<?> arg)` - declara el siguiente argumento posicional REQUERIDO; el orden de declaracion es el orden de parseo. Declarar uno requerido despues de un opcional lanza `IllegalStateException`. Nombre duplicado lanza `IllegalArgumentException`.
-- `public SubCommandBuilder argOptional(String name, Arg<?> arg)` - declara un argumento posicional OPCIONAL al final: sugiere y parsea cuando el token esta presente pero su ausencia nunca rechaza la invocacion. Los opcionales van ultimos.
-- `public SubCommandBuilder when(int index, Predicate<String> condition)` - condicion declarativa sobre el token crudo en `index` (0-based entre los argumentos del subcomando); un token que falla rechaza con el usage antes del parsing tipado. Indice negativo lanza `IllegalArgumentException`.
-- `public SubCommandBuilder executes(Consumer<CommandContext> executor)` - handler que corre una vez que permiso, cantidad de argumentos, condiciones y parsing tipado pasaron todos.
-- `public SnCommands.RootBuilder and()` - vuelve al root builder.
+- `public SubCommandBuilder aliases(String... aliases)` - adds aliases (trim + lowercase).
+- `public SubCommandBuilder permission(String permission)` - its own permission; without one it inherits the root's.
+- `public SubCommandBuilder usage(String usage)` - usage line shown on argument errors; without one it is generated from the args.
+- `public SubCommandBuilder description(String description)` - description (null -> "").
+- `public SubCommandBuilder visible(boolean visible)` - whether it appears in tab-complete and the generated help.
+- `public SubCommandBuilder arg(String name, Arg<?> arg)` - declares the next REQUIRED positional argument; declaration order is parse order. Declaring a required one after an optional throws `IllegalStateException`. A duplicate name throws `IllegalArgumentException`.
+- `public SubCommandBuilder argOptional(String name, Arg<?> arg)` - declares an OPTIONAL trailing positional argument: it suggests and parses when the token is present but its absence never rejects the invocation. Optionals go last.
+- `public SubCommandBuilder when(int index, Predicate<String> condition)` - declarative condition over the raw token at `index` (0-based among the subcommand's arguments); a failing token rejects with the usage before typed parsing. A negative index throws `IllegalArgumentException`.
+- `public SubCommandBuilder executes(Consumer<CommandContext> executor)` - handler that runs once permission, argument count, conditions and typed parsing have all passed.
+- `public SnCommands.RootBuilder and()` - returns to the root builder.
 
-**Notas y gotchas**
-- `requiredArgs` cuenta solo los `arg(...)`; los `argOptional` no incrementan el contador, asi el chequeo de cantidad minima nunca los exige.
-- Un opcional ausente NO queda en el mapa de valores: `CommandContext.get(name)` sobre el lanza `IllegalArgumentException`. Para opcionales conviene chequear presencia con `context.raw(index)` antes de leer.
+**Notes and gotchas**
+- `requiredArgs` counts only the `arg(...)` calls; `argOptional` does not increment the counter, so the minimum count check never demands them.
+- An absent optional does NOT land in the value map: `CommandContext.get(name)` on it throws `IllegalArgumentException`. For optionals it is better to check presence with `context.raw(index)` before reading.
 
 ### Args
 `src/main/java/com/sn/lib/command/Args.java`
 
-Fabrica de implementaciones tipadas de `Arg` para `SubCommandBuilder.arg`. Todo arg construido aca lleva sugerencias de ejemplo default y acepta el decorador `suggestCurrent(Supplier)`, que antepone el valor actual real: con partial vacio (o prefijo que matchee) el valor actual y los ejemplos van primero; un partial no vacio filtra las opciones base via `StringUtil.copyPartialMatches` y las ordena. El cliente vanilla filtra las sugerencias por el prefijo tipeado, asi que un ejemplo que no matchea nunca llega a pantalla.
+Factory of typed `Arg` implementations for `SubCommandBuilder.arg`. Every arg built here carries default example suggestions and accepts the `suggestCurrent(Supplier)` decorator, which prepends the real current value: with an empty partial (or a matching prefix) the current value and the examples go first; a non-empty partial filters the base options via `StringUtil.copyPartialMatches` and sorts them. The vanilla client filters suggestions by the typed prefix, so an example that does not match never reaches the screen.
 
-Constante:
-- `SUGGESTION_CAP = 100` (privada) - tope de las sugerencias respaldadas por listas (jugadores online, opciones de `oneOf`).
+Constant:
+- `SUGGESTION_CAP = 100` (private) - cap on list-backed suggestions (online players, `oneOf` options).
 
-Metodos de fabrica (todos `static`):
-- `public static SnArg<Player> onlinePlayer()` - jugador online por nombre exacto (`Bukkit.getPlayerExact`); rechaza con `snlib.player-not-found` (`{value}`) y sugiere hasta 100 nombres online.
-- `public static SnArg<UUID> offlinePlayerUuid()` - UUID de jugador resuelto ESTRICTAMENTE sin bloquear: primero match online exacto, despues el cache local de offline-players (`Bukkit.getOfflinePlayerIfCached`). Un nombre ausente de ambos rechaza con `snlib.player-not-found`. `Bukkit.getOfflinePlayer(String)` nunca se usa aca porque puede hacer un lookup de perfil BLOQUEANTE en el main thread; la resolucion remota le corresponde al consumidor via el scheduler async. Sugiere nombres online.
-- `public static SnArg<String> oneOf(Supplier<Collection<String>> options)` - un valor de un set dinamico de opciones, matcheado case-insensitive y devuelto en su forma canonica (la de la coleccion, no la tipeada); rechaza con `snlib.invalid-value` y sugiere hasta 100 de las opciones actuales (saltea nulls).
-- `public static SnArg<Integer> intRange(int min, int max)` - entero en `[min, max]` (`Integer.parseInt` sobre el token trimmeado); no-numero rechaza con `snlib.invalid-number` y fuera de rango con `snlib.out-of-range` (`{value}`, `{min}`, `{max}`). Sugiere ambos limites como ejemplos.
-- `public static SnArg<Double> doubleRange(double min, double max)` - double en `[min, max]`; acepta coma decimal (reemplaza `,` por `.` antes de parsear); no-numero -> `snlib.invalid-number`; `NaN` o fuera de rango -> `snlib.out-of-range`. Sugiere ambos limites.
-- `public static SnArg<Long> duration()` - duracion compacta tipo `"1d 2h 30m 15s"` parseada a milisegundos via `TimeUtil.parseMillis(String)`; cero o no parseable rechaza con `snlib.invalid-value`. Ejemplo `30m`; opciones `30s`, `5m`, `1h`, `1d`.
-- `public static SnArg<Boolean> bool()` - booleano que acepta `true/yes/on` y `false/no/off` (case-insensitive); cualquier otra cosa rechaza con `snlib.invalid-value`. Sugiere `true` y `false`.
-- `public static SnArg<String> string()` - token unico libre, devuelto tal cual. Ejemplo `text`.
-- `public static SnArg<String> greedy()` - texto libre que consume todos los tokens restantes como un unico valor unido por espacios. Solo tiene sentido como ULTIMO argumento declarado. Ejemplo `text`.
+Factory methods (all `static`):
+- `public static SnArg<Player> onlinePlayer()` - online player by exact name (`Bukkit.getPlayerExact`); rejects with `snlib.player-not-found` (`{value}`) and suggests up to 100 online names.
+- `public static SnArg<UUID> offlinePlayerUuid()` - player UUID resolved STRICTLY without blocking: first an exact online match, then the local offline-players cache (`Bukkit.getOfflinePlayerIfCached`). A name absent from both rejects with `snlib.player-not-found`. `Bukkit.getOfflinePlayer(String)` is never used here because it can do a BLOCKING profile lookup on the main thread; remote resolution belongs to the consumer via the async scheduler. Suggests online names.
+- `public static SnArg<String> oneOf(Supplier<Collection<String>> options)` - one value from a dynamic option set, matched case-insensitively and returned in its canonical form (the collection's, not the typed one); rejects with `snlib.invalid-value` and suggests up to 100 of the current options (skips nulls).
+- `public static SnArg<Integer> intRange(int min, int max)` - integer in `[min, max]` (`Integer.parseInt` over the trimmed token); a non-number rejects with `snlib.invalid-number` and out-of-range with `snlib.out-of-range` (`{value}`, `{min}`, `{max}`). Suggests both bounds as examples.
+- `public static SnArg<Double> doubleRange(double min, double max)` - double in `[min, max]`; accepts a decimal comma (replaces `,` with `.` before parsing); non-number -> `snlib.invalid-number`; `NaN` or out of range -> `snlib.out-of-range`. Suggests both bounds.
+- `public static SnArg<Long> duration()` - compact duration like `"1d 2h 30m 15s"` parsed to milliseconds via `TimeUtil.parseMillis(String)`; zero or unparseable rejects with `snlib.invalid-value`. Example `30m`; options `30s`, `5m`, `1h`, `1d`.
+- `public static SnArg<Boolean> bool()` - boolean accepting `true/yes/on` and `false/no/off` (case-insensitive); anything else rejects with `snlib.invalid-value`. Suggests `true` and `false`.
+- `public static SnArg<String> string()` - a free single token, returned as-is. Example `text`.
+- `public static SnArg<String> greedy()` - free text consuming all remaining tokens as a single space-joined value. Only makes sense as the LAST declared argument. Example `text`.
 
-#### Args.SnArg\<T\> (clase abstracta publica)
-Arg producido por la fabrica: sugerencias de ejemplo default mas el decorador `suggestCurrent`.
+#### Args.SnArg\<T\> (public abstract class)
+An arg produced by the factory: default example suggestions plus the `suggestCurrent` decorator.
 
-- `protected SnArg(List<String> examples, boolean greedy)` - constructor con los ejemplos default y el flag greedy.
-- `public final SnArg<T> suggestCurrent(Supplier<String> current)` - antepone el valor actual real (suplido) a las sugerencias, antes de los ejemplos y las opciones base. Devuelve `this` (fluido).
-- `public final boolean greedy()` - si este arg consume todos los tokens restantes como un solo valor.
-- `protected List<String> options(CommandSender sender)` - opciones base para el sender; vacia cuando solo aplican los ejemplos (hook que sobreescriben las fabricas con listas dinamicas).
-- `public final List<String> suggest(CommandSender sender, String partial)` - implementacion final del contrato `Arg`: arma la lista en orden valor-actual -> ejemplos -> opciones base, con dedupe case-insensitive; partial vacio no filtra las opciones base, partial no vacio las filtra con `StringUtil.copyPartialMatches` y las ordena.
+- `protected SnArg(List<String> examples, boolean greedy)` - constructor with the default examples and the greedy flag.
+- `public final SnArg<T> suggestCurrent(Supplier<String> current)` - prepends the (supplied) real current value to the suggestions, before the examples and base options. Returns `this` (fluent).
+- `public final boolean greedy()` - whether this arg consumes all remaining tokens as one value.
+- `protected List<String> options(CommandSender sender)` - base options for the sender; empty when only the examples apply (the hook factories override with dynamic lists).
+- `public final List<String> suggest(CommandSender sender, String partial)` - final implementation of the `Arg` contract: builds the list in current-value -> examples -> base-options order, with case-insensitive dedup; an empty partial does not filter the base options, a non-empty one filters them with `StringUtil.copyPartialMatches` and sorts.
 
-**Notas y gotchas**
-- El supplier de `suggestCurrent` corre dentro de un try/catch `Throwable`: un supplier que falla simplemente no aporta valor actual (nunca rompe el tab).
-- El cap de 100 aplica a las opciones base con respaldo de lista (nombres online, `oneOf`); el valor actual y los ejemplos no cuentan contra el cap.
-- El valor actual y los ejemplos se filtran por prefijo case-insensitive (`StringUtil.startsWithIgnoreCase`) igual que las opciones, asi la lista nunca contiene entradas que el cliente descartaria.
+**Notes and gotchas**
+- The `suggestCurrent` supplier runs inside a `Throwable` try/catch: a failing supplier simply contributes no current value (it never breaks the tab).
+- The 100 cap applies to the list-backed base options (online names, `oneOf`); the current value and examples do not count against the cap.
+- The current value and examples filter by case-insensitive prefix (`StringUtil.startsWithIgnoreCase`) just like the options, so the list never contains entries the client would discard.
 
 ### Arg
 `src/main/java/com/sn/lib/command/Arg.java`
 
-Interfaz de argumento tipado de comando: parsea un token crudo a `T` y provee sus sugerencias de tab. Las implementaciones vienen de la fabrica `Args` o del consumidor.
+Typed command argument interface: it parses a raw token to `T` and provides its tab suggestions. Implementations come from the `Args` factory or the consumer.
 
-- `T parse(String raw) throws ArgParseException` - parsea el token crudo al valor tipado; lanza `ArgParseException` cuando el token es invalido (lleva la clave de lang y los placeholders locales que el flujo de comando devuelve al sender).
-- `List<String> suggest(CommandSender sender, String partial)` - sugerencias de tab para el token parcial, resueltas para ese sender.
+- `T parse(String raw) throws ArgParseException` - parses the raw token to the typed value; throws `ArgParseException` when the token is invalid (it carries the lang key and local placeholders the command flow sends back to the sender).
+- `List<String> suggest(CommandSender sender, String partial)` - tab suggestions for the partial token, resolved for that sender.
 
-#### Arg.ArgParseException (clase publica anidada, extiende `Exception`)
-Rechazo de un token crudo, expresado como clave de lang mas sus placeholders locales.
+#### Arg.ArgParseException (public nested class, extends `Exception`)
+Rejection of a raw token, expressed as a lang key plus its local placeholders.
 
-- `public ArgParseException(String langKey, Ph... phs)` - `langKey` es una clave `snlib.*` o una del consumidor; `phs` son los placeholders locales (null se normaliza a array vacio; se clona defensivamente).
-- `public String langKey()` - clave de lang del mensaje de error.
-- `public Ph[] phs()` - placeholders locales del mensaje (copia defensiva).
+- `public ArgParseException(String langKey, Ph... phs)` - `langKey` is a `snlib.*` key or a consumer one; `phs` are the local placeholders (null normalizes to an empty array; defensively cloned).
+- `public String langKey()` - lang key of the error message.
+- `public Ph[] phs()` - local placeholders of the message (defensive copy).
 
 ### CommandContext
 `src/main/java/com/sn/lib/command/CommandContext.java`
 
-Invocacion parseada de un subcomando: el sender mas cada argumento declarado ya parseado por su `Arg`, indexado por el nombre dado en el builder.
+A parsed subcommand invocation: the sender plus every declared argument already parsed by its `Arg`, indexed by the name given in the builder.
 
-- `public CommandSender sender()` - el sender, jugador o consola.
-- `public Player player()` - el sender como jugador; lanza `IllegalStateException` ("El sender de este comando no es un jugador") si no lo es.
-- `public <T> T get(String name)` - valor parseado de un argumento declarado; lanza `IllegalArgumentException` cuando no hay valor con ese nombre (incluye el caso de un opcional ausente).
-- `public int getInt(String name)` - valor parseado como int; acepta cualquier resultado numerico (`Number.intValue()`) o parsea el `toString()` trimmeado.
-- `public double getDouble(String name)` - valor parseado como double; misma tolerancia que `getInt`.
-- `public Player player(String name)` - valor parseado como jugador (azucar sobre `get`).
-- `public @Nullable String raw(int index)` - token crudo en `index` entre los argumentos del subcomando, o null cuando esta ausente. Es la via segura para chequear presencia de opcionales.
+- `public CommandSender sender()` - the sender, player or console.
+- `public Player player()` - the sender as a player; throws `IllegalStateException` ("The sender of this command is not a player") if it is not one.
+- `public <T> T get(String name)` - parsed value of a declared argument; throws `IllegalArgumentException` when there is no value with that name (includes the absent-optional case).
+- `public int getInt(String name)` - parsed value as int; accepts any numeric result (`Number.intValue()`) or parses the trimmed `toString()`.
+- `public double getDouble(String name)` - parsed value as double; same tolerance as `getInt`.
+- `public Player player(String name)` - parsed value as a player (sugar over `get`).
+- `public @Nullable String raw(int index)` - raw token at `index` among the subcommand's arguments, or null when absent. It is the safe way to check optionals' presence.
 
-**Notas y gotchas**
-- `get` hace un cast unchecked al tipo pedido: un tipo equivocado revienta con `ClassCastException` en el call site del consumidor.
+**Notes and gotchas**
+- `get` does an unchecked cast to the requested type: a wrong type blows up with `ClassCastException` at the consumer's call site.
 
 ### Page
 `src/main/java/com/sn/lib/command/Page.java`
 
-Paginador generico de texto de chat sobre una lista inmutable de items; respalda el help generado de comandos y es reutilizable por los consumidores para cualquier listado paginado. Las paginas son 1-based y los pedidos fuera de rango se clampean a la pagina valida mas cercana, asi una lista vacia igual expone una pagina (vacia). El render va por Adventure: una linea `Component` por item.
+Generic chat text paginator over an immutable item list; it backs the generated command help and is reusable by consumers for any paginated listing. Pages are 1-based and out-of-range requests clamp to the nearest valid page, so an empty list still exposes one (empty) page. Rendering goes through Adventure: one `Component` line per item.
 
-- `public static <T> Page<T> of(List<T> items, int pageSize)` - pagina `items` en paginas de `pageSize` entradas (minimo 1); copia inmutable de la lista.
-- `public int size()` - cantidad total de items.
-- `public int pageSize()` - entradas por pagina.
-- `public int totalPages()` - cantidad total de paginas, al menos 1.
-- `public int clamp(int page)` - clampea una pagina pedida a `[1, totalPages()]`.
-- `public List<T> page(int page)` - items de la pagina 1-based dada, clampeada al rango.
-- `public void send(CommandSender sender, int page, Function<T, Component> renderer)` - renderiza y envia la pagina dada, una linea `Component` por item.
+- `public static <T> Page<T> of(List<T> items, int pageSize)` - paginates `items` in pages of `pageSize` entries (minimum 1); immutable copy of the list.
+- `public int size()` - total item count.
+- `public int pageSize()` - entries per page.
+- `public int totalPages()` - total page count, at least 1.
+- `public int clamp(int page)` - clamps a requested page to `[1, totalPages()]`.
+- `public List<T> page(int page)` - items of the given 1-based page, clamped to range.
+- `public void send(CommandSender sender, int page, Function<T, Component> renderer)` - renders and sends the given page, one `Component` line per item.
 
 ### BukkitCommandRegistry (internal)
 `src/main/java/com/sn/lib/command/internal/BukkitCommandRegistry.java`
 
-Puente entre los arboles `RootCommand` y el sistema de comandos de Bukkit, prefiriendo la API publica en dos caminos: (a) un comando declarado en el plugin.yml del owner recibe su executor y tab completer via `plugin.getCommand(name)` (adapter `PluginCommandAdapter`); (b) los roots no declarados y los aliases dinamicos van por el `Bukkit.getCommandMap()` publico de Paper, cada uno con un WARN. Despues de CADA register y unregister, los jugadores online reciben `updateCommands()` para que sus arboles cliente nunca muestren fantasmas. Los roots registrados se trackean en un `TenantRegistry<RootCommand>` (static server-wide justificado) keyed por plugin owner: el sweep de tenant desengancha cada comando y remueve la clave completa del owner cuando el consumidor se deshabilita, aunque el owner nunca haya llamado al teardown.
+Bridge between the `RootCommand` trees and Bukkit's command system, preferring the public API through two paths: (a) a command declared in the owner's plugin.yml receives its executor and tab completer via `plugin.getCommand(name)` (the `PluginCommandAdapter` adapter); (b) undeclared roots and dynamic aliases go through Paper's public `Bukkit.getCommandMap()`, each with a WARN. After EVERY register and unregister, online players receive `updateCommands()` so their client trees never show ghosts. Registered roots track in a `TenantRegistry<RootCommand>` (justified server-wide static) keyed by owning plugin: the tenant sweep detaches each command and removes the owner's whole key when the consumer disables, even if the owner never called the teardown.
 
-- `public static void register(JavaPlugin owner, RootCommand command)` - registra el root para su owner. Reload-safe: un root ya registrado por el mismo owner bajo el mismo nombre se desengancha y reemplaza primero. Camino plugin.yml si el comando esta declarado; si no, WARN ("Comando '/x' no declarado en el plugin.yml de Y; registro dinamico via CommandMap") y registro por CommandMap con prefijo = nombre del owner en lowercase. Cierra con `updateCommands()`.
-- `public static void unregister(JavaPlugin owner, RootCommand command)` - desregistra un root del owner y refresca los arboles cliente.
-- `public static void unregisterAll(JavaPlugin owner)` - desregistra todos los roots del owner removiendo la CLAVE COMPLETA del owner; el callback de sweep desengancha cada comando y refresca los arboles cliente.
-- `public static void reregisterAll(JavaPlugin owner)` - re-registra en el lugar cada root del owner (itera una copia); es el paso de re-registro del flujo de reload. Cada pasada de register refresca los arboles cliente de los jugadores online.
+- `public static void register(JavaPlugin owner, RootCommand command)` - registers the root for its owner. Reload-safe: a root already registered by the same owner under the same name detaches and replaces first. The plugin.yml path if the command is declared; otherwise a WARN ("Command '/x' not declared in Y's plugin.yml; dynamic registration via CommandMap") and CommandMap registration with prefix = the owner's lowercased name. Closes with `updateCommands()`.
+- `public static void unregister(JavaPlugin owner, RootCommand command)` - unregisters an owner's root and refreshes the client trees.
+- `public static void unregisterAll(JavaPlugin owner)` - unregisters all of the owner's roots removing the owner's WHOLE KEY; the sweep callback detaches each command and refreshes the client trees.
+- `public static void reregisterAll(JavaPlugin owner)` - re-registers each of the owner's roots in place (iterates a copy); it is the re-registration step of the reload flow. Every register pass refreshes the online players' client trees.
 
-**Logica interna**
-- `sweep(RootCommand)` - callback del `TenantRegistry`: `detach` + `updateCommands`; tambien corre cuando el sweeper de tenants remueve la clave de un owner deshabilitado.
-- `registerDynamicAliases(...)` - los aliases construidos en codigo que no forman parte de la declaracion del plugin.yml reciben entradas en `getKnownCommands()` apuntando al arbol root (con `putIfAbsent`, tanto `alias` como `owner:alias`), con un WARN ("Aliases [...] de '/x' no declarados en el plugin.yml de Y; registro dinamico via CommandMap").
-- `detach(RootCommand)` - desengancha el comando del camino que lo registro: remueve por identidad las entradas de knownCommands que apuntan a el, llama `command.unregister(map)`, y si el `PluginCommand` declarado tiene como executor un `PluginCommandAdapter` de ESTE root, limpia executor y tab completer.
-- `updateCommands()` - `player.updateCommands()` para cada jugador online (main thread).
-- `PluginCommandAdapter` (record privado, `CommandExecutor` + `TabCompleter`) - delega `onCommand` en `root.execute` y `onTabComplete` en `root.tabComplete`; es el executor del camino plugin.yml.
+**Internal logic**
+- `sweep(RootCommand)` - the `TenantRegistry` callback: `detach` + `updateCommands`; it also runs when the tenant sweeper removes a disabled owner's key.
+- `registerDynamicAliases(...)` - code-built aliases not part of the plugin.yml declaration receive `getKnownCommands()` entries pointing at the root tree (with `putIfAbsent`, both `alias` and `owner:alias`), with a WARN ("Aliases [...] of '/x' not declared in Y's plugin.yml; dynamic registration via CommandMap").
+- `detach(RootCommand)` - unhooks the command from whichever path registered it: removes by identity the knownCommands entries pointing at it, calls `command.unregister(map)`, and if the declared `PluginCommand`'s executor is a `PluginCommandAdapter` of THIS root, clears the executor and tab completer.
+- `updateCommands()` - `player.updateCommands()` for every online player (main thread).
+- `PluginCommandAdapter` (private record, `CommandExecutor` + `TabCompleter`) - delegates `onCommand` to `root.execute` and `onTabComplete` to `root.tabComplete`; it is the plugin.yml path's executor.
 
-**Notas y gotchas**
-- `putIfAbsent` en los aliases dinamicos significa que un alias ya tomado por otro comando NO se pisa: el alias simplemente no queda operativo para este root.
-- El chequeo de reemplazo en `register` compara por identidad (`existing != command`) ademas del nombre, asi `reregisterAll` puede volver a registrar la misma instancia sin desengancharse a si misma.
+**Notes and gotchas**
+- `putIfAbsent` on dynamic aliases means an alias already taken by another command is NOT overwritten: the alias simply is not operative for this root.
+- The replacement check in `register` compares by identity (`existing != command`) in addition to the name, so `reregisterAll` can re-register the same instance without detaching itself.
 
 ### SnLibCommand (internal)
 `src/main/java/com/sn/lib/command/internal/SnLibCommand.java`
 
-Comando root diagnostico de la libreria misma: `/snlib` se registra sobre el contexto propio del bootstrap (el selfCtx que `SnLibPlugin` crea via el `SnLib.init` in-package), a traves del MISMO modulo `sn.commands()` que usa todo consumidor; no hay instancia suelta de `SnCommands` ni segunda config. Cada subcomando esta gateado en tab por su permiso `snlib.admin.*` de plugin.yml. Clase final con constructor privado (solo estaticos).
+Diagnostic root command of the library itself: `/snlib` registers on the bootstrap's own context (the selfCtx `SnLibPlugin` creates via the in-package `SnLib.init`), through the SAME `sn.commands()` module every consumer uses; there is no loose `SnCommands` instance nor a second config. Every subcommand is tab-gated by its `snlib.admin.*` permission from plugin.yml. Final class with a private constructor (statics only).
 
-- `public static void register(SnLibPlugin plugin, Sn selfCtx)` - registra el arbol `/snlib` sobre el contexto propio del bootstrap, con 5 subcomandos declarados:
-  - `version` (permiso `snlib.admin.version`) - muestra la version de la libreria (`getPluginMeta().getVersion()`), el API level (`plugin.apiLevel()`) y la version del servidor (`Bukkit.getBukkitVersion()` mas la deteccion `SnVersion.MAJOR.MINOR[.PATCH]` y el flag Folia).
-  - `plugins` (permiso `snlib.admin.plugins`) - lista los consumidores enganchados a SnLib, leidos del registro publico de contextos (`SnLib.context(plugin) != null`, excluyendo a SnLib mismo), ordenados y con contador; si no hay, "No consumers are hooked to SnLib.".
-  - `integrations` (permiso `snlib.admin.integrations`) - lista los hooks de soft-dependency registrados via `SoftDependency.forEachRegistered` con formato `owner -> pluginName: active/inactive`, ordenados y con contador.
-  - `iteminfo` (permiso `snlib.admin.iteminfo`) - solo jugadores; dumpea cada clave PDC del item en mano principal (aire rechazado con mensaje). Las claves cuyo namespace pertenece a un plugin cargado (mapa de plugins por nombre lowercased, que es exactamente el namespace de un `NamespacedKey(plugin, key)`) se leen via `TagIo` (la convencion de string-tags de la libreria); el resto cae a una lectura cruda `PersistentDataType.STRING`, y los tags no-string renderizan como `<non-string tag>`. Lineas ordenadas con contador.
-  - `reload` (permiso `snlib.admin.reload`, usage `/snlib reload [plugin]`) - `argOptional("plugin", Args.oneOf(...))` cuyo set de opciones son SnLib mismo mas cada consumidor enganchado, ordenados.
+- `public static void register(SnLibPlugin plugin, Sn selfCtx)` - registers the `/snlib` tree on the bootstrap's own context, with 5 declared subcommands:
+  - `version` (permission `snlib.admin.version`) - shows the library version (`getPluginMeta().getVersion()`), the API level (`plugin.apiLevel()`) and the server version (`Bukkit.getBukkitVersion()` plus the `SnVersion.MAJOR.MINOR[.PATCH]` detection and the Folia flag).
+  - `plugins` (permission `snlib.admin.plugins`) - lists the consumers hooked to SnLib, read from the public context registry (`SnLib.context(plugin) != null`, excluding SnLib itself), sorted and with a counter; if there are none, "No consumers are hooked to SnLib.".
+  - `integrations` (permission `snlib.admin.integrations`) - lists the soft-dependency hooks registered via `SoftDependency.forEachRegistered` in the format `owner -> pluginName: active/inactive`, sorted and with a counter.
+  - `iteminfo` (permission `snlib.admin.iteminfo`) - players only; dumps every PDC key of the main-hand item (air rejected with a message). Keys whose namespace belongs to a loaded plugin (a map of plugins by lowercased name, which is exactly the namespace of a `NamespacedKey(plugin, key)`) are read via `TagIo` (the library's string-tag convention); the rest fall to a raw `PersistentDataType.STRING` read, and non-string tags render as `<non-string tag>`. Sorted lines with a counter.
+  - `reload` (permission `snlib.admin.reload`, usage `/snlib reload [plugin]`) - `argOptional("plugin", Args.oneOf(...))` whose option set is SnLib itself plus every hooked consumer, sorted.
 
-**Contratos de reload**
-- Sin argumentos (o con el propio nombre de SnLib): `selfCtx.reloadAll()` recarga EXCLUSIVAMENTE la superficie propia de la libreria (su `plugins/SnLib/config.yml`: las claves `debug` y `bstats`) y nunca toca ningun contexto consumidor. Confirma con "SnLib configuration reloaded (debug + bstats)." y recuerda: "A reload never reloads classes: updating SnLib.jar requires a server restart.".
-- Con nombre de plugin: delega en el reload manager de ESE plugin (`targetCtx.reloadAll()`); confirma "Configuration of X reloaded.". Errores defensivos: "Plugin not found: X" si no resuelve a un `JavaPlugin`, "Plugin X is not hooked to SnLib." si no tiene contexto.
-- Regla dura: un reload NUNCA recarga clases; actualizar SnLib.jar exige reinicio del servidor.
+**Reload contracts**
+- Without arguments (or with SnLib's own name): `selfCtx.reloadAll()` reloads EXCLUSIVELY the library's own surface (its `plugins/SnLib/config.yml`: the `debug` and `bstats` keys) and never touches any consumer context. It confirms with "SnLib configuration reloaded (debug + bstats)." and reminds: "A reload never reloads classes: updating SnLib.jar requires a server restart.".
+- With a plugin name: it delegates to THAT plugin's reload manager (`targetCtx.reloadAll()`); confirms "Configuration of X reloaded.". Defensive errors: "Plugin not found: X" if it does not resolve to a `JavaPlugin`, "Plugin X is not hooked to SnLib." if it has no context.
+- Hard rule: a reload NEVER reloads classes; updating SnLib.jar demands a server restart.
 
-**Notas y gotchas**
-- Como el arg opcional es `Args.oneOf(hookedConsumerNames)`, un nombre que no este en el set actual (SnLib + consumidores enganchados) se rechaza en el PARSING con `snlib.invalid-value` antes de llegar al handler: las ramas internas "Plugin not found" / "not hooked" son defensivas y casi inalcanzables por tipeo directo.
-- El handler de reload lee el target con `context.raw(0)` (token crudo), no con el valor parseado, para tolerar la ausencia del opcional.
-- Al no llamar `withoutDefaults()`, el arbol `/snlib` recibe ademas el `help` default inyectado (el `reload` default queda reemplazado por el declarado); en la practica el comando expone 6 entradas, 5 declaradas mas el help generado.
-- En el codigo, el bloque Javadoc que describe el contrato de reload quedo colgado sobre `hookedConsumerNames()` (dos Javadoc consecutivos); es solo cosmetico, la semantica documentada es la del metodo `reload`.
+**Notes and gotchas**
+- Since the optional arg is `Args.oneOf(hookedConsumerNames)`, a name not in the current set (SnLib + hooked consumers) is rejected at PARSE time with `snlib.invalid-value` before reaching the handler: the internal "Plugin not found" / "not hooked" branches are defensive and nearly unreachable by direct typing.
+- The reload handler reads the target with `context.raw(0)` (raw token), not the parsed value, to tolerate the optional's absence.
+- By not calling `withoutDefaults()`, the `/snlib` tree also receives the injected default `help` (the default `reload` is replaced by the declared one); in practice the command exposes 6 entries, 5 declared plus the generated help.
+- In the code, the Javadoc block describing the reload contract ended up hanging over `hookedConsumerNames()` (two consecutive Javadocs); it is merely cosmetic, the documented semantics are those of the `reload` method.
 
-### TODOs y limitaciones
-No hay marcadores TODO/FIXME en los archivos del modulo. Limitaciones documentadas en codigo/Javadoc:
-- `Args.greedy()` solo tiene sentido como ULTIMO argumento declarado de un subcomando; en otra posicion el join de tokens nunca se activa (solo el ultimo indice se trata como greedy).
-- Cap fijo de 100 sugerencias (`SUGGESTION_CAP`) en las opciones respaldadas por listas (jugadores online, `oneOf`); no es configurable.
-- `Args.offlinePlayerUuid()` no resuelve nombres fuera del cache local: la resolucion remota de perfiles le corresponde al consumidor via el scheduler async (decision deliberada para no bloquear el main thread).
-- `withoutDefaults()` transfiere la obligacion al consumidor: sn-core declara `reload` y `help` obligatorios en todo root, la libreria no lo re-valida.
-- Un reload nunca recarga clases: actualizar SnLib.jar requiere reinicio del servidor (contrato explicito de `/snlib reload`).
-- Aliases dinamicos via `putIfAbsent`: si otro comando ya posee el alias en el CommandMap, el alias no queda operativo para el root (no se pisa, solo queda el WARN del registro dinamico).
-
+### TODOs and limitations
+There are no TODO/FIXME markers in the module's files. Limitations documented in code/Javadoc:
+- `Args.greedy()` only makes sense as the LAST declared argument of a subcommand; in another position the token join never activates (only the last index is treated as greedy).
+- Fixed cap of 100 suggestions (`SUGGESTION_CAP`) on list-backed options (online players, `oneOf`); not configurable.
+- `Args.offlinePlayerUuid()` does not resolve names outside the local cache: remote profile resolution belongs to the consumer via the async scheduler (deliberate decision to avoid blocking the main thread).
+- `withoutDefaults()` transfers the obligation to the consumer: sn-core declares `reload` and `help` mandatory in every root, the library does not re-validate it.
+- A reload never reloads classes: updating SnLib.jar requires a server restart (`/snlib reload`'s explicit contract).
+- Dynamic aliases via `putIfAbsent`: if another command already owns the alias in the CommandMap, the alias is not operative for the root (it is not overwritten, only the dynamic registration WARN remains).
 ---
 
-## 14. Base de datos y Economia
+## 14. Database and Economy
 
-Modulo dual de persistencia (SQLite/MySQL via HikariCP) y puente de economia de cada contexto consumidor (`Sn`). El contrato central de threading es que JDBC nunca toca el main thread: toda operacion corre en un executor daemon dedicado por plugin (`<plugin>-db`) y los resultados vuelven como `SnFuture`, cuya via de consumo canonica es `thenSync` (hop al main thread con guard de plugin habilitado). El pool Hikari se crea lazy en el primer uso sobre ese executor, asi que construir `SnDb` nunca abre una conexion. Sobre la base se montan `UpsertBuilder` (upsert de una fila con dialecto por backend) y `PlayerDataCache` (load-on-join, save-on-quit, flush ordenado en el teardown). Del lado de economia, `EconomyBridge` selecciona backends en orden de registro (Vault, luego command backend, luego custom) con la regla "Economy siempre main thread". HikariCP se shadea relocado a `com.sn.lib.libs.hikari`; los drivers SQLite y MySQL viajan sin relocar como copia unica server-wide.
+Dual persistence module (SQLite/MySQL via HikariCP) and economy bridge of each consumer context (`Sn`). The central threading contract is that JDBC never touches the main thread: every operation runs on a dedicated per-plugin daemon executor (`<plugin>-db`) and results come back as `SnFuture`, whose canonical consumption path is `thenSync` (a main-thread hop with a plugin-enabled guard). The Hikari pool creates lazily on first use over that executor, so constructing `SnDb` never opens a connection. On top of the base sit `UpsertBuilder` (single-row upsert with a per-backend dialect) and `PlayerDataCache` (load-on-join, save-on-quit, ordered flush at teardown). On the economy side, `EconomyBridge` selects backends in registration order (Vault, then the command backend, then custom) with the "Economy always main thread" rule. HikariCP shades relocated to `com.sn.lib.libs.hikari`; the SQLite and MySQL drivers travel unrelocated as a single server-wide copy.
 
 ### SnDb
 `src/main/java/com/sn/lib/db/SnDb.java`
 
-Modulo de base de datos SQLite/MySQL de un contexto consumidor, pooled con HikariCP. Cada instancia es propiedad de un plugin: el nombre del pool es `<plugin>-db` y el executor (fixed thread pool daemon; 1 hilo para SQLite, `max(1, poolSize)` para MySQL) pinea el context classloader de sus hilos al classloader del plugin consumidor y lo resetea al de `SnDb` cuando la tarea termina. El datasource Hikari se crea lazy con double-checked locking (`dataSourceLock`) en el primer `submit`, nunca en el constructor.
+SQLite/MySQL database module of a consumer context, pooled with HikariCP. Each instance is owned by a plugin: the pool name is `<plugin>-db` and the executor (a daemon fixed thread pool; 1 thread for SQLite, `max(1, poolSize)` for MySQL) pins its threads' context classloader to the consumer plugin's classloader and resets it to `SnDb`'s when the task finishes. The Hikari datasource creates lazily with double-checked locking (`dataSourceLock`) on the first `submit`, never in the constructor.
 
-Interfaces anidadas publicas:
+Public nested interfaces:
 
-- `public interface SqlConsumer<T> { void accept(T value) throws SQLException; }` - callback SQL que consume un objeto JDBC.
-- `public interface SqlFunction<T, R> { R apply(T value) throws SQLException; }` - callback SQL que mapea un objeto JDBC a un resultado.
+- `public interface SqlConsumer<T> { void accept(T value) throws SQLException; }` - SQL callback consuming a JDBC object.
+- `public interface SqlFunction<T, R> { R apply(T value) throws SQLException; }` - SQL callback mapping a JDBC object to a result.
 
-Constantes: `SHUTDOWN_JOIN_SECONDS = 10L` (privada; timeout del join de shutdown, citada en el Javadoc de `shutdown()`).
+Constants: `SHUTDOWN_JOIN_SECONDS = 10L` (private; the shutdown join timeout, cited in `shutdown()`'s Javadoc).
 
-Metodos publicos:
+Public methods:
 
-- `public SnDb(Sn ctx, DbConfig config)` - construye el modulo: decide la cantidad de hilos segun el tipo (SQLITE => 1), crea el executor con thread factory que pinea/resetea el context classloader y registra cada worker en un set para el reset forzado del shutdown.
-- `public DbConfig config()` - settings de conexion parseados con los que corre el modulo.
-- `public SnFuture<Void> bootstrap(Schema... schemas)` - crea todas las tablas async (un `CREATE TABLE IF NOT EXISTS` por schema, en un solo `Statement`). Marca la fase bootstrap (`bootstrapping = true`) hasta que el future completa; mientras esta pendiente, los joins en main thread se consideran fase de bootstrap y no logean WARN. La llamada estandar en enable es `bootstrap(...).orDisablePlugin()`.
-- `public <R> SnFuture<R> query(String sql, SqlConsumer<PreparedStatement> binder, SqlFunction<ResultSet, R> mapper)` - corre una query preparada fuera del main thread y mapea su `ResultSet`.
-- `public SnFuture<Integer> update(String sql, SqlConsumer<PreparedStatement> binder)` - corre un update preparado fuera del main thread; el valor es la cantidad de filas afectadas.
-- `public SnFuture<Void> transaction(SqlConsumer<Connection> work)` - corre el trabajo dentro de una transaccion fuera del main thread: `setAutoCommit(false)`, commit al exito, rollback ante `SQLException | RuntimeException | Error`, y restaura el auto-commit previo en el `finally`.
-- `public UpsertBuilder upsert(String table)` - builder de upsert de una fila consciente del dialecto para la tabla dada.
-- `public <T> PlayerDataCache<T> playerCache(BiFunction<SnDb, UUID, T> loader, PlayerDataCache.Saver<T> saver)` - crea un cache per-player respaldado por esta base (load-on-join via listener compartido, save-on-quit cuando esta dirty) y lo registra en la lista interna para el flush ordenado. El loader corre en el pool async del plugin owner, nunca en el executor de la base, asi puede joinear queries de este modulo sin deadlock.
-- `public void flushPlayerCaches()` - guarda toda entrada dirty de cada cache creado via `playerCache` y joinea las escrituras encoladas (barrier). Teardown ordenado: corre justo antes de `shutdown()` para que ninguna escritura se pierda con el cierre del pool.
-- `public void shutdown()` - teardown del modulo, idempotente (`AtomicBoolean closed`): rechaza operaciones nuevas, joinea el trabajo pendiente hasta 10 segundos (`awaitTermination`), y si no termino fuerza `shutdownNow()` con WARN `"Pool <nombre> no termino en 10s; shutdownNow() forzado"` y resetea el context classloader de cada worker al de `SnDb` para que una query colgada nunca retenga (pinee) el classloader del plugin consumidor. El pool Hikari cierra al final, bajo `dataSourceLock`.
+- `public SnDb(Sn ctx, DbConfig config)` - builds the module: decides the thread count by type (SQLITE => 1), creates the executor with a thread factory that pins/resets the context classloader and registers each worker in a set for the shutdown's forced reset.
+- `public DbConfig config()` - the parsed connection settings the module runs with.
+- `public SnFuture<Void> bootstrap(Schema... schemas)` - creates all tables async (one `CREATE TABLE IF NOT EXISTS` per schema, in a single `Statement`). It marks the bootstrap phase (`bootstrapping = true`) until the future completes; while pending, main-thread joins count as bootstrap phase and log no WARN. The standard enable call is `bootstrap(...).orDisablePlugin()`.
+- `public <R> SnFuture<R> query(String sql, SqlConsumer<PreparedStatement> binder, SqlFunction<ResultSet, R> mapper)` - runs a prepared query off the main thread and maps its `ResultSet`.
+- `public SnFuture<Integer> update(String sql, SqlConsumer<PreparedStatement> binder)` - runs a prepared update off the main thread; the value is the affected row count.
+- `public SnFuture<Void> transaction(SqlConsumer<Connection> work)` - runs the work inside a transaction off the main thread: `setAutoCommit(false)`, commit on success, rollback on `SQLException | RuntimeException | Error`, and restores the previous auto-commit in the `finally`.
+- `public UpsertBuilder upsert(String table)` - a dialect-aware single-row upsert builder for the given table.
+- `public <T> PlayerDataCache<T> playerCache(BiFunction<SnDb, UUID, T> loader, PlayerDataCache.Saver<T> saver)` - creates a per-player cache backed by this database (load-on-join via the shared listener, save-on-quit when dirty) and registers it in the internal list for the ordered flush. The loader runs on the owner plugin's async pool, never on the database's executor, so it can join this module's queries without deadlock.
+- `public void flushPlayerCaches()` - saves every dirty entry of every cache created via `playerCache` and joins the queued writes (barrier). Ordered teardown: it runs right before `shutdown()` so no write is lost with the pool closing.
+- `public void shutdown()` - the module's teardown, idempotent (`AtomicBoolean closed`): rejects new operations, joins pending work up to 10 seconds (`awaitTermination`), and if it did not finish forces `shutdownNow()` with WARN `"Pool <name> did not finish in 10s; forced shutdownNow()"` and resets each worker's context classloader to `SnDb`'s so a hung query never retains (pins) the consumer plugin's classloader. The Hikari pool closes last, under `dataSourceLock`.
 
-Metodos package-private (infraestructura del modulo):
+Package-private methods (module infrastructure):
 
-- `boolean inBootstrap()` - true mientras un `bootstrap` de enable sigue pendiente; lo consulta `SnFuture.warnIfMainThreadJoin()`.
-- `SnFuture<Void> fence()` - write barrier: completa cuando el executor dreno toda tarea encolada antes que ella. Exacto para el executor single-thread de SQLite; para un pool multi-thread de MySQL es best-effort y `shutdown()` joinea los rezagados. Completa inmediato si el executor ya rechazo el submit (`RejectedExecutionException`).
+- `boolean inBootstrap()` - true while an enable-time `bootstrap` is still pending; consulted by `SnFuture.warnIfMainThreadJoin()`.
+- `SnFuture<Void> fence()` - write barrier: completes when the executor has drained every task queued before it. Exact for SQLite's single-thread executor; for a multi-thread MySQL pool it is best-effort and `shutdown()` joins the stragglers. Completes immediately if the executor already rejected the submit (`RejectedExecutionException`).
 
-#### Logica interna
+#### Internal logic
 
-- `submit(...)`: si `closed` esta seteado, completa exceptionally con `IllegalStateException("SnDb cerrado: <pool>")` sin encolar. Cada tarea toma una conexion del pool con try-with-resources y completa el future con el resultado o con cualquier `Throwable`.
-- `createDataSource()` (perfil SQLite): crea los directorios padre del archivo, driver `org.sqlite.JDBC`, URL `jdbc:sqlite:<absolutePath>`, `maximumPoolSize=1`, y propiedades de datasource `busy_timeout=5000` y `journal_mode=WAL` aplicadas en el primer connect.
-- `createDataSource()` (perfil MySQL): driver `com.mysql.cj.jdbc.Driver`, URL `jdbc:mysql://host:port/database?useSSL=<ssl>&allowPublicKeyRetrieval=true&characterEncoding=utf8`, usuario/password, `maximumPoolSize=max(1, poolSize)` (default 4), y cache de prepared statements (`cachePrepStmts=true`, `prepStmtCacheSize=250`, `prepStmtCacheSqlLimit=2048`).
+- `submit(...)`: if `closed` is set, it completes exceptionally with `IllegalStateException("SnDb closed: <pool>")` without queuing. Each task takes a pool connection with try-with-resources and completes the future with the result or any `Throwable`.
+- `createDataSource()` (SQLite profile): creates the file's parent directories, driver `org.sqlite.JDBC`, URL `jdbc:sqlite:<absolutePath>`, `maximumPoolSize=1`, and datasource properties `busy_timeout=5000` and `journal_mode=WAL` applied on the first connect.
+- `createDataSource()` (MySQL profile): driver `com.mysql.cj.jdbc.Driver`, URL `jdbc:mysql://host:port/database?useSSL=<ssl>&allowPublicKeyRetrieval=true&characterEncoding=utf8`, user/password, `maximumPoolSize=max(1, poolSize)` (default 4), and prepared statement caching (`cachePrepStmts=true`, `prepStmtCacheSize=250`, `prepStmtCacheSqlLimit=2048`).
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El executor pinea el context classloader al del plugin consumidor para que los drivers JDBC (que usan el TCCL) resuelvan clases contra el plugin correcto; el reset en el `finally` de cada tarea y el reset forzado del shutdown evitan leaks del classloader tras un disable.
-- SQLite queda clavado en 1 conexion sin importar `pool-size` del config; el paralelismo real solo existe con MySQL.
-- `dataSource()` tira `IllegalStateException` si se intenta crear el pool con el modulo ya cerrado (carrera submit/shutdown).
+- The executor pins the context classloader to the consumer plugin's so the JDBC drivers (which use the TCCL) resolve classes against the right plugin; the reset in each task's `finally` and the shutdown's forced reset prevent classloader leaks after a disable.
+- SQLite stays pinned to 1 connection regardless of the config's `pool-size`; real parallelism only exists with MySQL.
+- `dataSource()` throws `IllegalStateException` if pool creation is attempted with the module already closed (submit/shutdown race).
 
 ### DbConfig
 `src/main/java/com/sn/lib/db/DbConfig.java`
 
-Settings de conexion de la base de un consumidor, parseados de la seccion `database` de su config principal. Claves reconocidas: `type` (sqlite o mysql, default sqlite), `file` (path SQLite relativo al data folder, o absoluto), y para MySQL `host`, `port`, `database`, `username`, `password`, `pool-size` y `ssl`. Seccion ausente o `type` desconocido caen a SQLite en `<dataFolder>/database.db`.
+A consumer's database connection settings, parsed from the `database` section of its main config. Recognized keys: `type` (sqlite or mysql, default sqlite), `file` (SQLite path relative to the data folder, or absolute), and for MySQL `host`, `port`, `database`, `username`, `password`, `pool-size` and `ssl`. An absent section or an unknown `type` fall back to SQLite at `<dataFolder>/database.db`.
 
-Enum publico:
+Public enum:
 
-- `public enum Type { SQLITE, MYSQL }` - backends soportados.
+- `public enum Type { SQLITE, MYSQL }` - supported backends.
 
-Constantes (privadas, definen los defaults): `DEFAULT_SQLITE_FILE = "database.db"`, `DEFAULT_MYSQL_PORT = 3306`, `DEFAULT_MYSQL_POOL_SIZE = 4`.
+Constants (private, they define the defaults): `DEFAULT_SQLITE_FILE = "database.db"`, `DEFAULT_MYSQL_PORT = 3306`, `DEFAULT_MYSQL_POOL_SIZE = 4`.
 
-Metodos publicos:
+Public methods:
 
-- `public static DbConfig load(JavaPlugin plugin, @Nullable ConfigurationSection section)` - parsea la seccion `database`; una seccion null da los defaults SQLite. Un `type` desconocido logea un WARN (`"database.type invalido: '<raw>', usando sqlite"`) y cae a SQLite. El default de `database` (MySQL) es el nombre del plugin en minusculas; `username` default `root`, `password` default vacio, `pool-size` se clampa a minimo 1, `ssl` default false.
-- `public Type type()` - tipo de backend.
-- `public File sqliteFile()` - archivo SQLite resuelto; solo significativo cuando `type()` es SQLITE. Si el path del config es absoluto se usa tal cual, si no se resuelve contra el data folder del plugin.
-- `public String host()` - host MySQL (default `localhost`).
-- `public int port()` - puerto MySQL (default 3306).
-- `public String database()` - nombre de la base MySQL.
-- `public String username()` - usuario MySQL.
-- `public String password()` - password MySQL.
-- `public int poolSize()` - tamano del pool MySQL; SQLite queda siempre pineado a una sola conexion.
-- `public boolean ssl()` - si la conexion MySQL usa SSL.
+- `public static DbConfig load(JavaPlugin plugin, @Nullable ConfigurationSection section)` - parses the `database` section; a null section yields the SQLite defaults. An unknown `type` logs a WARN (`"invalid database.type: '<raw>', using sqlite"`) and falls to SQLite. The `database` default (MySQL) is the lowercased plugin name; `username` defaults to `root`, `password` defaults empty, `pool-size` clamps to a minimum of 1, `ssl` defaults to false.
+- `public Type type()` - backend type.
+- `public File sqliteFile()` - the resolved SQLite file; only meaningful when `type()` is SQLITE. If the config path is absolute it is used as-is, otherwise it resolves against the plugin's data folder.
+- `public String host()` - MySQL host (default `localhost`).
+- `public int port()` - MySQL port (default 3306).
+- `public String database()` - MySQL database name.
+- `public String username()` - MySQL user.
+- `public String password()` - MySQL password.
+- `public int poolSize()` - MySQL pool size; SQLite always stays pinned to a single connection.
+- `public boolean ssl()` - whether the MySQL connection uses SSL.
 
 ### Schema
 `src/main/java/com/sn/lib/db/Schema.java`
 
-Definicion declarativa de tabla consumida por `SnDb.bootstrap`: cada schema rinde a un statement idempotente `CREATE TABLE IF NOT EXISTS`.
+Declarative table definition consumed by `SnDb.bootstrap`: each schema yields an idempotent `CREATE TABLE IF NOT EXISTS` statement.
 
-- `public static Schema of(String table, String... columnDefs)` - schema desde el nombre de tabla mas las definiciones de columnas; ejemplo del Javadoc: `Schema.of("players", "uuid VARCHAR(36) PRIMARY KEY", "coins BIGINT NOT NULL")`.
-- `public static Schema raw(String table, String createSql)` - schema desde SQL crudo para definiciones especificas de dialecto; el SQL debe seguir siendo idempotente (`CREATE TABLE IF NOT EXISTS ...`), no se valida.
-- `public String table()` - nombre de la tabla.
-- `public String createSql()` - statement que ejecuta `SnDb.bootstrap`.
+- `public static Schema of(String table, String... columnDefs)` - a schema from the table name plus the column definitions; the Javadoc's example: `Schema.of("players", "uuid VARCHAR(36) PRIMARY KEY", "coins BIGINT NOT NULL")`.
+- `public static Schema raw(String table, String createSql)` - a schema from raw SQL for dialect-specific definitions; the SQL must still be idempotent (`CREATE TABLE IF NOT EXISTS ...`), not validated.
+- `public String table()` - table name.
+- `public String createSql()` - the statement `SnDb.bootstrap` executes.
 
 ### UpsertBuilder
 `src/main/java/com/sn/lib/db/UpsertBuilder.java`
 
-Upsert de una sola fila consciente del dialecto, construido via `SnDb.upsert(String)`. `keys` declara las columnas de conflicto y `set` las columnas actualizables; ambos son repetibles y todos los valores bindean posicionalmente con `setObject` (primero keys, despues sets). Los nombres de tabla y columna son identificadores del lado del codigo (nunca input del usuario) y aun asi se validan contra `[A-Za-z_][A-Za-z0-9_]*` como hard stop (`IllegalArgumentException "Identificador SQL invalido: '<nombre>'"`).
+Dialect-aware single-row upsert, built via `SnDb.upsert(String)`. `keys` declares the conflict columns and `set` the updatable columns; both are repeatable and all values bind positionally with `setObject` (keys first, sets after). Table and column names are code-side identifiers (never user input) and are still validated against `[A-Za-z_][A-Za-z0-9_]*` as a hard stop (`IllegalArgumentException "Invalid SQL identifier: '<name>'"`).
 
-- `public UpsertBuilder keys(String column, Object value)` - agrega una columna clave de conflicto con su valor; repetible.
-- `public UpsertBuilder set(String column, Object value)` - agrega una columna actualizable con su valor; repetible.
-- `public SnFuture<Integer> run()` - rinde el statement del dialecto y lo corre fuera del main thread via `SnDb.update`; el valor es la cantidad de filas afectadas. Tira `IllegalStateException` si no se declaro ninguna columna con `keys()` (mensaje: `"upsert(<tabla>) sin keys(): declara al menos una columna clave"`).
+- `public UpsertBuilder keys(String column, Object value)` - adds a conflict key column with its value; repeatable.
+- `public UpsertBuilder set(String column, Object value)` - adds an updatable column with its value; repeatable.
+- `public SnFuture<Integer> run()` - renders the dialect's statement and runs it off the main thread via `SnDb.update`; the value is the affected row count. Throws `IllegalStateException` if no column was declared with `keys()` (message: `"upsert(<table>) without keys(): declare at least one key column"`).
 
-#### Logica interna (dialectos)
+#### Internal logic (dialects)
 
-- SQLite: `INSERT INTO t (...) VALUES (...) ON CONFLICT(keys) DO UPDATE SET col=excluded.col`; sin columnas `set` degenera en `... DO NOTHING`. Requiere una constraint UNIQUE o PRIMARY KEY sobre las columnas clave.
-- MySQL: `INSERT INTO t (...) VALUES (...) ON DUPLICATE KEY UPDATE col=VALUES(col)`; se apoya en los indices unicos propios de la tabla. Sin columnas `set`, como MySQL exige al menos una asignacion, emite un refresh no-op de la primera clave: `key=VALUES(key)` (comentario textual del codigo: "MySQL exige al menos una asignacion: refresco no-op de la primera clave").
+- SQLite: `INSERT INTO t (...) VALUES (...) ON CONFLICT(keys) DO UPDATE SET col=excluded.col`; without `set` columns it degenerates into `... DO NOTHING`. It requires a UNIQUE or PRIMARY KEY constraint over the key columns.
+- MySQL: `INSERT INTO t (...) VALUES (...) ON DUPLICATE KEY UPDATE col=VALUES(col)`; it relies on the table's own unique indexes. Without `set` columns, since MySQL demands at least one assignment, it emits a no-op refresh of the first key: `key=VALUES(key)` (literal code comment: "MySQL demands at least one assignment: no-op refresh of the first key").
 
 ### PlayerDataCache
 `src/main/java/com/sn/lib/db/PlayerDataCache.java`
 
-Cache de datos per-player atado a un `SnDb`, creado via `SnDb.playerCache` (constructor package-private). Ciclo de vida: el listener compartido de `PlayerJoinEvent` dispara `load` para cada cache registrado de cada owner, y el listener de quit cleanup (`QuitCleanupListener`) guarda la entrada si esta dirty y la remueve. El loader corre en el pool async del plugin owner (nunca en el executor de la base, asi puede joinear queries del modulo) y su resultado se instala en el main thread; el saver corre en el thread llamador y se espera que encole escrituras async como `SnDb.upsert`.
+Per-player data cache tied to an `SnDb`, created via `SnDb.playerCache` (package-private constructor). Lifecycle: the shared `PlayerJoinEvent` listener fires `load` for each registered cache of every owner, and the quit cleanup listener (`QuitCleanupListener`) saves the entry if dirty and removes it. The loader runs on the owner plugin's async pool (never on the database's executor, so it can join the module's queries) and its result installs on the main thread; the saver runs on the calling thread and is expected to queue async writes like `SnDb.upsert`.
 
-Interfaz anidada publica:
+Public nested interface:
 
-- `public interface Saver<T> { void save(SnDb db, UUID uuid, T value); }` - persiste el valor de un jugador; tipicamente un `SnDb.upsert` encolado off-main.
+- `public interface Saver<T> { void save(SnDb db, UUID uuid, T value); }` - persists a player's value; typically an off-main queued `SnDb.upsert`.
 
-Metodos publicos:
+Public methods:
 
-- `public static Listener joinListener()` - listener compartido de `PlayerJoinEvent`, propiedad de SnLib, que dispara load-on-join para todos los caches registrados de todos los owners (via el `TenantRegistry` estatico `CACHES`). El `registerEvents` ocurre una unica vez en el bootstrap de SnLibPlugin.
-- `public @Nullable T get(UUID uuid)` - valor cacheado; null mientras no esta cargado (o cuando el loader no devolvio datos).
-- `public void load(UUID uuid)` - carga el valor del jugador async y lo instala en el main thread. No-op si el contexto esta en shutdown, el valor ya esta cacheado, o ya hay una carga en vuelo (dedup via `pendingLoads.putIfAbsent`).
-- `public void markDirty(UUID uuid)` - marca el valor cargado del jugador como pendiente de persistencia; no-op mientras no esta cargado (`data.containsKey`).
-- `public void invalidate(UUID uuid)` - descarta la entrada del jugador SIN guardar y mata cualquier carga en vuelo (remueve el ticket de `pendingLoads`, el dato y la marca dirty).
-- `public SnFuture<Void> saveAll()` - guarda toda entrada dirty a traves del saver (iterando una copia del set dirty, con `dirty.remove` como claim atomico) y devuelve un barrier future (`db.fence()`) que completa cuando drenaron las escrituras encoladas hasta ese punto; el teardown ordenado lo joinea antes de `SnDb.shutdown()`.
+- `public static Listener joinListener()` - the shared `PlayerJoinEvent` listener, owned by SnLib, that fires load-on-join for all registered caches of all owners (via the static `TenantRegistry` `CACHES`). The `registerEvents` happens exactly once in the SnLibPlugin bootstrap.
+- `public @Nullable T get(UUID uuid)` - the cached value; null while not loaded (or when the loader returned no data).
+- `public void load(UUID uuid)` - loads the player's value async and installs it on the main thread. No-op if the context is shutting down, the value is already cached, or a load is already in flight (dedup via `pendingLoads.putIfAbsent`).
+- `public void markDirty(UUID uuid)` - marks the player's loaded value as pending persistence; a no-op while not loaded (`data.containsKey`).
+- `public void invalidate(UUID uuid)` - discards the player's entry WITHOUT saving and kills any in-flight load (removes the `pendingLoads` ticket, the data and the dirty mark).
+- `public SnFuture<Void> saveAll()` - saves every dirty entry through the saver (iterating a copy of the dirty set, with `dirty.remove` as the atomic claim) and returns a barrier future (`db.fence()`) that completes when the writes queued up to that point drained; the ordered teardown joins it before `SnDb.shutdown()`.
 
-Metodos package-private:
+Package-private methods:
 
-- `void unload(UUID uuid)` - cleanup de quit/kick registrado en `QuitCleanupListener`: remueve el ticket pendiente, saca el valor y, si estaba dirty y no era null, lo guarda. Idempotente, porque un jugador kickeado dispara kick y quit.
+- `void unload(UUID uuid)` - the quit/kick cleanup registered in `QuitCleanupListener`: removes the pending ticket, takes the value out and, if it was dirty and non-null, saves it. Idempotent, because a kicked player fires kick and quit.
 
-#### Logica interna (mutation-sequence guard)
+#### Internal logic (mutation-sequence guard)
 
-`pendingLoads: ConcurrentHashMap<UUID, Long>` mas un `AtomicLong sequence` forman el guard de secuencia de mutacion: cada `load` toma un ticket fresco (`sequence.incrementAndGet()`) y lo mapea con `putIfAbsent` (un ticket ya mapeado dedupea cargas concurrentes en un solo intento en vuelo). El resultado async solo se instala en el main thread si `pendingLoads.remove(uuid, ticket)` remueve SU propio ticket; cualquier mutacion intermedia (invalidate, unload por quit) dropea el ticket, asi un dato que ya estaba en vuelo jamas puede pisar el estado posterior. Si el load falla, el `whenComplete` remueve el ticket para no bloquear reintentos. Fallos del saver se capturan y logean WARN `"Save de datos de jugador fallo (<uuid>): <t>"` sin propagar.
+`pendingLoads: ConcurrentHashMap<UUID, Long>` plus an `AtomicLong sequence` form the mutation-sequence guard: each `load` takes a fresh ticket (`sequence.incrementAndGet()`) and maps it with `putIfAbsent` (an already-mapped ticket dedupes concurrent loads into a single in-flight attempt). The async result only installs on the main thread if `pendingLoads.remove(uuid, ticket)` removes ITS own ticket; any intervening mutation (invalidate, unload on quit) drops the ticket, so data already in flight can never clobber later state. If the load fails, the `whenComplete` removes the ticket so retries are not blocked. Saver failures are caught and logged WARN `"Player data save failed (<uuid>): <t>"` without propagating.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- `CACHES` es un static server-wide justificado por Javadoc: caches keyeados por plugin owner, resueltos por el join listener compartido y barridos por clave completa cuando el owner se deshabilita.
-- Un loader que devuelve null no instala nada: el jugador queda "no cargado" y `markDirty` sera no-op para el.
-- El barrier de `saveAll()` es exacto en SQLite (executor de 1 hilo) y best-effort en MySQL multi-hilo; el shutdown de `SnDb` joinea los rezagados.
+- `CACHES` is a server-wide static justified by Javadoc: caches keyed by owning plugin, resolved by the shared join listener and swept by whole key when the owner disables.
+- A loader returning null installs nothing: the player stays "not loaded" and `markDirty` will be a no-op for them.
+- The `saveAll()` barrier is exact on SQLite (1-thread executor) and best-effort on multi-thread MySQL; `SnDb`'s shutdown joins the stragglers.
 
 ### SnFuture
 `src/main/java/com/sn/lib/db/SnFuture.java`
 
-Resultado de una operacion asincronica de base de datos; envuelve un `CompletableFuture` (campo `delegate`, package-private) junto al contexto `Sn` y el `SnDb` de origen (`@Nullable` desde v1.1: los futures creados via `wrap` no tienen db de origen). Constructor package-private: dentro de la libreria solo el modulo db crea instancias directas; el factory publico `wrap` cubre el resto.
+The result of an asynchronous database operation; it wraps a `CompletableFuture` (the `delegate` field, package-private) together with the origin `Sn` context and `SnDb` (`@Nullable` since v1.1: futures created via `wrap` have no origin db). Package-private constructor: within the library only the db module creates direct instances; the public `wrap` factory covers the rest.
 
-Constantes: `JOIN_WARN_FRAMES = 5` (privada; cantidad de frames del stack incluidos en el WARN de join).
+Constants: `JOIN_WARN_FRAMES = 5` (private; number of stack frames included in the join WARN).
 
-- `public static <T> SnFuture<T> wrap(Sn ctx, CompletableFuture<T> future)` - (v1.1) envuelve un `CompletableFuture` arbitrario en la superficie de consumo de SnFuture (`thenSync`/`exceptionally`/`join`) del contexto dado; usado por modulos de la libreria fuera del paquete db (`SnPapi.applyOnMain`) y disponible para consumers. El SnFuture resultante no tiene `SnDb` de origen (db null), asi que el WARN de join nunca se suprime por fase de bootstrap.
-- `public SnFuture<T> thenSync(Consumer<T> consumer)` - consume el valor en el main thread via el scheduler del owner; el hop se saltea cuando el plugin owner ya esta deshabilitado (guard is-enabled del scheduler), y un future fallido logea un WARN en vez de llegar al consumer. Devuelve `this` (encadenable).
-- `public SnFuture<T> exceptionally(Consumer<Throwable> handler)` - observa un fallo con los wrappers de completacion (`CompletionException` / `ExecutionException`) desenvueltos hasta la causa real.
-- `public T join()` - bloquea hasta que el valor este disponible y lo devuelve. Pensado SOLO para el flush de shutdown y el bootstrap de enable: cualquier otro join en el main thread (future no completado, fuera de `ctx.isShuttingDown()` y de `db.inBootstrap()`) logea un WARN `"SnFuture.join() en el main thread fuera de shutdown/bootstrap:"` con los primeros 5 frames llamadores.
-- `public SnFuture<T> orDisablePlugin()` - deshabilita el plugin owner cuando este future falla; el gate estandar de `SnDb.bootstrap`. Logea SEVERE `"Operacion critica de base de datos fallo; deshabilitando <plugin>: <causa>"`. Si el fallo llega en el main thread deshabilita inline; si no, agenda el disable con `scheduler().sync(...)`, y si ese scheduling tira `IllegalPluginAccessException` (plugin ya deshabilitado durante el scheduling) logea WARN `"Disable diferido descartado: plugin ya deshabilitado durante el scheduling"` y descarta.
+- `public static <T> SnFuture<T> wrap(Sn ctx, CompletableFuture<T> future)` - (v1.1) wraps an arbitrary `CompletableFuture` in SnFuture's consumption surface (`thenSync`/`exceptionally`/`join`) of the given context; used by library modules outside the db package (`SnPapi.applyOnMain`) and available to consumers. The resulting SnFuture has no origin `SnDb` (null db), so the join WARN is never suppressed by a bootstrap phase.
+- `public SnFuture<T> thenSync(Consumer<T> consumer)` - consumes the value on the main thread via the owner's scheduler; the hop is skipped when the owning plugin is already disabled (the scheduler's is-enabled guard), and a failed future logs a WARN instead of reaching the consumer. Returns `this` (chainable).
+- `public SnFuture<T> exceptionally(Consumer<Throwable> handler)` - observes a failure with the completion wrappers (`CompletionException` / `ExecutionException`) unwrapped down to the real cause.
+- `public T join()` - blocks until the value is available and returns it. Intended ONLY for the shutdown flush and the enable bootstrap: any other main-thread join (an uncompleted future, outside `ctx.isShuttingDown()` and `db.inBootstrap()`) logs a WARN `"SnFuture.join() on the main thread outside shutdown/bootstrap:"` with the first 5 caller frames.
+- `public SnFuture<T> orDisablePlugin()` - disables the owning plugin when this future fails; the standard gate of `SnDb.bootstrap`. Logs SEVERE `"Critical database operation failed; disabling <plugin>: <cause>"`. If the failure arrives on the main thread it disables inline; otherwise it schedules the disable with `scheduler().sync(...)`, and if that scheduling throws `IllegalPluginAccessException` (plugin already disabled during scheduling) it logs WARN `"Deferred disable discarded: plugin already disabled during scheduling"` and discards.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El WARN de join se suprime en cuatro casos: future ya completado, thread no-main, contexto en shutdown, o fase de bootstrap del `SnDb` de origen (`db != null && db.inBootstrap()`; los futures de `wrap` no tienen db). El stack se recorta empezando en el frame 3 para saltear los frames internos de `getStackTrace`/`join`.
+- The join WARN is suppressed in four cases: an already-completed future, a non-main thread, a shutting-down context, or the origin `SnDb`'s bootstrap phase (`db != null && db.inBootstrap()`; `wrap` futures have no db). The stack trims starting at frame 3 to skip the internal `getStackTrace`/`join` frames.
 
 ### EconomyBridge
 `src/main/java/com/sn/lib/economy/EconomyBridge.java`
 
-Servicio de economia de un contexto consumidor, accesible via `sn.economy()`. Las operaciones resuelven el PRIMER backend disponible en orden de registro (`LinkedHashMap`): Vault (registrado en el constructor), despues el command backend configurado con `useCommandBackend`, despues cualquier `Backend` custom via `registerBackend`. Sin backend disponible, toda operacion warnea UNA vez y reporta fallo (balance `0`, futures `false`). El acceso a economia es main-thread only: `getBalance(Player)` debe correr en el main thread (fuera de el devuelve `0` con un WARN por CALL SITE, v1.1), mientras que las escrituras pueden llamarse desde cualquier thread porque cada backend hace el hop al main por su cuenta.
+Economy service of a consumer context, accessible via `sn.economy()`. Operations resolve the FIRST available backend in registration order (`LinkedHashMap`): Vault (registered in the constructor), then the command backend configured with `useCommandBackend`, then any custom `Backend` via `registerBackend`. With no backend available, every operation warns ONCE and reports failure (balance `0`, futures `false`). Economy access is main-thread only: `getBalance(Player)` must run on the main thread (off it, it returns `0` with one WARN per CALL SITE, v1.1), while writes may be called from any thread because each backend does the main hop itself.
 
-Interfaz anidada publica:
+Public nested interface:
 
-- `public interface Backend` - backend de economia enchufable. Contrato: acceso a Economy siempre en main thread; `getBalance` solo se invoca en main, y las escrituras invocadas off-main deben hopear ellas mismas, como hacen los backends built-in.
-  - `double getBalance(OfflinePlayer player)` - balance actual; main-thread only.
-  - `CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - deposita; el future completa con el exito real.
-  - `CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - retira solo si el jugador puede pagarlo; el future completa con el exito real del retiro.
-  - `default boolean available()` - true cuando el backend puede servir operaciones ahora mismo (default true).
+- `public interface Backend` - pluggable economy backend. Contract: Economy access always on the main thread; `getBalance` is only invoked on main, and writes invoked off-main must hop themselves, as the built-in backends do.
+  - `double getBalance(OfflinePlayer player)` - current balance; main-thread only.
+  - `CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - deposits; the future completes with the real success.
+  - `CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - withdraws only if the player can afford it; the future completes with the withdrawal's real success.
+  - `default boolean available()` - true when the backend can serve operations right now (default true).
 
-Constantes: `VAULT = "vault"`, `COMMAND = "command"` (privadas; nombres de registro de los backends built-in).
+Constants: `VAULT = "vault"`, `COMMAND = "command"` (private; registration names of the built-in backends).
 
-Metodos publicos:
+Public methods:
 
-- `public EconomyBridge(Sn ctx)` - crea el puente y registra el backend Vault. `VaultBackend` es la clase hook aislada: su constructor linkea contra la API de Vault, asi que con Vault ausente la instanciacion tira un linkage error que se captura aca (`catch (Throwable)`, nunca propaga) y el puente arranca sin ese backend (log de debug, no WARN).
-- `public double getBalance(Player player)` - balance actual a traves del backend activo; main-thread only. Fuera del main thread devuelve `0` con un WARN por call site (v1.1): `"getBalance llamado fuera del main thread desde <Clase#metodo:linea>; devolviendo 0 (Economy siempre main thread)"`, dedup en `Set<String> warnedOffMainSites` (`ConcurrentHashMap.newKeySet()`) con el tag del helper privado `callSiteTag()` (StackWalker, primer frame cuya clase no es `EconomyBridge`, patron duplicado deliberadamente de `SnCompat.callSiteTag`, orElse `"unknown"`); el costo del StackWalker solo se paga en el camino buggy off-main. Sin backend disponible, `0` con el WARN de no-backend.
-- `public CompletableFuture<Boolean> give(Player player, double amount)` - deposita `amount`. El future completa con el exito real; false ante monto invalido (no finito o no positivo, logeado solo en debug) o sin backend disponible.
-- `public CompletableFuture<Boolean> tryTake(Player player, double amount)` - retira `amount` solo si es pagable. El future completa con el exito REAL del retiro; false ante monto invalido, fondos insuficientes o sin backend.
-- `public synchronized void registerBackend(String name, Backend backend)` - registra (o reemplaza) un backend bajo `name` (lowercased). La seleccion camina los backends en orden de primer registro, asi Vault mantiene prioridad, el command backend sigue y los custom van despues salvo que reemplacen uno de esos nombres.
-- `public void useCommandBackend(String giveCommand, String takeCommand, String balancePlaceholder)` - configura el backend fallback de dispatch de comandos. Los templates aceptan los tokens `%player%` y `%amount%`; `balancePlaceholder` es el placeholder PAPI que reporta el balance del jugador (usado por `tryTake` para verificar pagabilidad y el resultado post-take).
-- `public boolean available()` - true cuando al menos un backend registrado esta disponible.
+- `public EconomyBridge(Sn ctx)` - creates the bridge and registers the Vault backend. `VaultBackend` is the isolated hook class: its constructor links against the Vault API, so with Vault absent the instantiation throws a linkage error caught here (`catch (Throwable)`, never propagates) and the bridge starts without that backend (a debug log, not a WARN).
+- `public double getBalance(Player player)` - current balance through the active backend; main-thread only. Off the main thread it returns `0` with one WARN per call site (v1.1): `"getBalance called off the main thread from <Class#method:line>; returning 0 (Economy always main thread)"`, deduped in `Set<String> warnedOffMainSites` (`ConcurrentHashMap.newKeySet()`) with the tag from the private helper `callSiteTag()` (StackWalker, first frame whose class is not `EconomyBridge`, a pattern deliberately duplicated from `SnCompat.callSiteTag`, orElse `"unknown"`); the StackWalker cost is only paid on the buggy off-main path. With no backend available, `0` with the no-backend WARN.
+- `public CompletableFuture<Boolean> give(Player player, double amount)` - deposits `amount`. The future completes with the real success; false on an invalid amount (non-finite or non-positive, logged only in debug) or with no backend available.
+- `public CompletableFuture<Boolean> tryTake(Player player, double amount)` - withdraws `amount` only if affordable. The future completes with the withdrawal's REAL success; false on an invalid amount, insufficient funds or no backend.
+- `public synchronized void registerBackend(String name, Backend backend)` - registers (or replaces) a backend under `name` (lowercased). Selection walks the backends in first-registration order, so Vault keeps priority, the command backend follows and customs go after unless they replace one of those names.
+- `public void useCommandBackend(String giveCommand, String takeCommand, String balancePlaceholder)` - configures the command-dispatch fallback backend. The templates accept the `%player%` and `%amount%` tokens; `balancePlaceholder` is the PAPI placeholder that reports the player's balance (used by `tryTake` to verify affordability and the post-take result).
+- `public boolean available()` - true when at least one registered backend is available.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- El WARN de "sin backend" se emite una sola vez por instancia (`AtomicBoolean warnedNoBackend`): `"No hay backend de economia disponible: instala Vault o configura useCommandBackend(...); las operaciones devuelven false"`. El WARN de off-main se dedupica POR CALL SITE (`warnedOffMainSites`, v1.1): cada punto de llamada buggy warnea una vez con su `Clase#metodo:linea`.
-- `active()` es `synchronized` y re-evalua `available()` de cada backend en cada operacion, asi un Vault que aparece tarde (o se cae) cambia la seleccion dinamicamente.
+- The "no backend" WARN is emitted once per instance (`AtomicBoolean warnedNoBackend`): `"No economy backend available: install Vault or configure useCommandBackend(...); operations return false"`. The off-main WARN dedupes PER CALL SITE (`warnedOffMainSites`, v1.1): every buggy call point warns once with its `Class#method:line`.
+- `active()` is `synchronized` and re-evaluates each backend's `available()` on every operation, so a Vault appearing late (or dropping out) changes the selection dynamically.
 
 ### VaultBackend (internal)
 `src/main/java/com/sn/lib/economy/internal/VaultBackend.java`
 
-Backend de economia respaldado por Vault de un contexto consumidor. El provider de `Economy` se resuelve a traves de un `SoftDependency<Economy>` per-owner sobre el `RegisteredServiceProvider`, asi un Vault deshabilitado nunca filtra un linkage error y el disable del consumidor libera el hook. Es la clase hook AISLADA: solo linkea cuando las clases de la API de Vault estan presentes, por eso `EconomyBridge` la instancia bajo `catch (Throwable)` y un server sin Vault simplemente corre sin este backend. Toda escritura hopea al main thread y reporta el resultado real de `EconomyResponse.transactionSuccess()`.
+Vault-backed economy backend of a consumer context. The `Economy` provider resolves through a per-owner `SoftDependency<Economy>` over the `RegisteredServiceProvider`, so a disabled Vault never leaks a linkage error and the consumer's disable releases the hook. It is the ISOLATED hook class: it only links when the Vault API classes are present, which is why `EconomyBridge` instantiates it under `catch (Throwable)` and a Vault-less server simply runs without this backend. Every write hops to the main thread and reports the real result of `EconomyResponse.transactionSuccess()`.
 
-- `public VaultBackend(Sn ctx)` - crea el hook: `SoftDependency.of(ctx.plugin(), "Vault", VaultBackend::resolveProvider)`, donde el resolver busca la `RegisteredServiceProvider<Economy>` en el `ServicesManager` de Bukkit.
-- `public boolean available()` - true cuando el provider de Economy resuelve (con la re-resolucion on-use descripta abajo).
-- `public double getBalance(OfflinePlayer player)` - balance via `economy.getBalance(player)`; `0` si no hay provider o si Vault tira cualquier `Throwable` (WARN `"Vault fallo al leer el balance: <t>"`).
-- `public CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - `depositPlayer` en el main thread; el resultado es `transactionSuccess()`. False si no hay provider.
-- `public CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - en el main thread: false si no hay provider o `!economy.has(player, amount)`; si alcanza, `withdrawPlayer` y devuelve `transactionSuccess()`.
+- `public VaultBackend(Sn ctx)` - creates the hook: `SoftDependency.of(ctx.plugin(), "Vault", VaultBackend::resolveProvider)`, where the resolver looks up the `RegisteredServiceProvider<Economy>` in Bukkit's `ServicesManager`.
+- `public boolean available()` - true when the Economy provider resolves (with the on-use re-resolution described below).
+- `public double getBalance(OfflinePlayer player)` - balance via `economy.getBalance(player)`; `0` if there is no provider or Vault throws any `Throwable` (WARN `"Vault failed reading the balance: <t>"`).
+- `public CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - `depositPlayer` on the main thread; the result is `transactionSuccess()`. False without a provider.
+- `public CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - on the main thread: false without a provider or `!economy.has(player, amount)`; if affordable, `withdrawPlayer` and returns `transactionSuccess()`.
 
-#### Logica interna
+#### Internal logic
 
-- Re-resolucion on-use (`economy()`): el provider de Economy puede registrar el servicio DESPUES del primer acceso (Vault ya enabled, servicio tardio); un miss cacheado por el `SoftDependency` se invalida (`vault.invalidate()`) y se re-resuelve en el siguiente uso en vez de quedar nulo toda la sesion (comentario textual del codigo).
-- `onMain(...)`: si ya esta en main thread ejecuta inline; si no, agenda con `ctx.scheduler().sync(...)` y, si el scheduling tira `IllegalPluginAccessException` (owner ya deshabilitado), completa el future con `false`.
-- `runSafe(...)`: cualquier `Throwable` de la operacion se logea como WARN (`"Operacion de economia Vault fallo: <t>"`) y devuelve `false`; nunca propaga al caller.
+- On-use re-resolution (`economy()`): the Economy provider can register the service AFTER the first access (Vault already enabled, late service); a miss cached by the `SoftDependency` is invalidated (`vault.invalidate()`) and re-resolved on the next use instead of staying null for the whole session (literal code comment).
+- `onMain(...)`: if already on the main thread it executes inline; otherwise it schedules with `ctx.scheduler().sync(...)` and, if scheduling throws `IllegalPluginAccessException` (owner already disabled), it completes the future with `false`.
+- `runSafe(...)`: any `Throwable` from the operation logs as WARN (`"Vault economy operation failed: <t>"`) and returns `false`; it never propagates to the caller.
 
 ### CommandBackend (internal)
 `src/main/java/com/sn/lib/economy/internal/CommandBackend.java`
 
-Backend de economia por dispatch de comandos para servers sin Vault. Give y take corren comandos de consola construidos desde los templates configurados (tokens `%player%` y `%amount%`). `tryTake` lee el balance a traves del placeholder PAPI configurado en el main thread, rechaza retiros impagables, y verifica el balance post-take contra un epsilon para que el future complete con el exito real de la operacion. Toda operacion hopea al main thread (PAPI y el dispatch de comandos son main-thread only).
+Command-dispatch economy backend for servers without Vault. Give and take run console commands built from the configured templates (`%player%` and `%amount%` tokens). `tryTake` reads the balance through the configured PAPI placeholder on the main thread, rejects unaffordable withdrawals, and verifies the post-take balance against an epsilon so the future completes with the operation's real success. Every operation hops to the main thread (PAPI and command dispatch are main-thread only).
 
-Constantes: `EPSILON = 1.0E-3` (privada; tolerancia de redondeo double al comparar balances antes y despues de un take), `SECTION = '§'` (privada; marcador de codigo de color a strippear).
+Constants: `EPSILON = 1.0E-3` (private; double rounding tolerance when comparing balances before and after a take), `SECTION = '§'` (private; color code marker to strip).
 
-- `public CommandBackend(Sn ctx, String giveCommand, String takeCommand, String balancePlaceholder)` - construye el backend con los dos templates de comando y el placeholder de balance.
-- `public double getBalance(OfflinePlayer player)` - balance via el placeholder PAPI; `0` cuando la lectura da NaN (ilegible).
-- `public CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - despacha el comando give como consola en el main thread; el resultado es el booleano de `Bukkit.dispatchCommand`.
-- `public CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - en el main thread: lee el balance previo (false si es NaN o `before + EPSILON < amount`), despacha el comando take (false si el dispatch falla), relee el balance y devuelve true solo si `after <= before - amount + EPSILON` (verificacion post-take: el exito reportado es el real, no el del dispatch).
+- `public CommandBackend(Sn ctx, String giveCommand, String takeCommand, String balancePlaceholder)` - builds the backend with the two command templates and the balance placeholder.
+- `public double getBalance(OfflinePlayer player)` - balance via the PAPI placeholder; `0` when the read yields NaN (unreadable).
+- `public CompletableFuture<Boolean> give(OfflinePlayer player, double amount)` - dispatches the give command as console on the main thread; the result is `Bukkit.dispatchCommand`'s boolean.
+- `public CompletableFuture<Boolean> tryTake(OfflinePlayer player, double amount)` - on the main thread: reads the prior balance (false if NaN or `before + EPSILON < amount`), dispatches the take command (false if the dispatch fails), re-reads the balance and returns true only if `after <= before - amount + EPSILON` (post-take verification: the reported success is the real one, not the dispatch's).
 
-#### Logica interna
+#### Internal logic
 
-- `readBalance(...)`: resuelve el placeholder via `ctx.papi().apply(online, balancePlaceholder)` (castea a `Player` online si puede). Devuelve NaN cuando el resultado es null o todavia contiene `%` (PAPI ausente o token sin resolver), o cuando `NumberFormatter.parseFormatted` tira `NumberFormatException` tras strippear decoraciones. El WARN de ilegible se emite una sola vez (`AtomicBoolean warnedUnreadable`): `"Balance ilegible via '<placeholder>' (resultado: '<resolved>'); el command backend no puede verificar balances"`.
-- `stripDecorations(...)`: dropea codigos de color (caracter `§` mas el siguiente) y decoraciones de moneda, conservando digitos, letras (sufijos tipo k/M), `.`, `,` y `-`.
-- `dispatch(...)`: si el jugador no tiene nombre conocido (`getName() == null`) logea WARN `"Jugador sin nombre conocido; comando de economia omitido"` y devuelve false. Reemplaza `%player%` y `%amount%` (monto formateado con `BigDecimal.valueOf(amount).stripTrailingZeros().toPlainString()`, nunca notacion cientifica) y despacha como consola; cualquier `Throwable` del dispatch logea WARN y devuelve false.
-- `onMain(...)` / `runSafe(...)`: mismo patron que `VaultBackend` (hop via scheduler del owner, `IllegalPluginAccessException` => false, `Throwable` => WARN `"Operacion del command backend fallo: <t>"` y false).
+- `readBalance(...)`: resolves the placeholder via `ctx.papi().apply(online, balancePlaceholder)` (casting to an online `Player` if possible). Returns NaN when the result is null or still contains `%` (PAPI absent or unresolved token), or when `NumberFormatter.parseFormatted` throws `NumberFormatException` after stripping decorations. The unreadable WARN is emitted once (`AtomicBoolean warnedUnreadable`): `"Unreadable balance via '<placeholder>' (result: '<resolved>'); the command backend cannot verify balances"`.
+- `stripDecorations(...)`: drops color codes (the `§` character plus the next one) and currency decorations, keeping digits, letters (suffixes like k/M), `.`, `,` and `-`.
+- `dispatch(...)`: if the player has no known name (`getName() == null`) it logs WARN `"Player with no known name; economy command skipped"` and returns false. It replaces `%player%` and `%amount%` (the amount formatted with `BigDecimal.valueOf(amount).stripTrailingZeros().toPlainString()`, never scientific notation) and dispatches as console; any `Throwable` from the dispatch logs a WARN and returns false.
+- `onMain(...)` / `runSafe(...)`: the same pattern as `VaultBackend` (hop via the owner's scheduler, `IllegalPluginAccessException` => false, `Throwable` => WARN `"Command backend operation failed: <t>"` and false).
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- La verificacion post-take existe porque el exito del dispatch de un comando NO garantiza que el plugin de economia haya descontado de verdad (comando mal configurado, jugador sin cuenta, etc.); el epsilon absorbe el redondeo de doubles.
-- Si el placeholder de balance no resuelve (NaN), `tryTake` siempre devuelve false: sin lectura de balance no hay forma de verificar pagabilidad ni resultado.
+- The post-take verification exists because a command dispatch's success does NOT guarantee the economy plugin actually deducted (misconfigured command, player with no account, etc.); the epsilon absorbs double rounding.
+- If the balance placeholder does not resolve (NaN), `tryTake` always returns false: without a balance read there is no way to verify affordability or the outcome.
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No existen marcadores TODO/FIXME/XXX/HACK en ningun archivo del alcance. Limitaciones documentadas en el propio codigo:
+There are no TODO/FIXME/XXX/HACK markers in any file of the scope. Limitations documented in the code itself:
 
-- `SnDb.fence()` (y por lo tanto el barrier de `PlayerDataCache.saveAll()` / `flushPlayerCaches()`) es exacto solo con el executor single-thread de SQLite; con un pool MySQL multi-thread es best-effort y depende de que `shutdown()` joinee los rezagados.
-- SQLite queda siempre pineado a `maximumPoolSize=1`; la clave `pool-size` del config solo afecta a MySQL.
-- La forma SQLite del upsert (`ON CONFLICT(keys)`) requiere una constraint UNIQUE o PRIMARY KEY sobre las columnas clave; la forma MySQL depende de los indices unicos de la tabla (las keys declaradas no se usan en la clausula `ON DUPLICATE KEY UPDATE`).
-- `CommandBackend` no puede verificar balances si el placeholder PAPI configurado no resuelve a un numero legible (WARN unico y `tryTake` devuelve false siempre).
-- `EconomyBridge.getBalance` fuera del main thread no lanza: devuelve `0` tras el primer WARN de cada call site (v1.1: el dedup por call site hace visible cada punto de llamada buggy, pero el retorno fail-open sigue pudiendo enmascarar bugs de threading en el consumidor).
-
+- `SnDb.fence()` (and therefore the barrier of `PlayerDataCache.saveAll()` / `flushPlayerCaches()`) is exact only with SQLite's single-thread executor; with a multi-thread MySQL pool it is best-effort and depends on `shutdown()` joining the stragglers.
+- SQLite always stays pinned to `maximumPoolSize=1`; the config's `pool-size` key only affects MySQL.
+- The SQLite upsert form (`ON CONFLICT(keys)`) requires a UNIQUE or PRIMARY KEY constraint over the key columns; the MySQL form depends on the table's unique indexes (the declared keys are not used in the `ON DUPLICATE KEY UPDATE` clause).
+- `CommandBackend` cannot verify balances if the configured PAPI placeholder does not resolve to a readable number (a single WARN and `tryTake` always returns false).
+- `EconomyBridge.getBalance` off the main thread does not throw: it returns `0` after each call site's first WARN (v1.1: the per-call-site dedup makes every buggy call point visible, but the fail-open return can still mask threading bugs in the consumer).
 ---
 
-## 15. BossBars, Hologramas, Leaderboards y Discord
+## 15. BossBars, Holograms, Leaderboards and Discord
 
-Cuatro servicios de contexto de consumidor, accesibles como `sn.bossbars()`, `sn.holograms()`, `sn.leaderboards()` y `sn.discord()`. Los tres primeros registran sus entradas en un `TenantRegistry` estatico keyed por plugin dueño: un disable del owner barre bars, hologramas y refresh tasks aunque el plugin nunca haya limpiado, y el teardown del contexto llama `hideAll()` / `deleteAll()` / `drain()` segun corresponda. BossBars usa Adventure puro (cero packets), Hologramas usa entidades `TextDisplay` reales (1.19.4+, cero NMS) con marca PDC y purga de huerfanas, Leaderboards cachea rankings inmutables detras de una referencia volatile con lecturas lock-free aptas para PAPI, y Discord despacha webhooks por cola FIFO fuera del main thread con el `HttpClient` del JDK (cero dependencias externas).
+Four consumer-context services, accessible as `sn.bossbars()`, `sn.holograms()`, `sn.leaderboards()` and `sn.discord()`. The first three register their entries in a static `TenantRegistry` keyed by owning plugin: an owner's disable sweeps bars, holograms and refresh tasks even if the plugin never cleaned up, and the context teardown calls `hideAll()` / `deleteAll()` / `drain()` as appropriate. BossBars uses pure Adventure (zero packets), Holograms uses real `TextDisplay` entities (1.19.4+, zero NMS) with a PDC mark and orphan purging, Leaderboards caches immutable rankings behind a volatile reference with lock-free reads fit for PAPI, and Discord dispatches webhooks through a FIFO queue off the main thread with the JDK's `HttpClient` (zero external dependencies).
 
 ### BossBarUtil
 
 `src/main/java/com/sn/lib/bossbar/BossBarUtil.java`
 
-Servicio de boss bars por contexto. Las barras son instancias Adventure `BossBar` mostradas por jugador via la Audience API. Los titulos se renderizan por el pipeline SnText (`[rgb]` y `[center]` incluidos). Un jugador que se desconecta o es kickeado se remueve automaticamente de todas las barras del contexto (via `QuitCleanupListener.register(ctx.plugin(), this::dropViewer)` en el constructor). Operaciones sobre un id desconocido logean UN solo WARN por id (`"Bossbar desconocida '<id>': la operacion se ignora (falta create(\"<id>\").build())"`) y no hacen nada.
+Per-context boss bar service. Bars are Adventure `BossBar` instances shown per player via the Audience API. Titles render through the SnText pipeline (`[rgb]` and `[center]` included). A player who disconnects or is kicked is automatically removed from all the context's bars (via `QuitCleanupListener.register(ctx.plugin(), this::dropViewer)` in the constructor). Operations on an unknown id log ONE single WARN per id (`"Unknown bossbar '<id>': the operation is ignored (missing create(\"<id>\").build())"`) and do nothing.
 
-Metodos publicos:
+Public methods:
 
-- `public BossBarUtil(Sn ctx)` - Constructor; registra el cleanup de quit/kick del contexto.
-- `public Builder create(String id)` - Empieza la definicion de una barra bajo `id`; nada se registra hasta `Builder.build()`.
-- `public void show(Player viewer, String id)` - Muestra la barra al viewer (`viewer.showBossBar`); id desconocido WARN una vez y no-op.
-- `public void hide(Player viewer, String id)` - Oculta la barra solo para ese viewer; el resto la sigue viendo.
-- `public void setText(String id, String text)` - Re-renderiza el titulo de la barra por el pipeline SnText (`SnText.color`).
-- `public void setProgress(String id, float progress)` - Setea el progreso, clampeado a 0..1; un timer corriendo lo pisa al proximo tick.
-- `public void timer(String id, Duration duration, boolean countdown)` - Anima el progreso linealmente a lo largo de `duration`: con `countdown` true drena de 1 a 0, si no llena de 0 a 1. Un timer nuevo reemplaza al anterior; al vencer la duracion el timer se detiene y la barra queda visible en su progreso final hasta que se la oculte.
-- `public void cancelTimer(String id)` - Detiene el timer de la barra si hay uno; el progreso actual se conserva.
-- `public void remove(String id)` - Oculta la barra a todos los viewers, detiene su timer y desregistra el id (tambien del tenant registry).
-- `public void hideAll()` - Oculta todas las barras del contexto a todos los viewers y detiene sus timers; las barras quedan registradas y pueden re-mostrarse. El teardown del contexto la llama antes de liberar las registraciones del owner.
+- `public BossBarUtil(Sn ctx)` - Constructor; registers the context's quit/kick cleanup.
+- `public Builder create(String id)` - Starts a bar definition under `id`; nothing registers until `Builder.build()`.
+- `public void show(Player viewer, String id)` - Shows the bar to the viewer (`viewer.showBossBar`); an unknown id WARNs once and is a no-op.
+- `public void hide(Player viewer, String id)` - Hides the bar for that viewer only; the rest keep seeing it.
+- `public void setText(String id, String text)` - Re-renders the bar's title through the SnText pipeline (`SnText.color`).
+- `public void setProgress(String id, float progress)` - Sets the progress, clamped to 0..1; a running timer overwrites it on the next tick.
+- `public void timer(String id, Duration duration, boolean countdown)` - Animates the progress linearly across `duration`: with `countdown` true it drains from 1 to 0, otherwise it fills from 0 to 1. A new timer replaces the previous one; when the duration expires the timer stops and the bar stays visible at its final progress until hidden.
+- `public void cancelTimer(String id)` - Stops the bar's timer if there is one; the current progress is kept.
+- `public void remove(String id)` - Hides the bar from all viewers, stops its timer and unregisters the id (also from the tenant registry).
+- `public void hideAll()` - Hides all the context's bars from all viewers and stops their timers; the bars stay registered and can be re-shown. The context teardown calls it before releasing the owner's registrations.
 
 #### BossBarUtil.Builder
 
-Builder de definicion de barra devuelto por `create(String)`. Defaults: texto `""`, progreso `1.0f`, color `BossBar.Color.WHITE`, overlay `BossBar.Overlay.PROGRESS`.
+Bar definition builder returned by `create(String)`. Defaults: text `""`, progress `1.0f`, color `BossBar.Color.WHITE`, overlay `BossBar.Overlay.PROGRESS`.
 
-- `public Builder text(String text)` - Titulo de la barra, renderizado por SnText (`[rgb]` incluido); null se normaliza a `""`.
-- `public Builder progress(float progress)` - Progreso inicial, clampeado a 0..1 (default 1).
-- `public Builder color(BossBar.Color color)` - Color de la barra (default WHITE); null conserva el default.
-- `public Builder overlay(BossBar.Overlay overlay)` - Overlay de la barra (default PROGRESS); null conserva el default.
-- `public BossBar build()` - Construye y registra la barra bajo su id, reemplazando (y ocultando/barriendo) cualquier barra previa con el mismo id. La barra arranca sin viewers; usar `show`.
+- `public Builder text(String text)` - The bar's title, rendered by SnText (`[rgb]` included); null normalizes to `""`.
+- `public Builder progress(float progress)` - Initial progress, clamped to 0..1 (default 1).
+- `public Builder color(BossBar.Color color)` - Bar color (default WHITE); null keeps the default.
+- `public Builder overlay(BossBar.Overlay overlay)` - Bar overlay (default PROGRESS); null keeps the default.
+- `public BossBar build()` - Builds and registers the bar under its id, replacing (and hiding/sweeping) any previous bar with the same id. The bar starts with no viewers; use `show`.
 
-Logica interna:
+Internal logic:
 
-- `TenantRegistry<BarEntry> BARS` estatico con sweep `BossBarUtil::sweep`: al deshabilitarse el plugin dueño, cada entry se barre (timer cancelado, todos los viewers removidos).
-- El timer corre con `ctx.scheduler().timer(1L, 2L, ...)` (delay 1 tick, periodo 2 ticks) y calcula la fraccion contra reloj de pared (`System.currentTimeMillis()`), no contra ticks; la duracion minima efectiva es 50 ms.
-- `dropViewer(UUID)`: si el jugador sigue resoluble por `Bukkit.getPlayer`, usa `player.hideBossBar`; si no, itera los `viewers()` de cada barra y hace `removeViewer` por UUID matching.
-- `viewersOf(BossBar)` toma un snapshot de los viewers como lista de `Audience` para poder remover mientras itera sin ConcurrentModification.
-- `cancelTimer(BarEntry)` traga `Throwable` del cancel: durante shutdown el scheduler puede ya no existir.
+- Static `TenantRegistry<BarEntry> BARS` with sweep `BossBarUtil::sweep`: when the owning plugin disables, each entry sweeps (timer cancelled, all viewers removed).
+- The timer runs with `ctx.scheduler().timer(1L, 2L, ...)` (delay 1 tick, period 2 ticks) and computes the fraction against wall clock (`System.currentTimeMillis()`), not against ticks; the effective minimum duration is 50 ms.
+- `dropViewer(UUID)`: if the player is still resolvable via `Bukkit.getPlayer`, it uses `player.hideBossBar`; otherwise it iterates each bar's `viewers()` and does `removeViewer` by UUID matching.
+- `viewersOf(BossBar)` takes a snapshot of the viewers as an `Audience` list so removal is possible while iterating without ConcurrentModification.
+- `cancelTimer(BarEntry)` swallows `Throwable` from the cancel: during shutdown the scheduler may no longer exist.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- `setProgress` sobre una barra con timer activo es efimero: el timer re-escribe el progreso en su proximo tick (documentado en el Javadoc del metodo).
-- Cero packets: todo pasa por la Audience API de Adventure/Paper.
-- El WARN de id desconocido se emite una sola vez por id (set `warnedIds`), para no spamear consola en loops.
+- `setProgress` on a bar with an active timer is ephemeral: the timer rewrites the progress on its next tick (documented in the method's Javadoc).
+- Zero packets: everything goes through the Adventure/Paper Audience API.
+- The unknown-id WARN emits once per id (the `warnedIds` set), so loops do not spam the console.
 
 ### HologramUtil
 
 `src/main/java/com/sn/lib/hologram/HologramUtil.java`
 
-Servicio de hologramas por contexto. Los hologramas son entidades `TextDisplay` reales (API 1.19.4+, cero NMS y cero packets). Cada entidad lleva la marca PDC `snlib:snlib_hologram` (clave `NamespacedKey("snlib", "snlib_hologram")`, tipo `PersistentDataType.STRING`) con valor `<NombreDelPlugin>:<id>`. Una entidad marcada cuyo marker no reclama ninguna registracion viva es huerfana (run anterior, crash, o un delete que no pudo alcanzar un chunk descargado) y la purga interna la elimina; las entidades de markers vivos re-bindean su instancia fresca despues de un reload de chunk. Las lineas se renderizan por SnText con PAPI resuelto serverside (viewer null). Id desconocido WARN una vez (`"Holograma desconocido '<id>': la operacion se ignora (falta spawn(\"<id>\", ...))"`).
+Per-context hologram service. Holograms are real `TextDisplay` entities (1.19.4+ API, zero NMS and zero packets). Each entity carries the PDC mark `snlib:snlib_hologram` (key `NamespacedKey("snlib", "snlib_hologram")`, type `PersistentDataType.STRING`) with the value `<PluginName>:<id>`. A marked entity whose marker no live registration claims is an orphan (a previous run, a crash, or a delete that could not reach an unloaded chunk) and the internal purge removes it; entities of live markers re-bind their fresh instance after a chunk reload. Lines render through SnText with PAPI resolved serverside (null viewer). An unknown id WARNs once (`"Unknown hologram '<id>': the operation is ignored (missing spawn(\"<id>\", ...))"`).
 
-Metodos publicos:
+Public methods:
 
 - `public HologramUtil(Sn ctx)` - Constructor.
-- `public void spawn(String id, Location location, List<String> lines)` - Spawnea el holograma `id` en la location, reemplazando (delete previo) un holograma anterior con el mismo id. La entidad se crea con `setPersistent(true)`, billboard CENTER por default, marca PDC y texto ya renderizado. Location con world null logea WARN (`"Holograma '<id>': location invalida, spawn ignorado"`) y no hace nada. El modelo esperado es re-spawnear en cada enable: la entidad del run anterior se purga como huerfana cuando su chunk carga.
-- `public void setLines(String id, List<String> lines)` - Reemplaza las lineas y re-renderiza de inmediato.
-- `public void setBillboard(String id, Display.Billboard billboard)` - Modo billboard de la entidad (default `CENTER`, el comportamiento clasico de holograma); null no-op.
-- `public void refreshEvery(String id, long intervalTicks)` - Re-renderiza el holograma cada `intervalTicks` (tokens PAPI incluidos); un intervalo de 0 o menos cancela el refresh. Un task handle por holograma; un intervalo nuevo reemplaza el task previo.
-- `public void showTo(Player viewer, String id)` - Vuelve a hacer visible el holograma para ese viewer (`viewer.showEntity(plugin, display)`); los hologramas son visibles por defecto.
-- `public void hideFrom(Player viewer, String id)` - Oculta el holograma solo para ese viewer (`viewer.hideEntity`). La visibilidad per-viewer NO es persistente: se resetea cuando la entidad re-bindea tras un chunk reload o un re-spawn.
-- `public void delete(String id)` - Elimina el holograma: cancela su refresh task y remueve la entidad. Si la entidad esta en un chunk descargado no se puede tocar aca; como su marker deja de estar vivo, la purga de huerfanas remueve la copia persistida en la proxima carga del chunk.
-- `public void deleteAll()` - Elimina todos los hologramas del contexto; el teardown del contexto la llama.
-- `public static boolean adopt(TextDisplay display)` - Contrato de adopcion al cargar chunks, usado por la purga de huerfanas (listener interno y scan de arranque). Un display SIN el marker de la lib es ajeno y se deja en paz (retorna true). Un display marcado cuyo marker reclama una registracion viva re-bindea como instancia fresca de ese holograma (mismo UUID tras chunk reload, o un entry nunca bindeado) y recibe de nuevo su texto actual (`lastText`) y billboard; retorna true. Retorna **false** cuando el display lleva marker de la lib que ningun holograma vivo reclama, o que ya esta bindeado a OTRA entidad (duplicado stale): el caller debe remover esas huerfanas.
+- `public void spawn(String id, Location location, List<String> lines)` - Spawns hologram `id` at the location, replacing (previous delete) an earlier hologram with the same id. The entity is created with `setPersistent(true)`, CENTER billboard by default, the PDC mark and the already-rendered text. A location with a null world logs a WARN (`"Hologram '<id>': invalid location, spawn ignored"`) and does nothing. The expected model is re-spawning on every enable: the previous run's entity purges as an orphan when its chunk loads.
+- `public void setLines(String id, List<String> lines)` - Replaces the lines and re-renders immediately.
+- `public void setBillboard(String id, Display.Billboard billboard)` - The entity's billboard mode (default `CENTER`, the classic hologram behavior); null is a no-op.
+- `public void refreshEvery(String id, long intervalTicks)` - Re-renders the hologram every `intervalTicks` (PAPI tokens included); an interval of 0 or less cancels the refresh. One task handle per hologram; a new interval replaces the previous task.
+- `public void showTo(Player viewer, String id)` - Makes the hologram visible again for that viewer (`viewer.showEntity(plugin, display)`); holograms are visible by default.
+- `public void hideFrom(Player viewer, String id)` - Hides the hologram from that viewer only (`viewer.hideEntity`). Per-viewer visibility is NOT persistent: it resets when the entity re-binds after a chunk reload or a re-spawn.
+- `public void delete(String id)` - Deletes the hologram: cancels its refresh task and removes the entity. If the entity is in an unloaded chunk it cannot be touched here; since its marker stops being live, the orphan purge removes the persisted copy at the chunk's next load.
+- `public void deleteAll()` - Deletes all the context's holograms; the context teardown calls it.
+- `public static boolean adopt(TextDisplay display)` - The adoption contract at chunk load, used by the orphan purge (internal listener and startup scan). A display WITHOUT the lib's marker is foreign and left alone (returns true). A marked display whose marker claims a live registration re-binds as that hologram's fresh instance (same UUID after a chunk reload, or a never-bound entry) and gets its current text (`lastText`) and billboard reapplied; returns true. Returns **false** when the display carries a lib marker that no live hologram claims, or that is already bound to ANOTHER entity (a stale duplicate): the caller must remove those orphans.
 
-Logica interna:
+Internal logic:
 
-- `TenantRegistry<HologramEntry> HOLOGRAMS` estatico con sweep `HologramUtil::sweep`: cancela el refresh task y remueve la entidad si es alcanzable (traga `Throwable` si la entidad ya es invalida o su chunk esta descargado; la purga de huerfanas cubre ese caso).
-- Render: cada linea pasa por `SnText.color(SnText.normalizePapiOutput(ctx.papi().apply(null, line)))` y las lineas se unen con `Component.join(JoinConfiguration.newlines(), ...)` en un unico `TextDisplay` multilinea. PAPI se resuelve con viewer null (serverside).
-- `findByMarker(String)` recorre el tenant registry completo (`HOLOGRAMS.forEachOwner`) buscando el entry cuyo `marker` coincida; corta al primer match.
-- `HologramEntry` guarda `marker` final y campos volatile: `rawLines`, `billboard`, `entity`, `lastText` (Component ya renderizado, re-aplicado al adoptar) y `refreshTask`.
-- `copyOf(lines)` normaliza null a `List.of()` y hace copia inmutable (`List.copyOf`).
+- Static `TenantRegistry<HologramEntry> HOLOGRAMS` with sweep `HologramUtil::sweep`: it cancels the refresh task and removes the entity if reachable (swallows `Throwable` if the entity is already invalid or its chunk unloaded; the orphan purge covers that case).
+- Render: each line goes through `SnText.color(SnText.normalizePapiOutput(ctx.papi().apply(null, line)))` and lines join with `Component.join(JoinConfiguration.newlines(), ...)` into a single multiline `TextDisplay`. PAPI resolves with a null viewer (serverside).
+- `findByMarker(String)` walks the whole tenant registry (`HOLOGRAMS.forEachOwner`) looking for the entry whose `marker` matches; it stops at the first match.
+- `HologramEntry` keeps `marker` final and volatile fields: `rawLines`, `billboard`, `entity`, `lastText` (the already-rendered Component, reapplied on adoption) and `refreshTask`.
+- `copyOf(lines)` normalizes null to `List.of()` and makes an immutable copy (`List.copyOf`).
 
-Notas y gotchas:
+Notes and gotchas:
 
-- El PDC marker hace que el sistema sobreviva crashes: no hay archivo de estado, la fuente de verdad es la propia entidad persistida mas el set de registraciones vivas en memoria.
-- `adopt` es estatico y cruza contextos: resuelve contra el registry global, no contra un `HologramUtil` particular.
-- El caso "bindeado a otra entidad" (retorno false) cubre duplicados stale: si ya hay una entidad viva trackeada con otro UUID para ese marker, la recien cargada es una copia vieja y se purga.
+- The PDC marker makes the system survive crashes: there is no state file, the source of truth is the persisted entity itself plus the set of live in-memory registrations.
+- `adopt` is static and crosses contexts: it resolves against the global registry, not a particular `HologramUtil`.
+- The "bound to another entity" case (false return) covers stale duplicates: if a live tracked entity with another UUID already exists for that marker, the freshly loaded one is an old copy and gets purged.
 
 ### HologramChunkListener
 
 `src/main/java/com/sn/lib/hologram/internal/HologramChunkListener.java`
 
-Purga compartida de entidades de holograma huerfanas, propiedad de SnLib. Inscripta en el ListenerHub; el `registerEvents` ocurre UNICAMENTE en el bootstrap de SnLibPlugin (una sola instancia server-wide, no una por consumidor).
+Shared purge of orphan hologram entities, owned by SnLib. Enrolled in the ListenerHub; the `registerEvents` happens SOLELY in the SnLibPlugin bootstrap (a single server-wide instance, not one per consumer).
 
-- `@EventHandler public void onEntitiesLoad(EntitiesLoadEvent event)` - Escucha `EntitiesLoadEvent`, la señal de carga de chunk que realmente trae las entidades del chunk (ChunkLoadEvent dispara ANTES de que se adjunten); delega en `purge(event.getEntities())`.
-- `public static int purge(Collection<Entity> entities)` - Purga huerfanas de holograma entre las entidades dadas: todo `TextDisplay` para el que `HologramUtil.adopt` devuelve false se remueve (`display.remove()`). Retorna cuantas removio. Las reclamadas re-bindean su instancia fresca via `adopt`.
-- `public static int purgeLoadedWorlds()` - Corre la misma pasada sobre todos los `TextDisplay` de todos los mundos cargados; retorna cuantas removio. El bootstrap la ejecuta DIFERIDA al primer tick despues de habilitarse, para que los mundos esten cargados y todo consumidor haya tenido su chance de registrar sus hologramas (si corriera antes, purgaria hologramas legitimos aun no re-spawneados).
+- `@EventHandler public void onEntitiesLoad(EntitiesLoadEvent event)` - Listens to `EntitiesLoadEvent`, the chunk load signal that actually carries the chunk's entities (ChunkLoadEvent fires BEFORE they attach); delegates to `purge(event.getEntities())`.
+- `public static int purge(Collection<Entity> entities)` - Purges hologram orphans among the given entities: every `TextDisplay` for which `HologramUtil.adopt` returns false is removed (`display.remove()`). Returns how many it removed. Claimed ones re-bind their fresh instance via `adopt`.
+- `public static int purgeLoadedWorlds()` - Runs the same pass over every `TextDisplay` of every loaded world; returns how many it removed. The bootstrap runs it DEFERRED to the first tick after enabling, so worlds are loaded and every consumer has had its chance to register its holograms (running earlier would purge legitimate holograms not yet re-spawned).
 
 ### LeaderboardCache
 
 `src/main/java/com/sn/lib/leaderboard/LeaderboardCache.java`
 
-Cache de leaderboards por contexto. Cada board empareja un id con una query asincronica disparada a intervalo fijo: el supplier corre en el MAIN thread y debe solo DESPACHAR el trabajo async (una query de `SnDb` ya lo hace), y el resultado fresco se pliega en un `Snapshot` inmutable swapeado detras de una referencia volatile. Las lecturas (`getTop`, `positionOf`, `valueOf`) son lookups de cache lock-free, seguras para resolvers de PlaceholderAPI bajo su contrato cache-only. Constante interna relevante: `MIN_REFRESH_TICKS = 20L` (piso de refresh de un segundo: una query de leaderboard nunca es un loop per-tick).
+Per-context leaderboard cache. Each board pairs an id with an asynchronous query fired at a fixed interval: the supplier runs on the MAIN thread and must only DISPATCH the async work (an `SnDb` query already does), and the fresh result folds into an immutable `Snapshot` swapped behind a volatile reference. Reads (`getTop`, `positionOf`, `valueOf`) are lock-free cache lookups, safe for PlaceholderAPI resolvers under their cache-only contract. Relevant internal constant: `MIN_REFRESH_TICKS = 20L` (a one-second refresh floor: a leaderboard query is never a per-tick loop).
 
-Metodos publicos:
+Public methods:
 
 - `public LeaderboardCache(Sn ctx)` - Constructor.
-- `public void register(String id, Duration refreshInterval, Supplier<SnFuture<List<Entry>>> query)` - Registra el board y arma su refresh periodico (primera corrida al proximo tick, `timer(1L, periodTicks, ...)`), reemplazando (y barriendo) cualquier board previo bajo el mismo id. El intervalo se convierte a ticks redondeando hacia arriba (`(millis + 49) / 50`) y se clampea a un minimo de 20 ticks (1 segundo); `refreshInterval` null cuenta como 0 y cae al minimo. Hasta que la primera query completa, toda lectura ve un snapshot vacio. Si el owner se deshabilito mientras se armaba el timer (`IllegalPluginAccessException`), el board queda vacio sin explotar.
-- `public void unregister(String id)` - Cancela el refresh periodico y olvida el id; ids desconocidos no-op.
-- `public List<Entry> getTop(String id, int n)` - Top `n` entradas del snapshot actual, mejor primero; id desconocido -> lista vacia.
-- `public int positionOf(String id, UUID uuid)` - Posicion 1-based del jugador; 0 cuando no esta rankeado o el id es desconocido.
-- `public double valueOf(String id, UUID uuid)` - Valor cacheado del jugador; 0 cuando no esta rankeado o el id es desconocido.
-- `public boolean exposePlaceholders(String identifier)` - Registra una expansion de PlaceholderAPI que expone todos los boards de este cache: `%<identifier>_top_<id>_<n>_name%`, `%<identifier>_top_<id>_<n>_value%` y `%<identifier>_pos_<id>%`. Los resolvers solo leen los snapshots en memoria. Retorna false con WARN cuando PlaceholderAPI esta ausente o rechaza la expansion (via `ctx.papi().expansion(identifier)`).
+- `public void register(String id, Duration refreshInterval, Supplier<SnFuture<List<Entry>>> query)` - Registers the board and arms its periodic refresh (first run next tick, `timer(1L, periodTicks, ...)`), replacing (and sweeping) any previous board under the same id. The interval converts to ticks rounding up (`(millis + 49) / 50`) and clamps to a minimum of 20 ticks (1 second); a null `refreshInterval` counts as 0 and falls to the minimum. Until the first query completes, every read sees an empty snapshot. If the owner disabled while the timer was being armed (`IllegalPluginAccessException`), the board stays empty without blowing up.
+- `public void unregister(String id)` - Cancels the periodic refresh and forgets the id; unknown ids are a no-op.
+- `public List<Entry> getTop(String id, int n)` - Top `n` entries of the current snapshot, best first; unknown id -> empty list.
+- `public int positionOf(String id, UUID uuid)` - The player's 1-based position; 0 when unranked or the id is unknown.
+- `public double valueOf(String id, UUID uuid)` - The player's cached value; 0 when unranked or the id is unknown.
+- `public boolean exposePlaceholders(String identifier)` - Registers a PlaceholderAPI expansion exposing all of this cache's boards: `%<identifier>_top_<id>_<n>_name%`, `%<identifier>_top_<id>_<n>_value%` and `%<identifier>_pos_<id>%`. The resolvers only read the in-memory snapshots. Returns false with a WARN when PlaceholderAPI is absent or rejects the expansion (via `ctx.papi().expansion(identifier)`).
 
 #### LeaderboardCache.Entry
 
-- `public record Entry(UUID uuid, String name, double value)` - Una fila rankeada: uuid del jugador, nombre para mostrar y valor rankeado. El constructor compacto normaliza `name` null a `""`.
+- `public record Entry(UUID uuid, String name, double value)` - One ranked row: the player's uuid, display name and ranked value. The compact constructor normalizes a null `name` to `""`.
 
 #### LeaderboardCache.Snapshot
 
-Snapshot de ranking inmutable; logica pura, sin Bukkit. Las instancias nunca mutan: el cache swapea snapshots enteros detras de una referencia volatile, asi los lectores son lock-free.
+Immutable ranking snapshot; pure logic, no Bukkit. Instances never mutate: the cache swaps whole snapshots behind a volatile reference, so readers are lock-free.
 
-- `public static Snapshot empty()` - Snapshot sin entradas (singleton `EMPTY`).
-- `public static Snapshot of(List<Entry> entries)` - Construye el snapshot desde entradas desordenadas: las filas null se saltean, el resto ordena por valor DESCENDENTE con nombre ASCENDENTE como desempate (el sort es estable), y un uuid que aparece dos veces conserva su MEJOR (primera) posicion (`putIfAbsent` sobre el mapa de posiciones). Lista o resultado vacio -> `EMPTY`.
-- `public List<Entry> top(int n)` - Primeras `n` entradas, mejor primero; el ranking completo cuando `n` lo excede; `n <= 0` -> lista vacia.
-- `public int positionOf(@Nullable UUID uuid)` - Posicion 1-based del uuid; 0 cuando no esta rankeado (o uuid null).
-- `public double valueOf(@Nullable UUID uuid)` - Valor rankeado del uuid; 0 cuando no esta rankeado.
-- `public int size()` - Cantidad de entradas rankeadas.
+- `public static Snapshot empty()` - A snapshot with no entries (the `EMPTY` singleton).
+- `public static Snapshot of(List<Entry> entries)` - Builds the snapshot from unordered entries: null rows are skipped, the rest sorts by value DESCENDING with name ASCENDING as tiebreak (the sort is stable), and a uuid appearing twice keeps its BEST (first) position (`putIfAbsent` over the position map). An empty list or result -> `EMPTY`.
+- `public List<Entry> top(int n)` - The first `n` entries, best first; the full ranking when `n` exceeds it; `n <= 0` -> empty list.
+- `public int positionOf(@Nullable UUID uuid)` - The uuid's 1-based position; 0 when unranked (or a null uuid).
+- `public double valueOf(@Nullable UUID uuid)` - The uuid's ranked value; 0 when unranked.
+- `public int size()` - Ranked entry count.
 
-Logica interna:
+Internal logic:
 
-- `refresh(Board)`: corta si el board fue cancelado o `ctx.isShuttingDown()`. Si el supplier lanza, WARN `"Query del leaderboard '<id>' lanzo un error: <t>"` y se omite el ciclo; si devuelve null, WARN `"Query del leaderboard '<id>' devolvio null; refresh omitido"`. El resultado se pliega con `future.thenSync(...)` (vuelta al main thread) y solo se swapea el snapshot si el board sigue vivo y las entries no son null.
-- `resolveTop(String rest)` parsea `<id>_<n>_(name|value)` desde el FINAL (dos `lastIndexOf('_')`), asi el id del board puede contener guiones bajos. Token invalido (rank no numerico, id desconocido, rank < 1, sufijo distinto de name/value) -> null (PAPI deja el token sin resolver). Rank valido pero mas alla del tamaño del snapshot -> `""` (string vacio).
-- `formatValue(double)`: valores integrales renderizan sin el `.0` final.
-- `sweep(Board)`: marca `cancelled = true` y cancela el task handle (tragando `Throwable` en shutdown). `TenantRegistry<Board> BOARDS` estatico garantiza el barrido al disable del owner aunque nunca haya llamado `unregister`.
+- `refresh(Board)`: bails if the board was cancelled or `ctx.isShuttingDown()`. If the supplier throws, WARN `"Leaderboard query '<id>' threw an error: <t>"` and the cycle is skipped; if it returns null, WARN `"Leaderboard query '<id>' returned null; refresh skipped"`. The result folds with `future.thenSync(...)` (back on the main thread) and the snapshot only swaps if the board is still alive and the entries are non-null.
+- `resolveTop(String rest)` parses `<id>_<n>_(name|value)` from the END (two `lastIndexOf('_')`), so the board id may contain underscores. An invalid token (non-numeric rank, unknown id, rank < 1, a suffix other than name/value) -> null (PAPI leaves the token unresolved). A valid rank beyond the snapshot size -> `""` (empty string).
+- `formatValue(double)`: integral values render without the trailing `.0`.
+- `sweep(Board)`: marks `cancelled = true` and cancels the task handle (swallowing `Throwable` at shutdown). The static `TenantRegistry<Board> BOARDS` guarantees the sweep on the owner's disable even if it never called `unregister`.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- Contrato de threading clave: el supplier corre en el main thread; NUNCA debe bloquear, solo despachar (el Javadoc lo marca en mayusculas conceptuales: "must only DISPATCH the async work").
-- El desempate por nombre es deterministico: dos jugadores con el mismo valor rankean por orden alfabetico de nombre, y como el sort es estable el orden es reproducible entre refreshes.
-- `top(n)` devuelve un `subList` de la lista inmutable interna (no una copia): barato, y seguro porque el snapshot jamas muta.
+- Key threading contract: the supplier runs on the main thread; it must NEVER block, only dispatch (the Javadoc emphasizes it: "must only DISPATCH the async work").
+- The name tiebreak is deterministic: two players with the same value rank alphabetically by name, and since the sort is stable the order is reproducible across refreshes.
+- `top(n)` returns a `subList` of the internal immutable list (not a copy): cheap, and safe because the snapshot never mutates.
 
 ### DiscordWebhook
 
 `src/main/java/com/sn/lib/discord/DiscordWebhook.java`
 
-Despachador de webhooks de Discord por contexto. Cero dependencias externas: los payloads se POSTean con el `HttpClient` del JDK (lazy, double-checked locking, connect timeout 5 s). El delivery es fire-and-forget sobre una cola FIFO (`ConcurrentLinkedDeque<Pending>`) procesada FUERA del main thread (encolar desde cualquier thread es no bloqueante): un HTTP 429 re-encola el mensaje AL FRENTE y espera el `Retry-After` que pidio el endpoint, cualquier otra falla descarta el mensaje con UN solo WARN por endpoint, y el token del webhook se recorta de toda linea de log. Constantes internas: `CONNECT_TIMEOUT` 5 s, `SEND_TIMEOUT` 10 s, `DRAIN_DEADLINE_MILLIS` 3000, `MAX_EMBEDS` 10.
+Per-context Discord webhook dispatcher. Zero external dependencies: payloads POST with the JDK's `HttpClient` (lazy, double-checked locking, 5 s connect timeout). Delivery is fire-and-forget over a FIFO queue (`ConcurrentLinkedDeque<Pending>`) processed OFF the main thread (enqueueing from any thread is non-blocking): an HTTP 429 re-queues the message AT THE FRONT and waits the `Retry-After` the endpoint requested, any other failure discards the message with ONE single WARN per endpoint, and the webhook token is trimmed from every log line. Internal constants: `CONNECT_TIMEOUT` 5 s, `SEND_TIMEOUT` 10 s, `DRAIN_DEADLINE_MILLIS` 3000, `MAX_EMBEDS` 10.
 
-Metodos publicos:
+Public methods:
 
 - `public DiscordWebhook(Sn ctx)` - Constructor.
-- `public Message message(String webhookUrl)` - Empieza un mensaje para la URL del webhook; nada se encola hasta `Message.send()`.
-- `public void send(String webhookUrl, String content)` - Encola un mensaje de contenido plano; atajo de `message(url).content(text).send()`.
-- `public Embed embed()` - Empieza un embed standalone para adjuntar via `Message.embed(Embed)`.
-- `public void drain()` - Flush sincronico best-effort de la cola en el thread que llama, invocado por el teardown del contexto despues de cancelar el scheduler. Corre bajo un deadline de 3000 ms: cada envio usa como timeout el tiempo restante; un 429 cuyo Retry-After entra antes del deadline se espera UNA vez (`Thread.sleep` + re-encolar al frente), todo lo no entregable a tiempo se descarta, y al final un WARN cuenta las perdidas (`"Drain de webhooks corto el flush: N mensaje(s) descartado(s) por el deadline de 3000ms"`). Tambien libera el `HttpClient` (`shutdown()`).
+- `public Message message(String webhookUrl)` - Starts a message for the webhook URL; nothing queues until `Message.send()`.
+- `public void send(String webhookUrl, String content)` - Queues a plain content message; shortcut for `message(url).content(text).send()`.
+- `public Embed embed()` - Starts a standalone embed to attach via `Message.embed(Embed)`.
+- `public void drain()` - Best-effort synchronous flush of the queue on the calling thread, invoked by the context teardown after cancelling the scheduler. It runs under a 3000 ms deadline: each send uses the remaining time as its timeout; a 429 whose Retry-After fits before the deadline is waited ONCE (`Thread.sleep` + re-queue at the front), everything undeliverable in time is discarded, and at the end a WARN counts the losses (`"Webhook drain cut the flush short: N message(s) discarded by the 3000ms deadline"`). It also releases the `HttpClient` (`shutdown()`).
 
-#### DiscordWebhook.Message (inner class, no estatica)
+#### DiscordWebhook.Message (inner class, non-static)
 
-Builder de un payload de webhook; `send()` lo encola FIFO y retorna de inmediato.
+Builder of a webhook payload; `send()` queues it FIFO and returns immediately.
 
-- `public Message content(String content)` - Texto plano del mensaje.
-- `public Message username(String username)` - Sobreescribe el nombre visible del webhook para este mensaje.
-- `public Message avatarUrl(String avatarUrl)` - Sobreescribe el avatar del webhook para este mensaje.
-- `public Message embed(Embed embed)` - Adjunta un embed; Discord acepta hasta 10 por mensaje, los extras se ignoran en silencio.
-- `public void send()` - Encola el mensaje para delivery asincronico; payloads vacios (sin content y sin embeds) se descartan sin encolar.
+- `public Message content(String content)` - The message's plain text.
+- `public Message username(String username)` - Overrides the webhook's display name for this message.
+- `public Message avatarUrl(String avatarUrl)` - Overrides the webhook's avatar for this message.
+- `public Message embed(Embed embed)` - Attaches an embed; Discord accepts up to 10 per message, extras are silently ignored.
+- `public void send()` - Queues the message for asynchronous delivery; empty payloads (no content and no embeds) are discarded without queuing.
 
 #### DiscordWebhook.Embed (static nested)
 
-Builder de un embed de Discord; se adjunta via `Message.embed(Embed)`. Constructor privado: se obtiene con `DiscordWebhook.embed()`.
+Builder of a Discord embed; attached via `Message.embed(Embed)`. Private constructor: obtained with `DiscordWebhook.embed()`.
 
-- `public Embed title(String title)` - Titulo del embed.
-- `public Embed description(String description)` - Descripcion del embed.
-- `public Embed color(int rgb)` - Color de acento como `0xRRGGBB` (se enmascara con `& 0xFFFFFF`).
-- `public Embed field(String name, String value, boolean inline)` - Agrega un field nombre/valor, opcionalmente inline; nulls se normalizan a `""`.
-- `public Embed footer(String footer)` - Texto del footer.
-- `public Embed timestampNow()` - Estampa el embed con el instante actual (`Instant.now().toString()`).
+- `public Embed title(String title)` - Embed title.
+- `public Embed description(String description)` - Embed description.
+- `public Embed color(int rgb)` - Accent color as `0xRRGGBB` (masked with `& 0xFFFFFF`).
+- `public Embed field(String name, String value, boolean inline)` - Adds a name/value field, optionally inline; nulls normalize to `""`.
+- `public Embed footer(String footer)` - Footer text.
+- `public Embed timestampNow()` - Stamps the embed with the current instant (`Instant.now().toString()`).
 
-Logica interna:
+Internal logic:
 
-- Cola y worker: `enqueue` hace `addLast` + `pump()`. `pump()` no arma nada si `ctx.isShuttingDown()` o si ya hay un worker corriendo (`working.compareAndSet(false, true)`); si el owner ya esta deshabilitado (`IllegalPluginAccessException` del scheduler), baja la bandera y no arma. El worker (`work()`) corre en `ctx.scheduler().async(...)`: loop FIFO con `pollFirst`; cuando la cola queda vacia baja la bandera y RE-CHEQUEA la cola (un mensaje encolado entre el poll y el flip de la bandera no debe quedar frenado: si hay algo, re-pump).
-- Rate limit: `deliver` retorna 0 cuando el payload fue consumido (entregado, o descartado con su WARN) o los millis que el endpoint pidio esperar (HTTP 429). Ante 429 el worker re-encola AL FRENTE (`addFirst`, preserva el orden FIFO) y se re-arma con `ctx.scheduler().asyncLater((retryAfterMillis + 49) / 50, this::work)`.
-- `retryAfterMillis(response)`: parsea el header `Retry-After` como segundos double (decimales permitidos), con piso de 1000 ms; header ausente o no numerico -> 1000 ms.
-- Fallas: URL invalida (`IllegalArgumentException` al construir el request), HTTP no-2xx distinto de 429 (`"el endpoint respondio HTTP <status>"`) e `IOException` (`"fallo de red: <e>"`) descartan el mensaje con `warnOnce`; `InterruptedException` re-interrumpe el thread y descarta en silencio.
-- `warnOnce(url, reason)`: un WARN por endpoint sanitizado (`"Webhook de Discord <endpoint> fallo (<reason>); errores posteriores de este endpoint se omiten del log"`); fallas posteriores del mismo endpoint quedan silenciadas.
-- `sanitize(url)`: recorta el ultimo segmento del path (el token secreto del webhook) y lo reemplaza por `/***`, asi los secretos nunca llegan a consola.
-- JSON a mano: `Message.toJson()` y `Embed.appendJson` construyen el JSON con `StringBuilder`; `escape` maneja comillas, backslashes, `\n` `\r` `\t` y todo control char `< 0x20` como `\uXXXX`. Campos null se omiten del payload.
-- `Pending(String url, String json)` es un record privado: el JSON se serializa al momento de `send()`, no al momento del POST.
+- Queue and worker: `enqueue` does `addLast` + `pump()`. `pump()` arms nothing if `ctx.isShuttingDown()` or a worker is already running (`working.compareAndSet(false, true)`); if the owner is already disabled (`IllegalPluginAccessException` from the scheduler), it lowers the flag and does not arm. The worker (`work()`) runs on `ctx.scheduler().async(...)`: a FIFO loop with `pollFirst`; when the queue empties it lowers the flag and RE-CHECKS the queue (a message queued between the poll and the flag flip must not stay stuck: if something is there, re-pump).
+- Rate limit: `deliver` returns 0 when the payload was consumed (delivered, or discarded with its WARN) or the millis the endpoint asked to wait (HTTP 429). On a 429 the worker re-queues AT THE FRONT (`addFirst`, preserving FIFO order) and re-arms with `ctx.scheduler().asyncLater((retryAfterMillis + 49) / 50, this::work)`.
+- `retryAfterMillis(response)`: parses the `Retry-After` header as a double of seconds (decimals allowed), floored at 1000 ms; a missing or non-numeric header -> 1000 ms.
+- Failures: an invalid URL (`IllegalArgumentException` building the request), a non-2xx HTTP other than 429 (`"the endpoint answered HTTP <status>"`) and `IOException` (`"network failure: <e>"`) discard the message with `warnOnce`; `InterruptedException` re-interrupts the thread and discards silently.
+- `warnOnce(url, reason)`: one WARN per sanitized endpoint (`"Discord webhook <endpoint> failed (<reason>); later errors from this endpoint are omitted from the log"`); later failures of the same endpoint stay silent.
+- `sanitize(url)`: trims the last path segment (the webhook's secret token) and replaces it with `/***`, so secrets never reach the console.
+- Handwritten JSON: `Message.toJson()` and `Embed.appendJson` build the JSON with `StringBuilder`; `escape` handles quotes, backslashes, `\n` `\r` `\t` and every control char `< 0x20` as `\uXXXX`. Null fields are omitted from the payload.
+- `Pending(String url, String json)` is a private record: the JSON serializes at `send()` time, not at POST time.
 
-Notas y gotchas:
+Notes and gotchas:
 
-- `drain()` corre en el thread del teardown (el scheduler ya esta cancelado, el worker async ya no puede correr: `pump` y `work` cortan por `ctx.isShuttingDown()`), por eso el flush es sincronico y con deadline corto; los webhooks encolados "nunca se pierden en silencio" (el WARN de drop cuenta las perdidas).
-- No hay confirmacion de entrega hacia el caller: `send()` retorna void de inmediato (fire-and-forget por diseño).
-- El limite de 10 embeds se aplica silenciosamente en `Message.embed` (los extras ni se agregan a la lista).
+- `drain()` runs on the teardown thread (the scheduler is already cancelled, the async worker can no longer run: `pump` and `work` bail on `ctx.isShuttingDown()`), which is why the flush is synchronous and short-deadlined; queued webhooks are "never lost silently" (the drop WARN counts the losses).
+- There is no delivery confirmation to the caller: `send()` returns void immediately (fire-and-forget by design).
+- The 10-embed limit applies silently in `Message.embed` (extras are not even added to the list).
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-No hay marcadores TODO/FIXME/HACK en el codigo de este modulo. Limitaciones documentadas en Javadoc/codigo:
+There are no TODO/FIXME/HACK markers in this module's code. Limitations documented in Javadoc/code:
 
-- BossBarUtil: `setProgress` sobre una barra con timer activo es pisado por el timer al proximo tick; el timer anima contra reloj de pared con resolucion de 2 ticks.
-- HologramUtil: la visibilidad per-viewer (`hideFrom`) no es persistente, se resetea cuando la entidad re-bindea tras un chunk reload o re-spawn; `delete` sobre una entidad en un chunk descargado no puede tocarla y difiere la remocion a la purga de huerfanas en la proxima carga del chunk.
-- LeaderboardCache: piso de refresh de 1 segundo (`MIN_REFRESH_TICKS = 20`); hasta la primera query completada todas las lecturas ven un snapshot vacio; el supplier corre en el main thread y debe solo despachar (no bloquear).
-- DiscordWebhook: el drain de shutdown puede descartar mensajes si no entran en el deadline de 3000 ms (con WARN contando las perdidas); un solo WARN por endpoint y despues silencio; maximo 10 embeds por mensaje (los extras se ignoran); sin confirmacion de entrega al caller (fire-and-forget).
-
+- BossBarUtil: `setProgress` on a bar with an active timer is overwritten by the timer on the next tick; the timer animates against wall clock with a 2-tick resolution.
+- HologramUtil: per-viewer visibility (`hideFrom`) is not persistent, it resets when the entity re-binds after a chunk reload or re-spawn; `delete` on an entity in an unloaded chunk cannot touch it and defers the removal to the orphan purge at the chunk's next load.
+- LeaderboardCache: a 1-second refresh floor (`MIN_REFRESH_TICKS = 20`); until the first completed query every read sees an empty snapshot; the supplier runs on the main thread and must only dispatch (not block).
+- DiscordWebhook: the shutdown drain may discard messages that do not fit in the 3000 ms deadline (with a WARN counting the losses); a single WARN per endpoint and then silence; at most 10 embeds per message (extras are ignored); no delivery confirmation to the caller (fire-and-forget).
 ---
 
-# (Seccion 16 de la documentacion de SnLib v1.1.0)
+# (Section 16 of the SnLib v1.1.0 documentation)
 
-## 16. Build, tests, specs golden y TODOs
+## 16. Build, tests, golden specs and TODOs
 
-Este modulo cierra la documentacion con la infraestructura que sostiene a la lib: el `pom.xml` (dependencias exactas, shading interno con relocations y exclusiones deliberadas, gate de API additive-only con japicmp ACTIVO contra la baseline 1.0.0 y manifest con metadata Sn), los cinco archivos de `docs/` que actuan como specs golden y plantillas para consumers (schema de menus, schema de items fisicos, spec de selection wand, pom template del consumer y reglas ProGuard del consumer), las 21 suites JUnit 5 de `src/test/java/com/sn/lib/` (204 tests, todos verdes, verificados con `mvn test` via surefire) y el inventario completo de pendientes: lo que arroja el grep de TODO/FIXME/placeholder sobre el codigo mas los pendientes conocidos del handoff (degradacion 1.20.4, repo/release, pilotos y canary; el de bStats quedo resuelto en v1.1 con el service id real 32541). Tambien se registra el resultado del smoke gate en Paper 1.21.8 build 60 y 1.20.4 build 499: verde en ambos tanto para la release 1.0.0 como para la 1.1.0 (gate re-ejecutado con el jar `SnLib-1.1.0.jar` en el Paso 22 del plan v1.1).
+This module closes the documentation with the infrastructure that sustains the lib: the `pom.xml` (exact dependencies, internal shading with relocations and deliberate exclusions, an additive-only API gate with japicmp ACTIVE against the 1.0.0 baseline, and a manifest with Sn metadata), the five `docs/` files that act as golden specs and templates for consumers (the menu schema, the physical item schema, the selection wand spec, the consumer pom template and the consumer ProGuard rules), the 21 JUnit 5 suites of `src/test/java/com/sn/lib/` (204 tests, all green, verified with `mvn test` via surefire) and the complete pending-work inventory: what the TODO/FIXME/placeholder grep over the code yields plus the known handoff pendings (1.20.4 degradation, repo/release, pilots and canary; the bStats one was resolved in v1.1 with the real service id 32541). It also records the smoke gate result on Paper 1.21.8 build 60 and 1.20.4 build 499: green on both for the 1.0.0 release as well as the 1.1.0 one (gate re-run with the `SnLib-1.1.0.jar` in Step 22 of the v1.1 plan).
 
-### pom.xml (build de SnLib)
+### pom.xml (SnLib build)
 `pom.xml`
-Coordenadas `com.sn:snlib:1.1.0`, packaging `jar`, nombre `SnLib`, descripcion "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compila con Java 21 (`maven.compiler.release=21`) y define la property `sn.api.level=2`, que el propio pom aclara como valor informativo del manifest: la constante real del handshake es `com.sn.lib.SnApi.LEVEL` (2 desde la release 1.1.0; historial en el Javadoc de SnApi).
+Coordinates `com.sn:snlib:1.1.0`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=2`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (2 since the 1.1.0 release; history in SnApi's Javadoc).
 
-Repositorios declarados:
+Declared repositories:
 
 - `papermc` (`https://repo.papermc.io/repository/maven-public/`)
 - `extendedclip` (`https://repo.extendedclip.com/content/repositories/placeholderapi/`)
 - `jitpack` (`https://jitpack.io`)
 
-`dependencyManagement`: importa `net.kyori:adventure-bom:4.25.0` (scope `import`, type `pom`). Razon documentada en el pom: el POM de paper-api fija adventure-api 4.18.0 mientras Paper shippea serializers 4.25.0; sin este pin el pipeline MiniMessage arriesga `NoSuchMethodError`/`NoClassDefFoundError` en runtime.
+`dependencyManagement`: imports `net.kyori:adventure-bom:4.25.0` (scope `import`, type `pom`). Reason documented in the pom: paper-api's POM pins adventure-api 4.18.0 while Paper ships 4.25.0 serializers; without this pin the MiniMessage pipeline risks `NoSuchMethodError`/`NoClassDefFoundError` at runtime.
 
-Dependencias exactas:
+Exact dependencies:
 
-- `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided) - baseline de compilacion 1.21.1 (disponibilidad de `setMaxStackSize`); piso de runtime 1.20.4, target 1.21.8 via `SnCompat.probe`.
-- `net.kyori:adventure-api` (provided, version del BOM 4.25.0).
-- `net.kyori:adventure-text-minimessage` (provided, version del BOM 4.25.0).
+- `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided) - 1.21.1 compile baseline (availability of `setMaxStackSize`); runtime floor 1.20.4, target 1.21.8 via `SnCompat.probe`.
+- `net.kyori:adventure-api` (provided, BOM version 4.25.0).
+- `net.kyori:adventure-text-minimessage` (provided, BOM version 4.25.0).
 - `me.clip:placeholderapi:2.11.6` (provided).
-- `com.github.MilkBowl:VaultAPI:1.7.1` (provided, excluye `org.bukkit:bukkit`).
-- `com.zaxxer:HikariCP:6.3.0` (compile) - se shadea relocada a `com.sn.lib.libs.hikari`.
-- `org.slf4j:slf4j-api:2.0.16` (provided) - Paper ya provee slf4j-api; declararla provided la deja FUERA del jar shadeado y evita el `NoSuchMethodError` de `SLF4JServiceProvider`.
-- `org.slf4j:slf4j-jdk14:2.0.16` (compile, excluye `org.slf4j:slf4j-api`) - binding shadeado SIN relocation para que la HikariCP relocada encuentre provider y no imprima "No SLF4J providers were found".
-- `org.xerial:sqlite-jdbc:3.46.1.3` (compile) - SHADEADA, JAMAS RELOCAR: el binding JNI `org.sqlite.core.NativeDB` se rompe bajo relocation.
-- `com.mysql:mysql-connector-j:8.4.0` (compile, excluye `com.google.protobuf:protobuf-java`) - SHADEADA, JAMAS RELOCAR: driver binario, una sola copia en el server.
-- `org.bstats:bstats-bukkit:3.1.0` (compile) - se shadea relocada a `com.sn.lib.libs.bstats`.
+- `com.github.MilkBowl:VaultAPI:1.7.1` (provided, excludes `org.bukkit:bukkit`).
+- `com.zaxxer:HikariCP:6.3.0` (compile) - shaded relocated to `com.sn.lib.libs.hikari`.
+- `org.slf4j:slf4j-api:2.0.16` (provided) - Paper already provides slf4j-api; declaring it provided keeps it OUT of the shaded jar and avoids the `SLF4JServiceProvider` `NoSuchMethodError`.
+- `org.slf4j:slf4j-jdk14:2.0.16` (compile, excludes `org.slf4j:slf4j-api`) - the binding shaded WITHOUT relocation so the relocated HikariCP finds a provider and does not print "No SLF4J providers were found".
+- `org.xerial:sqlite-jdbc:3.46.1.3` (compile) - SHADED, NEVER RELOCATE: the JNI binding `org.sqlite.core.NativeDB` breaks under relocation.
+- `com.mysql:mysql-connector-j:8.4.0` (compile, excludes `com.google.protobuf:protobuf-java`) - SHADED, NEVER RELOCATE: a binary driver, a single copy on the server.
+- `org.bstats:bstats-bukkit:3.1.0` (compile) - shaded relocated to `com.sn.lib.libs.bstats`.
 - `org.junit.jupiter:junit-jupiter:5.10.2` (test).
 
 Build:
 
-- `finalName`: `SnLib-${project.version}` (produce `SnLib-1.1.0.jar`).
-- Resources con `filtering=true` sobre `src/main/resources` (expansion de properties Maven en `plugin.yml`/`config.yml`).
-- `maven-compiler-plugin:3.13.0` y `maven-surefire-plugin:3.2.5` sin configuracion extra.
-- `maven-jar-plugin:3.4.1` - manifest con dos entradas propias: `Sn-Lib-Version: ${project.version}` y `Sn-Api-Level: ${sn.api.level}`.
-- `maven-shade-plugin:3.6.0` (fase `package`, goal `shade`):
-  - Relocation `com.zaxxer.hikari` -> `com.sn.lib.libs.hikari`, con excludes `org.sqlite.**` y `com.mysql.**` (JNI NativeDB / driver binario).
-  - Relocation `org.bstats` -> `com.sn.lib.libs.bstats`, con los mismos excludes.
-  - `ServicesResourceTransformer`: preserva/mergea `META-INF/services` (el `SLF4JServiceProvider` del binding jdk14 y los drivers JDBC de sqlite/mysql).
-  - Filtro global `*:*` que excluye `META-INF/*.SF`, `META-INF/*.DSA`, `META-INF/*.RSA`, `module-info.class` y `META-INF/versions/*/module-info.class` (firmas invalidas post-shade y descriptores de modulo ajenos).
-- `japicmp-maven-plugin:0.21.2` (fase `verify`, goal `cmp`) - gate de API publica additive-only, ACTIVO desde la release 1.1.0:
-  - `oldVersion` explicito: compara contra `com.sn:snlib:1.0.0` (jar), la baseline instalada en el `.m2` local por el release 1.0.0.
-  - `ignoreMissingOldVersion=false`: baseline ausente = build roto (ya no skip silencioso; hasta la 1.0.0 el gate era vacuo por no existir version previa).
-  - `ignoreMissingClasses=true`: el jar shadeado incluye mysql-connector-j sin relocar, cuyas clases X DevAPI referencian protobuf (excluido del shade adrede); japicmp no debe exigir ese classpath.
-  - Excludes del analisis: `com.sn.lib.**.internal.**`, `com.sn.lib.libs.**` (relocadas), y las shadeadas SIN relocar que no son API de SnLib: `com.mysql.**`, `org.sqlite.**`, `org.slf4j.**`, `google.protobuf.**`.
-  - `onlyModified=true`, `breakBuildOnBinaryIncompatibleModifications=true`, `breakBuildOnSourceIncompatibleModifications=false`: rompe el build solo ante incompatibilidad BINARIA (regla additive-only), tolera incompatibilidades de fuente.
+- `finalName`: `SnLib-${project.version}` (produces `SnLib-1.1.0.jar`).
+- Resources with `filtering=true` over `src/main/resources` (Maven property expansion in `plugin.yml`/`config.yml`).
+- `maven-compiler-plugin:3.13.0` and `maven-surefire-plugin:3.2.5` without extra configuration.
+- `maven-jar-plugin:3.4.1` - a manifest with two custom entries: `Sn-Lib-Version: ${project.version}` and `Sn-Api-Level: ${sn.api.level}`.
+- `maven-shade-plugin:3.6.0` (phase `package`, goal `shade`):
+  - Relocation `com.zaxxer.hikari` -> `com.sn.lib.libs.hikari`, with excludes `org.sqlite.**` and `com.mysql.**` (JNI NativeDB / binary driver).
+  - Relocation `org.bstats` -> `com.sn.lib.libs.bstats`, with the same excludes.
+  - `ServicesResourceTransformer`: preserves/merges `META-INF/services` (the jdk14 binding's `SLF4JServiceProvider` and the sqlite/mysql JDBC drivers).
+  - Global `*:*` filter excluding `META-INF/*.SF`, `META-INF/*.DSA`, `META-INF/*.RSA`, `module-info.class` and `META-INF/versions/*/module-info.class` (post-shade invalid signatures and foreign module descriptors).
+- `japicmp-maven-plugin:0.21.2` (phase `verify`, goal `cmp`) - additive-only public API gate, ACTIVE since the 1.1.0 release:
+  - Explicit `oldVersion`: compares against `com.sn:snlib:1.0.0` (jar), the baseline installed into the local `.m2` by the 1.0.0 release.
+  - `ignoreMissingOldVersion=false`: a missing baseline = a broken build (no more silent skip; until 1.0.0 the gate was vacuous because no previous version existed).
+  - `ignoreMissingClasses=true`: the shaded jar includes an unrelocated mysql-connector-j whose X DevAPI classes reference protobuf (excluded from the shade on purpose); japicmp must not demand that classpath.
+  - Analysis excludes: `com.sn.lib.**.internal.**`, `com.sn.lib.libs.**` (relocated), and the shaded-but-unrelocated ones that are not SnLib API: `com.mysql.**`, `org.sqlite.**`, `org.slf4j.**`, `google.protobuf.**`.
+  - `onlyModified=true`, `breakBuildOnBinaryIncompatibleModifications=true`, `breakBuildOnSourceIncompatibleModifications=false`: it breaks the build only on BINARY incompatibility (the additive-only rule), tolerating source incompatibilities.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- La matriz de shading tiene tres regimenes distintos y deliberados: relocado (HikariCP, bStats), shadeado sin relocar (sqlite-jdbc, mysql-connector-j, slf4j-jdk14) y provided (paper-api, adventure, PAPI, VaultAPI, slf4j-api). Mover una dependencia de regimen rompe cosas concretas ya documentadas en los comentarios del pom (JNI, providers SLF4J, dobles copias de driver).
-- El pin del `adventure-bom` 4.25.0 existe solo para alinear compile-time con lo que Paper realmente shippea; adventure sigue siendo provided y no viaja en el jar.
-- `Sn-Api-Level` del manifest es informativo; el gate real de compatibilidad consumer/lib es el handshake en runtime contra `SnApi.LEVEL`.
-- El exclude de `protobuf-java` en mysql-connector-j es la contraparte del `ignoreMissingClasses=true` de japicmp: se acepta un jar con referencias colgantes a protobuf porque el codigo X DevAPI nunca se ejecuta en el server.
+- The shading matrix has three distinct, deliberate regimes: relocated (HikariCP, bStats), shaded without relocation (sqlite-jdbc, mysql-connector-j, slf4j-jdk14) and provided (paper-api, adventure, PAPI, VaultAPI, slf4j-api). Moving a dependency between regimes breaks concrete things already documented in the pom comments (JNI, SLF4J providers, duplicate driver copies).
+- The `adventure-bom` 4.25.0 pin exists solely to align compile time with what Paper actually ships; adventure remains provided and does not travel in the jar.
+- The manifest's `Sn-Api-Level` is informational; the real consumer/lib compatibility gate is the runtime handshake against `SnApi.LEVEL`.
+- The `protobuf-java` exclude on mysql-connector-j is the counterpart of japicmp's `ignoreMissingClasses=true`: a jar with dangling protobuf references is accepted because the X DevAPI code never runs on the server.
 
-### docs/menu-example.yml (spec golden de GUIs)
+### docs/menu-example.yml (GUI golden spec)
 `docs/menu-example.yml`
-Spec golden del schema de configuracion de menus (Menu Lib): un GUI por archivo dentro de la carpeta `guis/` del plugin consumer. Contrato explicito del archivo: todo campo documentado aca esta soportado nativamente por SnLib; si el usuario de config setea un campo soportado, YA funciona sin codigo del plugin. Documenta:
+Golden spec of the menu configuration schema (Menu Lib): one GUI per file inside the consumer plugin's `guis/` folder. The file's explicit contract: every field documented here is natively supported by SnLib; if the config user sets a supported field, it ALREADY works without plugin code. It documents:
 
-- Campos raiz: `title` (default "Menu"), `rows` 1-6 (default 3), `open-sound` (default ''), `close-sound` (1.1.0, default ''; suena al viewer cuando cierra el menu), `close-actions` (1.1.0, default vacia; misma gramatica que click-actions, corre una vez por cierre en el cierre natural y en `[close]`, NUNCA en cambios de pagina ni en cierres programaticos; los click guards adentro se omiten con debug), `update-interval` en ticks (0 = sin auto-update; refresca items, titulo y rows), `inventory-type` (default CHEST; CHEST, DISPENSER, DROPPER, HOPPER, FURNACE, WORKBENCH, ENCHANTING, BREWING, ANVIL, BEACON, SHULKER_BOX, BARREL, etc).
-- `pagination` (opt-in por menu, default false): con `true` el GUI mantiene UNA GuiSession + UN Inventory POR VIEWER (page-state real por jugador; el mismo GUI sirve N jugadores en paginas distintas a la vez), funcionan `[next-page]`/`[previous-page]`/`[set-page]`/`[refresh-page]` y `bindPaged` llena los slots paginados via API. Con `false` (default) las acciones de paginacion son no-ops silenciosos con nota de debug y `bindPaged` WARNea una vez. Sin `bindPaged` vivo el total de paginas es desconocido y el nav next nunca se deshabilita, salvo que el plugin declare el total via `GuiSession.setTotalPages(n)` (1.1.0).
-- `strict-clicks` (opt-in por menu, default false): con `true` la lista generica `click-actions` solo dispara con los 4 clicks basicos de mouse (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT); los demas ClickType quedan cancelados sin accion, salvo que una lista especifica declarada los cubra (`middle-click-actions` habilita MIDDLE; una `left-click-actions` declarada habilita DOUBLE_CLICK y CREATIVE). Con `false` (default) el comportamiento es el historico de v1.0.0.
-- Layout ASCII (1.1.0): `layout:` (lista opcional de 1-6 strings de hasta 9 caracteres sobre la grilla de cofre; ' ' = celda vacia; `rows` deriva del largo y un `rows:` contradictorio WARNea), `paged-key:` a nivel menu (un caracter del layout cuyas celdas son el destino del `bindPaged` sin `int[]`) y `key:` por item como alternativa a `slots:` (el item renderiza en TODAS las celdas del layout con ese caracter; con key y slots declarados gana slots con WARN; key inexistente en el layout ignora el item con WARN; templates y nav-disabled no soportan key). Documentado con el item de ejemplo `example-layout-item`.
-- Schema de `items`: `display-name`, `material` (resuelve basehead-base64), `custom-model-data`, `amount`, `slots` (int, rango "0-2" o mix "0, 2, 4-6"), `glow`, `enchantments` (pares id/level), `flags` (HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS, y HIDE_ALL como combinacion), `color` (RGB "235, 64, 52" o HEX), `trim-pattern`/`trim-material` (armadura), `potion-effects` (ternas effect/level/duration), `update-interval` por item, `lore`, `click-requirements` y `view-requirements` (expresiones `%placeholder% > 0 && %placeholder% < 10`, `=`, `!=`), `deny-actions` (mismas acciones, corren si NO se cumplen los click-requirements) y `click-actions`.
-- Matriz per-click (1.1.0): 15 keys opcionales por item, cinco keys de click (`right`, `left`, `shift-right`, `shift-left`, `middle`) por tres listas (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`), con la regla de resolucion especifico-sobre-generico campo por campo documentada en el spec (shift exacta -> lado -> generica; right cubre RIGHT/SHIFT_RIGHT, left cubre LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, middle cubre MIDDLE).
-- Catalogo completo de acciones de click: `[player]`, `[player-as-op]`, `[right-click]`, `[left-click]`, `[shift-left-click]`, `[shift-right-click]`, `[right-click-only]`, `[left-click-only]`, `[click=TIPO,...]`, `[middle-click]`, `[double-click]`, `[drop-click]`, `[number-key]`, `[swap-offhand]` (guards; el spec anota la compat inclusiva de `[right-click]`/`[left-click]` y que `[click-block]`/`[click-air]` en GUI siempre omiten la linea), `[console]`, `[message]`, `[sound]`, `[close]`, `[open] gui-id`, `[connect]` (switch BungeeCord), `[broadcastmessage]`, `[actionbar]`, `[title]` (formato `title;subtitle;fadeIn;stay;fadeOut`), `[next-page]`, `[previous-page]`, `[refresh-page]`, `[set-page]` (solo con pagination: true), `[refresh-menu]` y `[custom]` (acciones registrables por el plugin con cualquier string).
-- Items de navegacion de paginacion (`previous-page`/`next-page` de ejemplo): items normales cuyas click-actions usan las acciones de paginacion, con seccion opcional `nav-disabled`: override de apariencia renderizado en los MISMOS slots EN LUGAR del item de navegacion cuando no hay pagina a donde ir (primera pagina para previous, ultima para next). `nav-disabled` soporta los mismos campos de apariencia que un item normal pero sin slots ni acciones: una flecha deshabilitada jamas dispara nada.
-- Ejemplos del pipeline de texto (SnText): `[small]` sustituye a-z/A-Z por glifos small caps (des-acentua vocales, la enye conserva su glifo default; digitos, simbolos, codigos de color y tags MiniMessage pasan intactos; corre ANTES de `[rgb]`); `[rgb]` aplica gradiente por caracter interpolado sobre 7 anchors fijos (#F300F3, #5555FF, #55FFFF, #55FF55, #FCFF21, #FF9B00, #FF5327), PISA los codigos de COLOR preexistentes y PRESERVA los de FORMATO (&l &o &n &m &k); `[center]` centra la linea a 154px sobre el string legacy ya coloreado (gradiente ya interpolado) como ULTIMO paso antes de renderizar a Component. Los tres tags prefix ([small]/[rgb]/[center]) son componibles en CUALQUIER orden. Codigos legacy (&a, &#RRGGBB) y tags MiniMessage renderizan juntos.
-- Seccion `templates`: items IDENTICOS a los normales pero SIN `slots:`; el developer del plugin decide dinamicamente el slot via API Java y el usuario de config customiza la apariencia libremente. Pueden usar placeholders locales definidos por el plugin (ej `%index%`, `%warp_name%`). Soportan las mismas keys de la matriz per-click que los items regulares. Incluye el ejemplo de uso de un plugin de mochilas (el plugin asigna por jugador que template va a cada slot).
+- Root fields: `title` (default "Menu"), `rows` 1-6 (default 3), `open-sound` (default ''), `close-sound` (1.1.0, default ''; plays to the viewer when they close the menu), `close-actions` (1.1.0, default empty; same grammar as click-actions, runs once per close on the natural close and on `[close]`, NEVER on page changes or programmatic closes; click guards inside skip with debug), `update-interval` in ticks (0 = no auto-update; refreshes items, title and rows), `inventory-type` (default CHEST; CHEST, DISPENSER, DROPPER, HOPPER, FURNACE, WORKBENCH, ENCHANTING, BREWING, ANVIL, BEACON, SHULKER_BOX, BARREL, etc).
+- `pagination` (opt-in per menu, default false): with `true` the GUI keeps ONE GuiSession + ONE Inventory PER VIEWER (real per-player page state; the same GUI serves N players on different pages at once), `[next-page]`/`[previous-page]`/`[set-page]`/`[refresh-page]` work and `bindPaged` fills the paginated slots via API. With `false` (default) pagination actions are silent no-ops with a debug note and `bindPaged` WARNs once. Without a live `bindPaged` the total page count is unknown and the next nav never disables, unless the plugin declares the total via `GuiSession.setTotalPages(n)` (1.1.0).
+- `strict-clicks` (opt-in per menu, default false): with `true` the generic `click-actions` list only fires on the 4 basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT); the other ClickTypes stay cancelled with no action, unless a declared specific list covers them (`middle-click-actions` enables MIDDLE; a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE). With `false` (default) the behavior is the historical v1.0.0 one.
+- ASCII layout (1.1.0): `layout:` (an optional list of 1-6 strings of up to 9 characters over the chest grid; ' ' = an empty cell; `rows` derives from the length and a contradictory `rows:` WARNs), a menu-level `paged-key:` (a layout character whose cells are the destination of the `int[]`-less `bindPaged`) and a per-item `key:` as an alternative to `slots:` (the item renders in ALL the layout cells with that character; with both key and slots declared slots wins with a WARN; a key absent from the layout ignores the item with a WARN; templates and nav-disabled do not support key). Documented with the example item `example-layout-item`.
+- The `items` schema: `display-name`, `material` (resolves basehead-base64), `custom-model-data`, `amount`, `slots` (int, a "0-2" range or a "0, 2, 4-6" mix), `glow`, `enchantments` (id/level pairs), `flags` (HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS, and HIDE_ALL as the combination), `color` (RGB "235, 64, 52" or HEX), `trim-pattern`/`trim-material` (armor), `potion-effects` (effect/level/duration triples), per-item `update-interval`, `lore`, `click-requirements` and `view-requirements` (expressions `%placeholder% > 0 && %placeholder% < 10`, `=`, `!=`), `deny-actions` (same actions, they run if the click-requirements are NOT met) and `click-actions`.
+- The per-click matrix (1.1.0): 15 optional keys per item, five click keys (`right`, `left`, `shift-right`, `shift-left`, `middle`) times three lists (`*-click-actions`, `*-click-requirements`, `*-click-deny-actions`), with the specific-over-generic field-by-field resolution rule documented in the spec (exact shift -> side -> generic; right covers RIGHT/SHIFT_RIGHT, left covers LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE, middle covers MIDDLE).
+- The full click action catalog: `[player]`, `[player-as-op]`, `[right-click]`, `[left-click]`, `[shift-left-click]`, `[shift-right-click]`, `[right-click-only]`, `[left-click-only]`, `[click=TYPE,...]`, `[middle-click]`, `[double-click]`, `[drop-click]`, `[number-key]`, `[swap-offhand]` (guards; the spec notes the inclusive compat of `[right-click]`/`[left-click]` and that `[click-block]`/`[click-air]` in a GUI always skip the line), `[console]`, `[message]`, `[sound]`, `[close]`, `[open] gui-id`, `[connect]` (BungeeCord switch), `[broadcastmessage]`, `[actionbar]`, `[title]` (format `title;subtitle;fadeIn;stay;fadeOut`), `[next-page]`, `[previous-page]`, `[refresh-page]`, `[set-page]` (only with pagination: true), `[refresh-menu]` and `[custom]` (plugin-registrable actions with any string).
+- Pagination navigation items (the example `previous-page`/`next-page`): normal items whose click-actions use the pagination actions, with an optional `nav-disabled` section: an appearance override rendered in the SAME slots INSTEAD of the navigation item when there is no page to go to (first page for previous, last for next). `nav-disabled` supports the same appearance fields as a normal item but no slots or actions: a disabled arrow never fires anything.
+- Text pipeline examples (SnText): `[small]` substitutes a-z/A-Z with small caps glyphs (de-accents vowels, the enye keeps its default glyph; digits, symbols, color codes and MiniMessage tags pass intact; it runs BEFORE `[rgb]`); `[rgb]` applies a per-character interpolated gradient over 7 fixed anchors (#F300F3, #5555FF, #55FFFF, #55FF55, #FCFF21, #FF9B00, #FF5327), OVERRIDES pre-existing COLOR codes and PRESERVES FORMAT ones (&l &o &n &m &k); `[center]` centers the line to 154px over the already-colored legacy string (gradient already interpolated) as the LAST step before rendering to Component. The three prefix tags ([small]/[rgb]/[center]) are composable in ANY order. Legacy codes (&a, &#RRGGBB) and MiniMessage tags render together.
+- The `templates` section: items IDENTICAL to normal ones but WITHOUT `slots:`; the plugin developer decides the slot dynamically via the Java API and the config user customizes the appearance freely. They can use plugin-defined local placeholders (e.g. `%index%`, `%warp_name%`). They support the same per-click matrix keys as regular items. It includes the usage example of a backpack plugin (the plugin assigns per player which template goes to which slot).
 
-### docs/item-example.yml (spec golden de items fisicos)
+### docs/item-example.yml (physical items golden spec)
 `docs/item-example.yml`
-Spec golden del schema de items FISICOS (Item Lib): items que se entregan a jugadores (inventario, drops, etc), NO items de GUI (para eso esta menu-example.yml). Todo item-id definido aca se puede dar via API `sn.items().give(player, "item-id", amount)`, y cualquier ItemDef tambien se puede construir 100% programaticamente via `ItemDef.builder()` sin YML. Documenta por bloques:
+Golden spec of the PHYSICAL items schema (Item Lib): items given to players (inventory, drops, etc), NOT GUI items (menu-example.yml covers those). Every item-id defined here can be given via the API `sn.items().give(player, "item-id", amount)`, and any ItemDef can also be built 100% programmatically via `ItemDef.builder()` without YML. It documents, by block:
 
-- APPEARANCE: `display-name`, `material` (resuelve basehead-base64), `custom-model-data`, `amount`, `glow`, `lore`, `enchantments`, `flags` (mismo set que menus, con HIDE_ALL), `color` RGB/HEX, `trim-pattern`/`trim-material`, `potion-effects`.
-- PROPERTIES: `unbreakable` (default false), `max-stack-size` 1-64 (default vanilla del material), `droppable` (default true), `moveable` (default true), `placeable` (default true, solo bloques), `tradeable` (default true), `despawnable` (default true), `keep-on-death` (default false), `cooldown` en ticks (0 = sin cooldown).
-- LOCKED MODE Y OBTAIN CONTROL: `locked` (default false) fija el item a su slot y bloquea la extraccion por los 7 vectores de robo (drag, number-key swap, offhand swap, shift-move, drop, cursor pickup, transferencia hopper/inventario); el item real desplazado por uno locked se restaura en quit y shutdown via backup write-through (default-on: el backup sobrevive un crash del server sin onDisable). `no-drop` es alias duro de `droppable: false` (bloquea Q/drop y drag-out). `no-manual-equip` impide equipar manualmente en armadura u offhand (right-click equip, click de inventario, number-key y drag). `obtain-via` restringe como entra el item en circulacion: "" (default) sin restriccion; `COMMAND_ONLY` solo via comando o API del plugin, cancelando crafting/mob-pickup/otros caminos.
-- DURABILITY custom (separada de la vanilla, util para items sin durabilidad como sticks): `custom-durability.max` (0 = deshabilitado), `damage-per-use` (default 1), `break-actions` (acciones al llegar a 0; desde 1.1.0 corren con el ClickType y la superficie BLOCK/AIR reales del interact que rompio el item, asi los guards de click/superficie dentro de la lista evaluan) y `lore-format` con `%durability%`/`%max_durability%` actualizado automaticamente.
-- INTERACT ACTIONS (mundo, no GUI): 12 listas: `right-click-actions`, `left-click-actions`, `shift-right-click-actions`, `shift-left-click-actions`, `right-click-block-actions`, `right-click-air-actions`, `left-click-block-actions`, `left-click-air-actions`, y las 4 shift-posicionales de 1.1.0 `shift-right-click-block-actions`, `shift-right-click-air-actions`, `shift-left-click-block-actions`, `shift-left-click-air-actions` (con shift, una shift-posicional CON comportamiento corre en lugar de la posicional simple; sin comportamiento cae a la simple). Flag `shift-overrides-generic` (default true; con false corren AMBAS variantes del par en shift-click, shift primero). Ademas de las acciones comunes suma `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]`, `[potion] EFFECT duration(ticks) amplifier`, `[remove-item]` (1 unidad), `[remove-item] [N] [offhand|id:<item-id>|MATERIAL]` y los guards posicionales/exactos de ejemplo (`[click-block]`, `[click-air]`, `[right-click-only]`, `[click=RIGHT]`).
-- INTERACT REQUIREMENTS + `deny-actions` cuando no se cumplen (desde 1.1.0 las deny-actions corren con el ClickType y la superficie reales del interact, asi los guards dentro de la lista evaluan).
-- PICKUP/DROP ACTIONS: `pickup-actions` y `drop-actions`.
-- HELD EFFECTS: efectos continuos mientras se sostiene o viste el item, por slot: `held-effects.mainhand`, `offhand`, `armor`; formato "EFFECT amplifier" (amplifier = level - 1).
-- `equipment-slot`: restringe donde se puede colocar (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET; default "" = cualquiera).
-- RECIPE: receta custom opcional; `type` SHAPED (con `shape` + `ingredients` mapeados por letra), SHAPELESS (`ingredients` lista), o FURNACE/SMOKING/BLASTING/CAMPFIRE/STONECUTTING (`input`, `experience`, `cooking-time` en ticks).
+- APPEARANCE: `display-name`, `material` (resolves basehead-base64), `custom-model-data`, `amount`, `glow`, `lore`, `enchantments`, `flags` (same set as menus, with HIDE_ALL), `color` RGB/HEX, `trim-pattern`/`trim-material`, `potion-effects`.
+- PROPERTIES: `unbreakable` (default false), `max-stack-size` 1-64 (the material's vanilla default), `droppable` (default true), `moveable` (default true), `placeable` (default true, blocks only), `tradeable` (default true), `despawnable` (default true), `keep-on-death` (default false), `cooldown` in ticks (0 = no cooldown).
+- LOCKED MODE AND OBTAIN CONTROL: `locked` (default false) pins the item to its slot and blocks extraction through the 7 theft vectors (drag, number-key swap, offhand swap, shift-move, drop, cursor pickup, hopper/inventory transfer); the real item displaced by a locked one restores on quit and shutdown via a write-through backup (default-on: the backup survives a server crash without onDisable). `no-drop` is a hard alias of `droppable: false` (it blocks Q/drop and drag-out). `no-manual-equip` prevents manually equipping to armor or offhand (right-click equip, inventory click, number-key and drag). `obtain-via` restricts how the item enters circulation: "" (default) unrestricted; `COMMAND_ONLY` only via the plugin's command or API, cancelling crafting/mob-pickup/other paths.
+- Custom DURABILITY (separate from vanilla's, useful for durability-less items like sticks): `custom-durability.max` (0 = disabled), `damage-per-use` (default 1), `break-actions` (actions when reaching 0; since 1.1.0 they run with the real ClickType and BLOCK/AIR surface of the interact that broke the item, so click/surface guards inside the list evaluate) and `lore-format` with `%durability%`/`%max_durability%` automatically updated.
+- INTERACT ACTIONS (world, not GUI): 12 lists: `right-click-actions`, `left-click-actions`, `shift-right-click-actions`, `shift-left-click-actions`, `right-click-block-actions`, `right-click-air-actions`, `left-click-block-actions`, `left-click-air-actions`, and the 4 shift-positionals of 1.1.0 `shift-right-click-block-actions`, `shift-right-click-air-actions`, `shift-left-click-block-actions`, `shift-left-click-air-actions` (with shift, a shift-positional WITH behavior runs instead of the plain positional; without behavior it falls to the plain one). Flag `shift-overrides-generic` (default true; with false BOTH variants of the pair run on shift-click, shift first). Besides the common actions it adds `[particle] TYPE [count] [offX offY offZ] [extra] [key=value...]`, `[potion] EFFECT duration(ticks) amplifier`, `[remove-item]` (1 unit), `[remove-item] [N] [offhand|id:<item-id>|MATERIAL]` and the example positional/exact guards (`[click-block]`, `[click-air]`, `[right-click-only]`, `[click=RIGHT]`).
+- INTERACT REQUIREMENTS + `deny-actions` when unmet (since 1.1.0 the deny-actions run with the interact's real ClickType and surface, so guards inside the list evaluate).
+- PICKUP/DROP ACTIONS: `pickup-actions` and `drop-actions`.
+- HELD EFFECTS: continuous effects while holding or wearing the item, per slot: `held-effects.mainhand`, `offhand`, `armor`; format "EFFECT amplifier" (amplifier = level - 1).
+- `equipment-slot`: restricts where it can be placed (MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET; default "" = anywhere).
+- RECIPE: an optional custom recipe; `type` SHAPED (with `shape` + letter-mapped `ingredients`), SHAPELESS (`ingredients` list), or FURNACE/SMOKING/BLASTING/CAMPFIRE/STONECUTTING (`input`, `experience`, `cooking-time` in ticks).
 
-### docs/consumer-pom-template.xml (template de pom del consumer)
+### docs/consumer-pom-template.xml (consumer pom template)
 `docs/consumer-pom-template.xml`
-Template de `pom.xml` para plugins Sn que consumen SnLib bajo el modelo standalone hard-depend. Su header documenta el contrato completo de consumo:
+`pom.xml` template for Sn plugins consuming SnLib under the standalone hard-depend model. Its header documents the full consumption contract:
 
-- Resolucion de `com.sn:snlib`: 1) publicar SnLib al `.m2` local con `mvn install -f <ruta>/SnLib/pom.xml`; 2) JitPack NO soportado (el repo de SnLib es privado y JitPack no construye repos privados): la UNICA via de resolucion es el `.m2` local; 3) en runtime NADA de SnLib se shadea en el consumer: el server carga `SnLib.jar` como plugin standalone en `plugins/` y el consumer declara `depend: [SnLib]` en su plugin.yml. Por eso el scope es `provided` y el template NO incluye maven-shade-plugin para la lib; si el consumer shadea dependencias propias, JAMAS incluir `com.sn:snlib` en el shade.
-- Bloque `plugin.yml` minimo del consumer: `name`, `main`, `version`, `api-version: '1.20'`, `depend: [SnLib]`, comando principal y arbol de permisos `myplugin.admin` (default op) con hijo `myplugin.admin.reload`.
-- Clase principal del consumer (unica via de init: extender `SnPlugin`), con las tres firmas del contrato: `protected int requiredApiLevel()` retornando `SnApi.LEVEL`, `protected SnSpec buildSpec()` (ejemplo: `SnSpec.builder().config("config.yml").lang().guis().build()`) y `protected void onInnerEnable()` donde se registran comandos, guis, items, db, etc sobre el contexto Sn.
-- El pom en si: `com.sn:myplugin:1.0.0`, Java 21, repo papermc, dependencias `com.sn:snlib:1.1.0` (provided, del .m2 local; en runtime la provee `SnLib.jar` en `plugins/`) y `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), y solo `maven-compiler-plugin:3.13.0` en build (sin shade).
+- Resolution of `com.sn:snlib`: 1) publish SnLib to the local `.m2` with `mvn install -f <path>/SnLib/pom.xml`; 2) JitPack is NOT supported (the SnLib repo is private and JitPack does not build private repos): the ONLY resolution path is the local `.m2`; 3) at runtime NOTHING of SnLib shades into the consumer: the server loads `SnLib.jar` as a standalone plugin in `plugins/` and the consumer declares `depend: [SnLib]` in its plugin.yml. That is why the scope is `provided` and the template does NOT include maven-shade-plugin for the lib; if the consumer shades its own dependencies, NEVER include `com.sn:snlib` in the shade.
+- The consumer's minimal `plugin.yml` block: `name`, `main`, `version`, `api-version: '1.20'`, `depend: [SnLib]`, the main command and the `myplugin.admin` permission tree (default op) with the child `myplugin.admin.reload`.
+- The consumer's main class (the only init path: extending `SnPlugin`), with the contract's three signatures: `protected int requiredApiLevel()` returning `SnApi.LEVEL`, `protected SnSpec buildSpec()` (example: `SnSpec.builder().config("config.yml").lang().guis().build()`) and `protected void onInnerEnable()` where commands, guis, items, db, etc register on the Sn context.
+- The pom itself: `com.sn:myplugin:1.0.0`, Java 21, the papermc repo, dependencies `com.sn:snlib:1.1.0` (provided, from the local .m2; at runtime `SnLib.jar` in `plugins/` provides it) and `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), and only `maven-compiler-plugin:3.13.0` in build (no shade).
 
-### docs/snlib-consumer-rules.pro (reglas ProGuard del consumer)
+### docs/snlib-consumer-rules.pro (consumer ProGuard rules)
 `docs/snlib-consumer-rules.pro`
-Reglas ProGuard para plugins Sn que consumen SnLib y se ofuscan con sn-obfuscate. Premisa: `SnLib.jar` es una LIBRERIA en runtime (plugin standalone en `plugins/`), NUNCA se ofusca ni se shadea en el consumer; se declara como `-libraryjars` igual que paper-api. Reglas:
+ProGuard rules for Sn plugins that consume SnLib and obfuscate with sn-obfuscate. Premise: `SnLib.jar` is a LIBRARY at runtime (a standalone plugin in `plugins/`), it is NEVER obfuscated or shaded into the consumer; it declares as `-libraryjars` just like paper-api. Rules:
 
-- `-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar` (ajustar la ruta al `.m2` local o al jar del release).
-- `-dontwarn com.sn.lib.**`: SnLib no viaja dentro del jar del consumer; silenciar warnings de referencias a clases de la lib.
-- Keep del entrypoint: `-keep public class * extends com.sn.lib.SnPlugin` preservando `public <init>()`, `protected int requiredApiLevel()`, `protected com.sn.lib.SnSpec buildSpec()`, `protected void onInnerEnable()` y `protected void onInnerDisable()`. Razon: Bukkit instancia la clase por reflexion (main de plugin.yml) y SnLib invoca el handshake `requiredApiLevel()`.
-- Keeps de clases registradas por reflexion o por el framework de Bukkit: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` y `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (todas con `{ *; }`).
-- `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserva metodos `@EventHandler` en cualquier clase, por si un listener no implementa `Listener` directamente sino via clase intermedia.
+- `-libraryjars <user.home>/.m2/repository/com/sn/snlib/1.1.0/snlib-1.1.0.jar` (adjust the path to the local `.m2` or the release jar).
+- `-dontwarn com.sn.lib.**`: SnLib does not travel inside the consumer's jar; silence warnings about references to lib classes.
+- Entrypoint keep: `-keep public class * extends com.sn.lib.SnPlugin` preserving `public <init>()`, `protected int requiredApiLevel()`, `protected com.sn.lib.SnSpec buildSpec()`, `protected void onInnerEnable()` and `protected void onInnerDisable()`. Reason: Bukkit instantiates the class by reflection (plugin.yml's main) and SnLib invokes the `requiredApiLevel()` handshake.
+- Keeps for classes registered by reflection or by Bukkit's framework: `* implements org.bukkit.event.Listener`, `* implements org.bukkit.command.CommandExecutor`, `* implements org.bukkit.command.TabCompleter` and `* extends me.clip.placeholderapi.expansion.PlaceholderExpansion` (all with `{ *; }`).
+- `-keepclassmembers class * { @org.bukkit.event.EventHandler <methods>; }`: preserves `@EventHandler` methods in any class, in case a listener does not implement `Listener` directly but via an intermediate class.
 
-### Suites de tests (21 suites, 204 tests, verdes)
+### Test suites (21 suites, 204 tests, green)
 
-Las 21 suites viven en `src/test/java/com/sn/lib/` (paquete plano `com.sn.lib`, mas los subpaquetes `com.sn.lib.item` de `SnItemAttributeParseTest` e `ItemDefVariantsTest`, `com.sn.lib.action` de `ClickGuardTest`, `com.sn.lib.gui` de `ClickResolutionTest`, `com.sn.lib.update` de `UpdateCheckerJsonTest` y `com.sn.lib.util` de `PlayerLookupParseTest`, que necesitan acceso package-private a los helpers que cubren), corren con JUnit Jupiter 5.10.2 bajo surefire 3.2.5 y son 100% JVM puras: ninguna levanta servidor ni mockea Bukkit; cubren exactamente las piezas de la lib que son logica pura (texto, parsing, cron, yml, leaderboard, resolucion de atributos, matching de guards, resolucion de matrices de click, mascaras de layout, parse del update check, parse del lookup de Mojang, y el core de cuboides con los caminos null-safe de LocationUtil). Total verificado con `mvn test`: 204 tests, 0 failures, 0 errors, 0 skipped. Fixtures en `src/test/resources/yml/`: `tabs-broken.yml` (YAML indentado con tabs que YamlPreprocessor debe reparar, con tabs dentro de valores quoted y block scalars que debe preservar), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (trio golden del merge de YamlUpdater: resource nuevo del jar, archivo viejo del usuario con valores propios y key extra, resultado esperado) y `corrupt.yml` (YAML deliberadamente invalido: quote y flow collection sin cerrar).
+The 21 suites live in `src/test/java/com/sn/lib/` (the flat `com.sn.lib` package, plus the subpackages `com.sn.lib.item` for `SnItemAttributeParseTest` and `ItemDefVariantsTest`, `com.sn.lib.action` for `ClickGuardTest`, `com.sn.lib.gui` for `ClickResolutionTest`, `com.sn.lib.update` for `UpdateCheckerJsonTest` and `com.sn.lib.util` for `PlayerLookupParseTest`, which need package-private access to the helpers they cover), run with JUnit Jupiter 5.10.2 under surefire 3.2.5 and are 100% pure JVM: none starts a server or mocks Bukkit; they cover exactly the lib pieces that are pure logic (text, parsing, cron, yml, leaderboard, attribute resolution, guard matching, click matrix resolution, layout masks, the update check parse, the Mojang lookup parse, and the cuboid core with LocationUtil's null-safe paths). Total verified with `mvn test`: 204 tests, 0 failures, 0 errors, 0 skipped. Fixtures in `src/test/resources/yml/`: `tabs-broken.yml` (tab-indented YAML YamlPreprocessor must repair, with tabs inside quoted values and block scalars it must preserve), `merge-resource.yml` / `merge-old.yml` / `merge-expected.yml` (the golden trio of YamlUpdater's merge: the jar's new resource, the user's old file with its own values and an extra key, the expected result) and `corrupt.yml` (deliberately invalid YAML: an unclosed quote and flow collection).
 
 ### RgbGradientTest
 `src/test/java/com/sn/lib/RgbGradientTest.java`
-7 tests sobre `com.sn.lib.text.RgbGradientUtil.applyRgbTag(String)`: el gradiente `[rgb]` por caracter. Verifica contra los anchors extremos exactos `F300F3` y `FF5327`.
+7 tests over `com.sn.lib.text.RgbGradientUtil.applyRgbTag(String)`: the per-character `[rgb]` gradient. It verifies against the exact extreme anchors `F300F3` and `FF5327`.
 
-- `void emitsOneHexPerVisibleCharacter()` - emite exactamente un `&#RRGGBB` por caracter visible (5 para "Hello", 8 para "Gradient").
-- `void extremesUseExactAnchors()` - el primer caracter recibe el anchor `#F300F3` y el ultimo `#FF5327`, sin interpolacion en los extremos.
-- `void spacesDoNotConsumeGradientPositions()` - los espacios no consumen posiciones del gradiente: "A B" produce los mismos hex que "AB".
-- `void formatPreservedAndColorOverridden()` - los codigos de formato (`&l`) se preservan y re-emiten por caracter; los de color (`&a`) se descartan.
-- `void resetClearsAccumulatedFormat()` - `&r` limpia el formato acumulado: el caracter posterior sale sin `&l`.
-- `void existingHexColorIsDiscarded()` - un hex legacy preexistente (`&#123456`) se descarta y se pisa con el gradiente.
-- `void singleVisibleCharacterGetsFirstAnchor()` - con un solo caracter visible se usa el primer anchor.
+- `void emitsOneHexPerVisibleCharacter()` - emits exactly one `&#RRGGBB` per visible character (5 for "Hello", 8 for "Gradient").
+- `void extremesUseExactAnchors()` - the first character receives the `#F300F3` anchor and the last `#FF5327`, no interpolation at the extremes.
+- `void spacesDoNotConsumeGradientPositions()` - spaces do not consume gradient positions: "A B" produces the same hexes as "AB".
+- `void formatPreservedAndColorOverridden()` - format codes (`&l`) are preserved and re-emitted per character; color ones (`&a`) are discarded.
+- `void resetClearsAccumulatedFormat()` - `&r` clears the accumulated format: the following character comes out without `&l`.
+- `void existingHexColorIsDiscarded()` - a pre-existing legacy hex (`&#123456`) is discarded and overridden by the gradient.
+- `void singleVisibleCharacterGetsFirstAnchor()` - with a single visible character the first anchor is used.
 
 ### SemverComparatorTest
 `src/test/java/com/sn/lib/SemverComparatorTest.java`
-10 tests sobre `com.sn.lib.hook.SemverComparator` (metodo estatico `compareVersions(String, String)` y la clase como `Comparator<String>`), la comparacion de versiones usada por el sistema de hooks.
+10 tests over `com.sn.lib.hook.SemverComparator` (the static `compareVersions(String, String)` method and the class as a `Comparator<String>`), the version comparison the hook system uses.
 
-- `void comparesSegmentsNumericallyNotLexically()` - segmentos numericos, no lexicograficos: 1.9 < 1.10, 1.99.9 < 1.100.0.
-- `void supportsSegmentsOfAnyDigitCount()` - segmentos de cualquier cantidad de digitos (1.2.345 < 1.2.1000).
-- `void missingTrailingSegmentsCountAsZero()` - segmentos finales ausentes valen 0: "1.2" == "1.2.0", "1" == "1.0.0"; soporta 4 segmentos ("1.2" < "1.2.0.1").
-- `void preReleaseComparesLowerThanRelease()` - un pre-release precede a la release pelada: "1.0.0-SNAPSHOT" < "1.0.0", "2.11.6-DEV-SNAPSHOT" < "2.11.6" (el pre-release "DEV-SNAPSHOT" es UN identificador: el split es por `.`).
-- `void semverOrgPrecedenceTable()` - la escalera completa de semver.org par a par: alpha < alpha.1 < alpha.beta < beta < beta.2 < beta.11 < rc.1 < release.
-- `void numericIdentifiersCompareNumerically()` - identificadores numericos comparan como numeros: alpha.9 < alpha.10.
-- `void numericIsLowerThanAlphanumeric()` - un identificador numerico es menor que uno alfanumerico: "1.0.0-1" < "1.0.0-alpha".
-- `void buildMetadataIsIgnored()` - el build metadata `+...` se ignora: "1.0.0+build.5" == "1.0.0", "1.0.0-alpha+001" == "1.0.0-alpha".
-- `void equalVersionsCompareAsZero()` - versiones iguales comparan 0 ("0.0.0" == "0").
-- `void comparatorInstanceSortsAscending()` - la instancia como Comparator ordena listas ascendente semver.
+- `void comparesSegmentsNumericallyNotLexically()` - numeric segments, not lexicographic: 1.9 < 1.10, 1.99.9 < 1.100.0.
+- `void supportsSegmentsOfAnyDigitCount()` - segments of any digit count (1.2.345 < 1.2.1000).
+- `void missingTrailingSegmentsCountAsZero()` - missing trailing segments count as 0: "1.2" == "1.2.0", "1" == "1.0.0"; supports 4 segments ("1.2" < "1.2.0.1").
+- `void preReleaseComparesLowerThanRelease()` - a pre-release precedes the bare release: "1.0.0-SNAPSHOT" < "1.0.0", "2.11.6-DEV-SNAPSHOT" < "2.11.6" (the pre-release "DEV-SNAPSHOT" is ONE identifier: the split is by `.`).
+- `void semverOrgPrecedenceTable()` - the full semver.org ladder pair by pair: alpha < alpha.1 < alpha.beta < beta < beta.2 < beta.11 < rc.1 < release.
+- `void numericIdentifiersCompareNumerically()` - numeric identifiers compare as numbers: alpha.9 < alpha.10.
+- `void numericIsLowerThanAlphanumeric()` - a numeric identifier is lower than an alphanumeric one: "1.0.0-1" < "1.0.0-alpha".
+- `void buildMetadataIsIgnored()` - the `+...` build metadata is ignored: "1.0.0+build.5" == "1.0.0", "1.0.0-alpha+001" == "1.0.0-alpha".
+- `void equalVersionsCompareAsZero()` - equal versions compare 0 ("0.0.0" == "0").
+- `void comparatorInstanceSortsAscending()` - the instance as a Comparator sorts lists in ascending semver.
 
 ### SlotParserTest
 `src/test/java/com/sn/lib/SlotParserTest.java`
-13 tests sobre `com.sn.lib.util.SlotParser.parse(Object)` y `parse(Object, Consumer<String>)`: el parser tolerante de slots de los YML de GUIs.
+13 tests over `com.sn.lib.util.SlotParser.parse(Object)` and `parse(Object, Consumer<String>)`: the tolerant slot parser of the GUI YMLs.
 
-- `void parsesSingleInt()` - un int suelto (incluido 0) produce ese slot.
-- `void parsesNumericString()` - string numerico, con trim de espacios (" 13 ").
-- `void parsesRange()` - rangos "0-8" y con espacios "10 - 12" expanden inclusive.
-- `void normalizesReversedRange()` - rango invertido "2-0" se normaliza a 0,1,2.
-- `void parsesCommaSeparatedMix()` - mix por comas "0,2,4-6".
-- `void parsesListOfMixedElements()` - lista YAML heterogenea `[1, "3-5", "7"]`.
-- `void deduplicatesKeepingFirstSeenOrder()` - dedup preservando orden de primera aparicion ("4-6,5,3" -> 4,5,6,3).
-- `void invalidInputYieldsEmptyAndDelegatesWarn()` - input invalido devuelve array vacio y delega UN warn al consumer, incluyendo el texto ofensor.
-- `void nullYieldsEmptyAndDelegatesWarn()` - null devuelve vacio y warnea.
-- `void negativeSlotsAreWarnedAndSkipped()` - slots negativos se saltean con warn.
-- `void invalidTokensAreSkippedButValidOnesKept()` - "1,x,2" conserva 1 y 2 con un solo warn (fail-soft por token).
-- `void oversizedRangeIsRejected()` - un rango desmedido ("0-999999999") se rechaza entero con warn (proteccion de memoria).
-- `void nullWarnConsumerIsSafe()` - la sobrecarga sin consumer no lanza ante basura.
+- `void parsesSingleInt()` - a lone int (including 0) produces that slot.
+- `void parsesNumericString()` - a numeric string, with space trim (" 13 ").
+- `void parsesRange()` - the ranges "0-8" and spaced "10 - 12" expand inclusive.
+- `void normalizesReversedRange()` - a reversed range "2-0" normalizes to 0,1,2.
+- `void parsesCommaSeparatedMix()` - a comma mix "0,2,4-6".
+- `void parsesListOfMixedElements()` - a heterogeneous YAML list `[1, "3-5", "7"]`.
+- `void deduplicatesKeepingFirstSeenOrder()` - dedups preserving first-seen order ("4-6,5,3" -> 4,5,6,3).
+- `void invalidInputYieldsEmptyAndDelegatesWarn()` - invalid input returns an empty array and delegates ONE warn to the consumer, including the offending text.
+- `void nullYieldsEmptyAndDelegatesWarn()` - null returns empty and warns.
+- `void negativeSlotsAreWarnedAndSkipped()` - negative slots skip with a warn.
+- `void invalidTokensAreSkippedButValidOnesKept()` - "1,x,2" keeps 1 and 2 with a single warn (fail-soft per token).
+- `void oversizedRangeIsRejected()` - an outsized range ("0-999999999") is rejected whole with a warn (memory protection).
+- `void nullWarnConsumerIsSafe()` - the consumerless overload does not throw on garbage.
 
 ### GuiMaskTest
 `src/test/java/com/sn/lib/GuiMaskTest.java`
-9 tests sobre `com.sn.lib.gui.GuiMask.slots(char, String...)` y `slots(char, List<String>)`: la mascara ASCII programatica de slots de cofre (geometria 6x9, slot = fila*9 + columna).
+9 tests over `com.sn.lib.gui.GuiMask.slots(char, String...)` and `slots(char, List<String>)`: the programmatic ASCII mask of chest slots (6x9 geometry, slot = row*9 + column).
 
-- `void keyInMultipleCellsReturnsAllSlotsRowMajor()` - una key repetida en una mascara de 3 filas devuelve todas sus celdas con los valores exactos i*9+j en orden row-major ascendente (10-16 y 19-25).
-- `void secondRowFirstColumnIsSlotNine()` - la celda fila 2 / columna 1 es el slot 9.
-- `void spaceKeyAlwaysReturnsEmpty()` - `slots(' ', ...)` devuelve vacio aunque la mascara tenga espacios (el espacio es siempre celda vacia).
-- `void missingKeyReturnsEmpty()` - una key que no aparece en la mascara devuelve vacio.
-- `void rowsBeyondSixAreIgnored()` - con 7 filas, una key solo en la 7ma devuelve vacio; en la 6ta (slot 45) si entra.
-- `void columnsBeyondNineAreIgnored()` - en una fila de 10 caracteres, la key en la columna 10 devuelve vacio y en la columna 9 (indice 8) devuelve el slot 8.
-- `void nullRowListReturnsEmpty()` - lista null y varargs null devuelven vacio.
-- `void nullAndEmptyRowsCountAsEmptyRows()` - una fila null o vacia en el medio no corre la numeracion de las siguientes (key en filas 1 y 3 con fila 2 null -> slots 0 y 18).
-- `void varargsAndListOverloadsAgree()` - ambos overloads devuelven exactamente lo mismo para la misma mascara.
+- `void keyInMultipleCellsReturnsAllSlotsRowMajor()` - a key repeated across a 3-row mask returns all its cells with the exact i*9+j values in ascending row-major order (10-16 and 19-25).
+- `void secondRowFirstColumnIsSlotNine()` - the row 2 / column 1 cell is slot 9.
+- `void spaceKeyAlwaysReturnsEmpty()` - `slots(' ', ...)` returns empty even if the mask has spaces (the space is always an empty cell).
+- `void missingKeyReturnsEmpty()` - a key that does not appear in the mask returns empty.
+- `void rowsBeyondSixAreIgnored()` - with 7 rows, a key only in the 7th returns empty; in the 6th (slot 45) it does count.
+- `void columnsBeyondNineAreIgnored()` - in a 10-character row, the key in column 10 returns empty and in column 9 (index 8) returns slot 8.
+- `void nullRowListReturnsEmpty()` - a null list and null varargs return empty.
+- `void nullAndEmptyRowsCountAsEmptyRows()` - a null or empty row in the middle does not shift the numbering of the following ones (a key in rows 1 and 3 with row 2 null -> slots 0 and 18).
+- `void varargsAndListOverloadsAgree()` - both overloads return exactly the same for the same mask.
 
 ### TimeUtilTest
 `src/test/java/com/sn/lib/TimeUtilTest.java`
-10 tests sobre `com.sn.lib.util.TimeUtil`: `parseMillis`, `parseTicks`, `humanize`, `humanizeShort` y la interfaz de i18n `TimeUtil.Labels` (con `longLabel(Unit, boolean)` y `shortLabel(Unit)` sobre el enum `Unit` DAY/HOUR/MINUTE/SECOND). Define un Labels de prueba en español.
+10 tests over `com.sn.lib.util.TimeUtil`: `parseMillis`, `parseTicks`, `humanize`, `humanizeShort` and the i18n interface `TimeUtil.Labels` (with `longLabel(Unit, boolean)` and `shortLabel(Unit)` over the `Unit` enum DAY/HOUR/MINUTE/SECOND). It defines a Spanish test Labels.
 
-- `void parsesCanonicalDurationString()` - "1d 2h 30m 15s" parsea a millis exactos y `parseTicks` divide por 50.
-- `void parsesCompactAndSpacedVariants()` - variantes compacta ("1d2h30m15s") y ultra espaciada ("1 d 2 h ...").
-- `void parsesFullUnitWords()` - palabras completas ("1 day 2 hours 30 minutes 15 seconds").
-- `void bareNumberCountsAsSeconds()` - un numero pelado son segundos ("45" -> 45000 ms).
-- `void supportsDecimalsTicksAndMillis()` - decimales ("1.5h"), ticks ("1t" -> 50 ms) y millis ("250ms").
-- `void invalidInputYieldsZero()` - null, vacio, basura y unidad desconocida ("5x") devuelven 0 (nunca lanzan).
-- `void humanizesLongForm()` - forma larga con plurales ingleses por default, incluyendo "0 seconds".
-- `void humanizesShortForm()` - forma corta "1d 2h 30m 15s", "1m", "0s".
-- `void labelsAreInjectableForI18n()` - los labels son inyectables: "1 minuto 1 segundo", "2 dias", "1min 1seg", "0seg".
-- `void shortFormRoundTripsThroughParse()` - round-trip: `parseMillis(humanize(x)) == x` y lo mismo con humanizeShort para varias muestras.
+- `void parsesCanonicalDurationString()` - "1d 2h 30m 15s" parses to exact millis and `parseTicks` divides by 50.
+- `void parsesCompactAndSpacedVariants()` - compact ("1d2h30m15s") and ultra-spaced ("1 d 2 h ...") variants.
+- `void parsesFullUnitWords()` - full words ("1 day 2 hours 30 minutes 15 seconds").
+- `void bareNumberCountsAsSeconds()` - a bare number is seconds ("45" -> 45000 ms).
+- `void supportsDecimalsTicksAndMillis()` - decimals ("1.5h"), ticks ("1t" -> 50 ms) and millis ("250ms").
+- `void invalidInputYieldsZero()` - null, empty, garbage and an unknown unit ("5x") return 0 (they never throw).
+- `void humanizesLongForm()` - the long form with default English plurals, including "0 seconds".
+- `void humanizesShortForm()` - the short form "1d 2h 30m 15s", "1m", "0s".
+- `void labelsAreInjectableForI18n()` - labels are injectable: "1 minuto 1 segundo", "2 dias", "1min 1seg", "0seg".
+- `void shortFormRoundTripsThroughParse()` - round-trip: `parseMillis(humanize(x)) == x` and the same with humanizeShort for several samples.
 
 ### NumberFormatterTest
 `src/test/java/com/sn/lib/NumberFormatterTest.java`
-14 tests sobre `com.sn.lib.util.NumberFormatter`: `format(double)` (sufijos K/M/B/T/Qa/Qi), `formatComma(double)` (agrupacion de miles, v1.1) y `parseFormatted(String)` (inversa tolerante a separadores).
+14 tests over `com.sn.lib.util.NumberFormatter`: `format(double)` (K/M/B/T/Qa/Qi suffixes), `formatComma(double)` (thousand grouping, v1.1) and `parseFormatted(String)` (the separator-tolerant inverse).
 
-- `void formatsPlainNumbersBelowThousand()` - bajo 1000 sin sufijo; decimales redondeados a 2 (12.345 -> "12.35").
-- `void formatsEachSuffixMagnitude()` - cada magnitud: 1.5K, 1M, 2.5B, 1T, 1Qa (1e15), 1Qi (1e18).
-- `void formatsNegativesAndRoundsToTwoDecimals()` - negativos ("-1.5K") y redondeo a 2 decimales ("1.23M").
-- `void promotesWhenRoundingReachesNextMagnitude()` - promocion al redondear: 999999 -> "1M", 999.999 -> "1K" (nunca "1000K").
-- `void parsesSuffixedInputCaseInsensitively()` - parse case-insensitive de sufijos ("1.5k", "2m", "1qa", "2.5Qi", "-2.5B").
-- `void toleratesCommaAndDotSeparators()` - tolera coma decimal ("1,5K"), miles con coma ("1,500"), formato US ("1,234,567.89") y europeo ("1.234.567,89").
-- `void rejectsGarbage()` - null, vacio, letras y sufijo desconocido ("1.5X") lanzan `NumberFormatException`.
-- `void formatCommaGroupsThousands()` - agrupacion de a 3 desde la derecha: 1234567 -> "1,234,567", 1000 -> "1,000", 1234567890 -> "1,234,567,890".
-- `void formatCommaRoundsHalfUpToTwoDecimals()` - redondeo HALF_UP a 2 decimales: 1234.567 -> "1,234.57", 0.005 -> "0.01".
-- `void formatCommaStripsTrailingZeros()` - ceros finales eliminados: 1000.00 -> "1,000" (sin notacion cientifica), 1000.10 -> "1,000.1", 0 -> "0".
-- `void formatCommaNegativeValues()` - signo preservado: -1234567.5 -> "-1,234,567.5", -1000 -> "-1,000", -999 -> "-999".
-- `void formatCommaBelowThousandUngrouped()` - bajo 1000 sin comas: "999", "999.99", "1.5".
-- `void formatCommaNaNAndInfinityAsString()` - NaN e infinitos como `String.valueOf`: "NaN", "Infinity", "-Infinity".
-- `void roundTripsWithinSuffixPrecision()` - round-trip format->parse dentro del 0.5% para muestras de todas las magnitudes incluidas negativas.
+- `void formatsPlainNumbersBelowThousand()` - below 1000 no suffix; decimals rounded to 2 (12.345 -> "12.35").
+- `void formatsEachSuffixMagnitude()` - each magnitude: 1.5K, 1M, 2.5B, 1T, 1Qa (1e15), 1Qi (1e18).
+- `void formatsNegativesAndRoundsToTwoDecimals()` - negatives ("-1.5K") and rounding to 2 decimals ("1.23M").
+- `void promotesWhenRoundingReachesNextMagnitude()` - promotion on rounding: 999999 -> "1M", 999.999 -> "1K" (never "1000K").
+- `void parsesSuffixedInputCaseInsensitively()` - case-insensitive suffix parsing ("1.5k", "2m", "1qa", "2.5Qi", "-2.5B").
+- `void toleratesCommaAndDotSeparators()` - tolerates a decimal comma ("1,5K"), comma thousands ("1,500"), US format ("1,234,567.89") and European format ("1.234.567,89").
+- `void rejectsGarbage()` - null, empty, letters and an unknown suffix ("1.5X") throw `NumberFormatException`.
+- `void formatCommaGroupsThousands()` - grouping in 3s from the right: 1234567 -> "1,234,567", 1000 -> "1,000", 1234567890 -> "1,234,567,890".
+- `void formatCommaRoundsHalfUpToTwoDecimals()` - HALF_UP rounding to 2 decimals: 1234.567 -> "1,234.57", 0.005 -> "0.01".
+- `void formatCommaStripsTrailingZeros()` - trailing zeros removed: 1000.00 -> "1,000" (no scientific notation), 1000.10 -> "1,000.1", 0 -> "0".
+- `void formatCommaNegativeValues()` - sign preserved: -1234567.5 -> "-1,234,567.5", -1000 -> "-1,000", -999 -> "-999".
+- `void formatCommaBelowThousandUngrouped()` - below 1000 no commas: "999", "999.99", "1.5".
+- `void formatCommaNaNAndInfinityAsString()` - NaN and infinities as `String.valueOf`: "NaN", "Infinity", "-Infinity".
+- `void roundTripsWithinSuffixPrecision()` - format->parse round-trip within 0.5% for samples of every magnitude including negatives.
 
 ### PlayerLookupParseTest
 `src/test/java/com/sn/lib/util/PlayerLookupParseTest.java`
-4 tests JUnit puros (sin Bukkit init, sin HTTP) sobre los helpers package-private `parseUuid` y `validName` de `com.sn.lib.util.PlayerLookup` (v1.1).
+4 pure JUnit tests (no Bukkit init, no HTTP) over the package-private helpers `parseUuid` and `validName` of `com.sn.lib.util.PlayerLookup` (v1.1).
 
 - `void parseUuidInsertsDashes()` - `{"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch"}` -> `069a79f4-44e9-4726-a5be-fca90e38aaf5`.
-- `void parseUuidRejectsBadLengthOrNonHex()` - ids de 31 o 33 chars y con no-hex ('g') devuelven null.
-- `void parseUuidMissingFieldReturnsNull()` - campo `id` ausente, valor no-string y body null devuelven null.
-- `void validNameAcceptsValidRejectsInvalid()` - acepta `Notch` y `a_1`; rechaza null, vacio, 17 chars, `bad-name` y nombres con espacios.
+- `void parseUuidRejectsBadLengthOrNonHex()` - 31 or 33 char ids and non-hex ('g') return null.
+- `void parseUuidMissingFieldReturnsNull()` - a missing `id` field, a non-string value and a null body return null.
+- `void validNameAcceptsValidRejectsInvalid()` - accepts `Notch` and `a_1`; rejects null, empty, 17 chars, `bad-name` and names with spaces.
 
 ### YamlPreprocessorTest
 `src/test/java/com/sn/lib/YamlPreprocessorTest.java`
-8 tests sobre `com.sn.lib.yml.YamlPreprocessor` (`preprocess(String)` que devuelve el record `Result` con `cleanText()` y `fixedLines()`, y `read(Path)`): la capa que repara YAML indentado con tabs antes de SnakeYAML. Usa el fixture `/yml/tabs-broken.yml`.
+8 tests over `com.sn.lib.yml.YamlPreprocessor` (`preprocess(String)` returning the `Result` record with `cleanText()` and `fixedLines()`, and `read(Path)`): the layer that repairs tab-indented YAML before SnakeYAML. Uses the `/yml/tabs-broken.yml` fixture.
 
-- `void rawFixtureIsRejectedBySnakeYaml()` - control del golden: el fixture crudo NO parsea con SnakeYAML sin preprocesar.
-- `void preprocessedFixtureParsesAndPreservesValues()` - el texto preprocesado parsea y preserva los valores: el tab DENTRO de un valor quoted ("Sn\tLib"), la indentacion mixta tab/espacio, tabs en items de lista y el contenido de block scalars byte a byte.
-- `void reportsFixedLinesOneBased()` - `fixedLines()` reporta las lineas corregidas 1-based (3, 4, 6, 8, 9 en el fixture).
-- `void rewritesIndentTabsButNotBlockScalarContent()` - reescribe SOLO los tabs de indentacion; las lineas internas de un block scalar quedan intactas (incluso un tab lider dentro del bloque).
-- `void normalizesCrlfToLf()` - normaliza CRLF a LF ademas de los tabs.
-- `void isIdempotentOnCleanText()` - idempotencia: preprocesar texto ya limpio no cambia nada y no reporta fixes.
-- `void neverThrowsOnDegenerateInput()` - null y vacio devuelven Result vacio; input degenerado ("\t: weird") se repara sin lanzar jamas.
-- `void readsUtf8AndStripsBom(@TempDir Path)` - `read(Path)` lee UTF-8 y strippea el BOM inicial.
+- `void rawFixtureIsRejectedBySnakeYaml()` - golden control: the raw fixture does NOT parse with SnakeYAML unpreprocessed.
+- `void preprocessedFixtureParsesAndPreservesValues()` - the preprocessed text parses and preserves values: the tab INSIDE a quoted value ("Sn\tLib"), mixed tab/space indentation, tabs in list items and block scalar content byte for byte.
+- `void reportsFixedLinesOneBased()` - `fixedLines()` reports the corrected lines 1-based (3, 4, 6, 8, 9 in the fixture).
+- `void rewritesIndentTabsButNotBlockScalarContent()` - it rewrites ONLY indentation tabs; the inner lines of a block scalar stay intact (even a leading tab inside the block).
+- `void normalizesCrlfToLf()` - normalizes CRLF to LF besides the tabs.
+- `void isIdempotentOnCleanText()` - idempotency: preprocessing already-clean text changes nothing and reports no fixes.
+- `void neverThrowsOnDegenerateInput()` - null and empty return an empty Result; degenerate input ("\t: weird") repairs without ever throwing.
+- `void readsUtf8AndStripsBom(@TempDir Path)` - `read(Path)` reads UTF-8 and strips the leading BOM.
 
 ### RequirementEngineTest
 `src/test/java/com/sn/lib/RequirementEngineTest.java`
-22 tests sobre `com.sn.lib.action.RequirementEngine.parse(List<String>)` / `parse(List<String>, Consumer<String>)` y el arbol inmutable `com.sn.lib.action.Requirement` evaluado con `test(player, resolver)`: el motor de click/view/interact-requirements. Usa un resolver mock que reemplaza tokens `%key%`.
+22 tests over `com.sn.lib.action.RequirementEngine.parse(List<String>)` / `parse(List<String>, Consumer<String>)` and the immutable tree `com.sn.lib.action.Requirement` evaluated with `test(player, resolver)`: the click/view/interact-requirements engine. Uses a mock resolver that replaces `%key%` tokens.
 
-- `void numericAndChainWithinOneLine()` - `>` y `<` encadenados con `&&` en una linea; los limites quedan excluidos.
-- `void linesJoinWithImplicitAnd()` - varias lineas de la lista se unen con AND implicito.
-- `void allNumericOperators()` - los 6 operadores numericos: `>=`, `<=`, `=`, `==`, `!=` (y sus negativos).
-- `void integerAndDecimalCompareNumerically()` - "5" == "5.0": la igualdad compara numericamente cuando ambos lados son numeros.
-- `void equalityFallsBackToCaseInsensitiveLexicographic()` - `=`/`!=` con operandos no numericos caen a comparacion lexicografica case-insensitive ("VIP" == "vip").
-- `void nonNumericRelationalIsFalseWithWarn()` - relacional (`>`) con operando no numerico evalua false y warnea (incluyendo operador y valor en el mensaje).
-- `void andBindsTighterThanOr()` - `&&` liga mas fuerte que `||` (precedencia estandar).
-- `void malformedLineWarnsAndEvaluatesTrue()` - linea sin operador warnea y evalua TRUE (fail-open: una config rota no bloquea el menu).
-- `void emptyOperandIsMalformed()` - operando izquierdo vacio ("> 5") es malformado: warn + true.
-- `void malformedBranchTurnsWholeLineTrue()` - una rama malformada dentro de una linea con `&&` vuelve TRUE la linea entera.
-- `void nullEmptyAndBlankInputAlwaysPass()` - null, lista vacia y lineas en blanco siempre pasan.
-- `void nullResolverLeavesTokensUntouched()` - resolver null deja los tokens intactos (los literales evaluan, los `%x%` no matchean).
-- `void placeholdersResolveAtTestTimeNotParseTime()` - los placeholders se resuelven en cada `test`, no al parsear: el mismo Requirement da resultados distintos con valores distintos.
-- `void parenthesesGroupOrOverAnd()` - `(a || b) && c` agrupa distinto que la misma linea sin parentesis (el grupo cambia el resultado).
-- `void nestedParenthesesParse()` - parentesis anidados `((a && b) || c)` parsean y evaluan.
-- `void quotedOperandKeepsConnectorsLiteral()` - `%rank% = 'VIP && MVP'`: el `&&` dentro de comillas es literal, no conector.
-- `void quotedOperandKeepsParensLiteral()` - `%tag% = "(admin)"`: los parentesis dentro de comillas son literales.
-- `void quotesAreStrippedFromOperand()` - las comillas se quitan del operando final (el valor resuelto matchea sin comillas).
-- `void operatorInsideQuotesIsNotAnOperator()` - `%x% = 'a >= b'` evalua EQ, no GE: los simbolos de operador dentro de comillas son literales.
-- `void unbalancedParenFailsOpenWithWarn()` - `(` sin cierre cae en fail-open: always-true con UN warn en el sink.
-- `void strayCloseParenFailsOpenWithWarn()` - `)` suelto al final de la linea cae en fail-open con un warn.
-- `void unquotedLegacyExpressionsKeepTheirTree()` - expresiones estilo 1.0.0 (sin comillas ni parentesis) producen el mismo arbol y los mismos resultados que antes.
+- `void numericAndChainWithinOneLine()` - `>` and `<` chained with `&&` on one line; the bounds stay excluded.
+- `void linesJoinWithImplicitAnd()` - several list lines join with implicit AND.
+- `void allNumericOperators()` - the 6 numeric operators: `>=`, `<=`, `=`, `==`, `!=` (and their negatives).
+- `void integerAndDecimalCompareNumerically()` - "5" == "5.0": equality compares numerically when both sides are numbers.
+- `void equalityFallsBackToCaseInsensitiveLexicographic()` - `=`/`!=` with non-numeric operands fall back to case-insensitive lexicographic comparison ("VIP" == "vip").
+- `void nonNumericRelationalIsFalseWithWarn()` - a relational (`>`) with a non-numeric operand evaluates false and warns (including operator and value in the message).
+- `void andBindsTighterThanOr()` - `&&` binds tighter than `||` (standard precedence).
+- `void malformedLineWarnsAndEvaluatesTrue()` - a line without an operator warns and evaluates TRUE (fail-open: a broken config does not lock the menu).
+- `void emptyOperandIsMalformed()` - an empty left operand ("> 5") is malformed: warn + true.
+- `void malformedBranchTurnsWholeLineTrue()` - a malformed branch inside an `&&` line turns the WHOLE line TRUE.
+- `void nullEmptyAndBlankInputAlwaysPass()` - null, an empty list and blank lines always pass.
+- `void nullResolverLeavesTokensUntouched()` - a null resolver leaves the tokens intact (literals evaluate, `%x%` do not match).
+- `void placeholdersResolveAtTestTimeNotParseTime()` - placeholders resolve on each `test`, not at parse time: the same Requirement yields different results with different values.
+- `void parenthesesGroupOrOverAnd()` - `(a || b) && c` groups differently than the same line without parentheses (the group changes the result).
+- `void nestedParenthesesParse()` - nested parentheses `((a && b) || c)` parse and evaluate.
+- `void quotedOperandKeepsConnectorsLiteral()` - `%rank% = 'VIP && MVP'`: the `&&` inside quotes is literal, not a connector.
+- `void quotedOperandKeepsParensLiteral()` - `%tag% = "(admin)"`: parentheses inside quotes are literal.
+- `void quotesAreStrippedFromOperand()` - quotes are stripped from the final operand (the resolved value matches unquoted).
+- `void operatorInsideQuotesIsNotAnOperator()` - `%x% = 'a >= b'` evaluates EQ, not GE: operator symbols inside quotes are literal.
+- `void unbalancedParenFailsOpenWithWarn()` - an unclosed `(` falls open: always-true with ONE warn in the sink.
+- `void strayCloseParenFailsOpenWithWarn()` - a stray `)` at the end of the line falls open with a warn.
+- `void unquotedLegacyExpressionsKeepTheirTree()` - 1.0.0-style expressions (no quotes or parentheses) produce the same tree and the same results as before.
 
 ### CronNextRunTest
 `src/test/java/com/sn/lib/CronNextRunTest.java`
-13 tests sobre `com.sn.lib.cron.CronExpr.parse(String)` y `nextRun(ZonedDateTime)`: cron de 5 campos mas atajos `daily HH:MM` y `hourly :MM`, con manejo real de zonas horarias y DST (probado en UTC y America/New_York).
+13 tests over `com.sn.lib.cron.CronExpr.parse(String)` and `nextRun(ZonedDateTime)`: the 5-field cron plus `daily HH:MM` and `hourly :MM` shortcuts, with real timezone and DST handling (tested in UTC and America/New_York).
 
-- `void stepFieldMatchesNextMultiple()` - campos step (`*/15`) matchean el proximo multiplo, cruzando de hora si hace falta.
-- `void listAndRangeFieldsCombine()` - listas y rangos combinados ("0,30 9-17 * * *"), incluyendo el salto al dia siguiente al agotar el rango horario.
-- `void dayOfWeekFieldWaitsForMatchingDay()` - el campo day-of-week espera al proximo dia que matchee (viernes -> lunes).
-- `void sundayMatchesBothZeroAndSeven()` - domingo matchea tanto con 0 como con 7.
-- `void dailyShortcutIsStrictlyAfterFrom()` - `daily 04:00` es estrictamente posterior al `from`: en el instante exacto devuelve el dia siguiente.
-- `void hourlyShortcutMatchesEveryHour()` - `hourly :30` matchea cada hora, tambien estrictamente posterior.
-- `void dayThirtyOneSkipsShorterMonths()` - dia 31 saltea meses cortos (desde abril, el proximo 31 es el 31 de mayo).
-- `void februaryTwentyNinthWaitsForLeapYear()` - 29 de febrero espera al proximo año bisiesto (2028 desde 2026).
-- `void springForwardShortensTheRealDelay()` - inicio de DST en US: el delay real se acorta a 19h porque la hora 02:00-02:59 no existe.
-- `void fallBackLengthensTheRealDelay()` - fin de DST: el delay real se alarga a 21h porque la hora 01:00-01:59 se repite.
-- `void wallClockErasedByDstGapSkipsToNextDay()` - un `daily 02:30` cuya hora de pared es borrada por el gap de DST cae al dia siguiente, no a una hora corrida.
-- `void invalidExpressionsThrow()` - expresiones invalidas lanzan `IllegalArgumentException`: minuto 61, 3 campos, letras, `daily 25:00`, `hourly :75`, vacio y step 0.
-- `void impossibleDateNeverMatches()` - una fecha imposible (31 de febrero) lanza `IllegalStateException` en `nextRun` en vez de loopear infinito.
+- `void stepFieldMatchesNextMultiple()` - step fields (`*/15`) match the next multiple, crossing the hour if needed.
+- `void listAndRangeFieldsCombine()` - combined lists and ranges ("0,30 9-17 * * *"), including the jump to the next day when the hour range runs out.
+- `void dayOfWeekFieldWaitsForMatchingDay()` - the day-of-week field waits for the next matching day (Friday -> Monday).
+- `void sundayMatchesBothZeroAndSeven()` - Sunday matches with both 0 and 7.
+- `void dailyShortcutIsStrictlyAfterFrom()` - `daily 04:00` is strictly after `from`: at the exact instant it returns the next day.
+- `void hourlyShortcutMatchesEveryHour()` - `hourly :30` matches every hour, also strictly after.
+- `void dayThirtyOneSkipsShorterMonths()` - day 31 skips short months (from April, the next 31st is May 31).
+- `void februaryTwentyNinthWaitsForLeapYear()` - February 29 waits for the next leap year (2028 from 2026).
+- `void springForwardShortensTheRealDelay()` - US DST start: the real delay shortens to 19h because the 02:00-02:59 hour does not exist.
+- `void fallBackLengthensTheRealDelay()` - DST end: the real delay lengthens to 21h because the 01:00-01:59 hour repeats.
+- `void wallClockErasedByDstGapSkipsToNextDay()` - a `daily 02:30` whose wall-clock hour is erased by the DST gap falls to the next day, not to a shifted hour.
+- `void invalidExpressionsThrow()` - invalid expressions throw `IllegalArgumentException`: minute 61, 3 fields, letters, `daily 25:00`, `hourly :75`, empty and step 0.
+- `void impossibleDateNeverMatches()` - an impossible date (February 31) throws `IllegalStateException` in `nextRun` instead of looping forever.
 
 ### LeaderboardSnapshotTest
 `src/test/java/com/sn/lib/LeaderboardSnapshotTest.java`
-9 tests sobre `com.sn.lib.leaderboard.LeaderboardCache.Snapshot` (`Snapshot.of(List<Entry>)`, `Snapshot.empty()`, `top(int)`, `positionOf(UUID)`, `valueOf(UUID)`, `size()`) y el record `LeaderboardCache.Entry(UUID, String name, double value)`: la vista inmutable cache-only apta para resolvers de PlaceholderAPI.
+9 tests over `com.sn.lib.leaderboard.LeaderboardCache.Snapshot` (`Snapshot.of(List<Entry>)`, `Snapshot.empty()`, `top(int)`, `positionOf(UUID)`, `valueOf(UUID)`, `size()`) and the `LeaderboardCache.Entry(UUID, String name, double value)` record: the immutable cache-only view fit for PlaceholderAPI resolvers.
 
-- `void ordersByValueDescending()` - ordena por valor descendente.
-- `void tiesBreakByNameAscending()` - empates de valor desempatan por nombre ascendente.
-- `void topClampsToSizeAndRejectsNonPositive()` - `top(n)` clampea al tamaño real y devuelve vacio para n <= 0.
-- `void positionsAreOneBasedAndZeroWhenUnranked()` - posiciones 1-based; 0 para uuid no rankeado o null.
-- `void valueOfReturnsCachedValueAndZeroWhenUnranked()` - `valueOf` devuelve el valor cacheado; 0.0 para no rankeado o null.
-- `void duplicateUuidKeepsBestPosition()` - un uuid duplicado conserva su mejor posicion y valor.
-- `void snapshotIsImmutable()` - las listas de `top` son inmutables (`UnsupportedOperationException` al mutar).
-- `void emptyAndNullInputsYieldEmptySnapshot()` - lista vacia o null producen snapshot vacio; `Snapshot.empty()` responde vacio y posicion 0.
-- `void nullRowsAndNullNamesAreTolerated()` - filas null se descartan y nombres null se normalizan a "".
+- `void ordersByValueDescending()` - orders by value descending.
+- `void tiesBreakByNameAscending()` - value ties break by ascending name.
+- `void topClampsToSizeAndRejectsNonPositive()` - `top(n)` clamps to the real size and returns empty for n <= 0.
+- `void positionsAreOneBasedAndZeroWhenUnranked()` - 1-based positions; 0 for an unranked or null uuid.
+- `void valueOfReturnsCachedValueAndZeroWhenUnranked()` - `valueOf` returns the cached value; 0.0 for unranked or null.
+- `void duplicateUuidKeepsBestPosition()` - a duplicate uuid keeps its best position and value.
+- `void snapshotIsImmutable()` - `top`'s lists are immutable (`UnsupportedOperationException` on mutation).
+- `void emptyAndNullInputsYieldEmptySnapshot()` - an empty or null list produces an empty snapshot; `Snapshot.empty()` answers empty and position 0.
+- `void nullRowsAndNullNamesAreTolerated()` - null rows are discarded and null names normalize to "".
 
 ### CenterUtilTest
 `src/test/java/com/sn/lib/CenterUtilTest.java`
-9 tests sobre `com.sn.lib.text.CenterUtil.center(String)`: centrado pixel-exacto contra el half-width de 154px del chat, donde los codigos de color son invisibles al medir, el bold ensancha glifos y las lineas mas anchas que la ventana pasan intactas.
+9 tests over `com.sn.lib.text.CenterUtil.center(String)`: pixel-exact centering against the chat's 154px half-width, where color codes are invisible while measuring, bold widens glyphs and lines wider than the window pass intact.
 
-- `void centersShortLineWithExactPixelMath()` - matematica de pixeles exacta: "ab" (12px) compensa 148px en espacios de 4px -> 37 espacios lideres.
-- `void emptyAndNullPassThrough()` - "" y null pasan sin tocar (null devuelve la MISMA referencia).
-- `void lineWiderThanWindowIsUnchanged()` - una linea mas ancha que la ventana vuelve sin cambios (misma instancia, `assertSame`).
-- `void colorCodesAreIgnoredWhileMeasuring()` - los codigos `&a` y hex `&#RRGGBB` no cuentan pixeles: mismo padding que la version plana.
-- `void sectionSignCodesAreIgnoredWhileMeasuring()` - idem con codigos `§`.
-- `void boldWidensTheMeasuredLine()` - `&l` suma 1px por glifo no-espacio: una linea bold larga necesita menos espacios lideres.
-- `void resetStopsBoldMeasurement()` - `&r` corta la medicion en bold para los caracteres posteriores.
-- `void smallCapsLineMeasuresLikeUppercase()` - una linea small caps (`SnText.smallCaps`) recibe el mismo padding que su version en mayusculas: glifos small base 5 = mayusculas base 5 ("HELLO") y U+026A base 3 = 'I' base 3 ("HI").
-- `void centeredGradientLineKeepsPayloadIntact()` - una linea como sale de la fase `[rgb]` (un hex por caracter) conserva el payload intacto y solo cuentan los glifos visibles (H+i+! = 10px -> 38 espacios). Documenta el orden real del pipeline: `[center]` corre despues de `[rgb]`.
+- `void centersShortLineWithExactPixelMath()` - exact pixel math: "ab" (12px) compensates 148px in 4px spaces -> 37 leading spaces.
+- `void emptyAndNullPassThrough()` - "" and null pass untouched (null returns the SAME reference).
+- `void lineWiderThanWindowIsUnchanged()` - a line wider than the window returns unchanged (same instance, `assertSame`).
+- `void colorCodesAreIgnoredWhileMeasuring()` - `&a` and hex `&#RRGGBB` codes count no pixels: same padding as the plain version.
+- `void sectionSignCodesAreIgnoredWhileMeasuring()` - same with `§` codes.
+- `void boldWidensTheMeasuredLine()` - `&l` adds 1px per non-space glyph: a long bold line needs fewer leading spaces.
+- `void resetStopsBoldMeasurement()` - `&r` cuts bold measurement for the following characters.
+- `void smallCapsLineMeasuresLikeUppercase()` - a small caps line (`SnText.smallCaps`) receives the same padding as its uppercase version: small glyphs base 5 = uppercase base 5 ("HELLO") and U+026A base 3 = 'I' base 3 ("HI").
+- `void centeredGradientLineKeepsPayloadIntact()` - a line as it exits the `[rgb]` phase (one hex per character) keeps its payload intact and only the visible glyphs count (H+i+! = 10px -> 38 spaces). It documents the pipeline's real order: `[center]` runs after `[rgb]`.
 
 ### SmallCapsTest
 `src/test/java/com/sn/lib/SmallCapsTest.java`
-16 tests sobre `com.sn.lib.text.SmallCapsUtil.applySmallTag(String)` y la composicion del tag `[small]` en `com.sn.lib.text.SnText` (`applyPrefixTags`): la sustitucion small caps 1:1 con skip verbatim de codigos de color, secuencias section-sign y tags MiniMessage. Los glifos esperados se escriben con escapes `\uXXXX`.
+16 tests over `com.sn.lib.text.SmallCapsUtil.applySmallTag(String)` and the `[small]` tag composition in `com.sn.lib.text.SnText` (`applyPrefixTags`): the 1:1 small caps substitution with verbatim skipping of color codes, section-sign sequences and MiniMessage tags. Expected glyphs are written with `\uXXXX` escapes.
 
-- `void lowercaseAlphabetMapsToSmallCaps()` - el alfabeto a-z completo mapea exactamente al diccionario SMALL de 26 glifos.
-- `void uppercaseMapsLikeLowercase()` - "ABCXYZ" produce lo mismo que "abcxyz" (la caja no existe en small caps).
-- `void enyeKeepsDefaultGlyph()` - la enye minuscula queda intacta y la mayuscula baja a la enye minuscula default U+00F1.
-- `void accentedVowelsLoseAccent()` - las vocales acentuadas (y la u con dieresis) de ambas cajas se des-acentuan a los glifos small.
-- `void digitsSymbolsAndSpacesPassThrough()` - digitos, simbolos y espacios pasan intactos.
-- `void legacyColorCodesSkipped()` - los codigos `&a`/`&l` quedan intactos (la 'a' y la 'l' del codigo no se mapean) y el texto visible se transforma.
-- `void legacyHexCodesSkipped()` - `&#ff9b00` queda intacto (los 6 digitos hex minusculas no se mapean) y el texto posterior se transforma.
-- `void sectionSignCodesSkipped()` - `§a` y la secuencia bungee completa de 14 chars quedan intactos; el texto visible se transforma.
-- `void miniMessageTagsSkipped()` - `<bold>` y `</bold>` quedan intactos y el contenido entre tags se transforma.
-- `void literalAngleBracketStillTransforms()` - un `<` sin `>` de cierre es literal y no frena la transformacion ("i<3" -> la i se mapea).
-- `void outputLengthAlwaysEqualsInput()` - invariante 1:1: el output mide igual que el input para inputs representativos (alfabeto, codigos, tags, linea mixta).
-- `void unchangedLineReturnsSameInstance()` - `assertSame`: una linea sin letras mapeables y un string ya en small caps devuelven la misma instancia.
-- `void nullAndEmptyPassThrough()` - null devuelve null y "" devuelve la misma instancia.
-- `void tagIsCaseInsensitive()` - `[SMALL]` y `[small]` rinden identico en `SnText.applyPrefixTags`.
-- `void smallAndRgbComposeInAnyOrder()` - `[small][rgb]` == `[rgb][small]` (orden interno fijo de aplicacion).
-- `void centerMarkSurvivesSmall()` - `[center][small]hi` re-emite la marca `[center]` lider con el resto ya en small caps.
+- `void lowercaseAlphabetMapsToSmallCaps()` - the full a-z alphabet maps exactly to the 26-glyph SMALL dictionary.
+- `void uppercaseMapsLikeLowercase()` - "ABCXYZ" produces the same as "abcxyz" (case does not exist in small caps).
+- `void enyeKeepsDefaultGlyph()` - the lowercase enye stays intact and the uppercase one lowers to the default lowercase enye U+00F1.
+- `void accentedVowelsLoseAccent()` - accented vowels (and the u with diaeresis) of both cases de-accent to the small glyphs.
+- `void digitsSymbolsAndSpacesPassThrough()` - digits, symbols and spaces pass intact.
+- `void legacyColorCodesSkipped()` - `&a`/`&l` codes stay intact (the code's 'a' and 'l' do not map) and the visible text transforms.
+- `void legacyHexCodesSkipped()` - `&#ff9b00` stays intact (the 6 lowercase hex digits do not map) and the following text transforms.
+- `void sectionSignCodesSkipped()` - `§a` and the full 14-char bungee sequence stay intact; the visible text transforms.
+- `void miniMessageTagsSkipped()` - `<bold>` and `</bold>` stay intact and the content between tags transforms.
+- `void literalAngleBracketStillTransforms()` - a `<` without a closing `>` is literal and does not stop the transformation ("i<3" -> the i maps).
+- `void outputLengthAlwaysEqualsInput()` - the 1:1 invariant: the output measures the same as the input for representative inputs (alphabet, codes, tags, a mixed line).
+- `void unchangedLineReturnsSameInstance()` - `assertSame`: a line with no mappable letters and an already small caps string return the same instance.
+- `void nullAndEmptyPassThrough()` - null returns null and "" returns the same instance.
+- `void tagIsCaseInsensitive()` - `[SMALL]` and `[small]` render identically in `SnText.applyPrefixTags`.
+- `void smallAndRgbComposeInAnyOrder()` - `[small][rgb]` == `[rgb][small]` (fixed internal application order).
+- `void centerMarkSurvivesSmall()` - `[center][small]hi` re-emits the leading `[center]` mark with the rest already in small caps.
 
 ### YamlUpdaterTest
 `src/test/java/com/sn/lib/YamlUpdaterTest.java`
-12 tests golden sobre `com.sn.lib.yml.YamlUpdater` (`merge(List<String>, List<String>)`, `prune(List<String>, List<String>)`, `isParseable(String)`): el updater always-merge de configs. Contrato probado: las keys faltantes aterrizan CON sus comentarios en la posicion anclada, los valores del usuario y sus keys extra quedan intactos, no existe ninguna key de version marker, y el quoting de keys se normaliza al comparar. Todas las aserciones comparan `List<String>` (texto linea a linea, no arboles parseados). Fixtures: `merge-resource.yml`, `merge-old.yml`, `merge-expected.yml`, `corrupt.yml`.
+12 golden tests over `com.sn.lib.yml.YamlUpdater` (`merge(List<String>, List<String>)`, `prune(List<String>, List<String>)`, `isParseable(String)`): the always-merge config updater. Contract tested: missing keys land WITH their comments at the anchored position, the user's values and extra keys stay intact, no version marker key exists, and key quoting normalizes on comparison. All assertions compare `List<String>` (line-by-line text, not parsed trees). Fixtures: `merge-resource.yml`, `merge-old.yml`, `merge-expected.yml`, `corrupt.yml`.
 
-- `void mergeMatchesGoldenExpected()` - el merge del resource nuevo sobre el disk viejo reproduce byte a byte el golden `merge-expected.yml`.
-- `void mergePreservesUserValuesAndExtraKeys()` - valores del usuario (`rows: 3`, titulo custom, prefix) y su key extra `custom-flag` sobreviven.
-- `void mergeInsertsNewKeysWithTheirComments()` - una key nueva aterriza con su comentario pegado en la linea anterior, anclada entre sus vecinos del resource.
-- `void mergeInsertsWholeMissingSubsection()` - una subseccion completa faltante (`storage:` con header, `type` y `table-prefix`) se inserta entre sus hermanos del resource (`settings:` antes, `messages:` despues).
-- `void pruneIsOptInAndRemovesOnlyKeysAbsentFromResource()` - `prune` es opt-in: el merge default conserva `custom-flag`; el prune lo remueve junto a su comentario, conserva los valores del usuario en keys compartidas y el resultado sigue parseando.
-- `void pruneIsANoOpWhenDiskMatchesResourceStructure()` - prune sobre estructura identica es no-op exacto.
-- `void mergeIsIdempotentOnUpToDateFile()` - merge sobre un archivo ya actualizado es idempotente (igual al expected).
-- `void mergedResultHasNoVersionMarkerAndStaysParseable()` - el resultado no contiene `config-version` en ninguna linea y es YAML parseable.
-- `void corruptYamlIsDetectedAsUnparseable()` - `isParseable` detecta el fixture corrupto como invalido y el fixture sano como valido.
-- `void quotedAndUnquotedKeysCompareEqualOnMerge()` - recurso `foo: 1` contra disco `'foo': 2`: el merge no inserta nada y el valor de disco queda intacto.
-- `void quotedResourceKeyInsertsWithItsTextualForm()` - una key quoted del recurso (`"bar": 3`) ausente en disco se inserta conservando las comillas del recurso.
-- `void pruneKeepsKeyWhenOnlyQuotingDiffers()` - prune con recurso `foo:` y disco `"foo":` no borra el bloque (solo difiere el quoting).
+- `void mergeMatchesGoldenExpected()` - merging the new resource over the old disk reproduces the golden `merge-expected.yml` byte for byte.
+- `void mergePreservesUserValuesAndExtraKeys()` - the user's values (`rows: 3`, a custom title, prefix) and their extra `custom-flag` key survive.
+- `void mergeInsertsNewKeysWithTheirComments()` - a new key lands with its comment attached on the previous line, anchored between its resource neighbors.
+- `void mergeInsertsWholeMissingSubsection()` - a whole missing subsection (`storage:` with header, `type` and `table-prefix`) inserts between its resource siblings (`settings:` before, `messages:` after).
+- `void pruneIsOptInAndRemovesOnlyKeysAbsentFromResource()` - `prune` is opt-in: the default merge keeps `custom-flag`; the prune removes it along with its comment, keeps the user's values in shared keys and the result still parses.
+- `void pruneIsANoOpWhenDiskMatchesResourceStructure()` - prune over an identical structure is an exact no-op.
+- `void mergeIsIdempotentOnUpToDateFile()` - a merge over an already-updated file is idempotent (equal to the expected).
+- `void mergedResultHasNoVersionMarkerAndStaysParseable()` - the result contains `config-version` in no line and is parseable YAML.
+- `void corruptYamlIsDetectedAsUnparseable()` - `isParseable` detects the corrupt fixture as invalid and the healthy fixture as valid.
+- `void quotedAndUnquotedKeysCompareEqualOnMerge()` - resource `foo: 1` against disk `'foo': 2`: the merge inserts nothing and the disk value stays intact.
+- `void quotedResourceKeyInsertsWithItsTextualForm()` - a quoted resource key (`"bar": 3`) absent from disk inserts keeping the resource's quotes.
+- `void pruneKeepsKeyWhenOnlyQuotingDiffers()` - a prune with resource `foo:` and disk `"foo":` does not delete the block (only the quoting differs).
 
 ### SnItemAttributeParseTest
 `src/test/java/com/sn/lib/item/SnItemAttributeParseTest.java`
-9 tests sobre los helpers package-private de `com.sn.lib.item.SnItem` para attribute modifiers: `attributeKeyCandidates(String)` (candidatos de resolucion leniente del rename 1.21.2+) y `legacySlot(String)` (mapeo de slot-group a `EquipmentSlot` legacy). JVM puro: los helpers no tocan Bukkit runtime.
+9 tests over the package-private helpers of `com.sn.lib.item.SnItem` for attribute modifiers: `attributeKeyCandidates(String)` (the lenient resolution candidates of the 1.21.2+ rename) and `legacySlot(String)` (the slot-group to legacy `EquipmentSlot` mapping). Pure JVM: the helpers do not touch Bukkit runtime.
 
-- `void genericPrefixedNameYieldsModernAndLegacyCandidates()` - "GENERIC_MOVEMENT_SPEED" produce "generic_movement_speed", "movement_speed" y "generic.movement_speed".
-- `void bareModernNameYieldsLegacyAlias()` - "ARMOR" produce "armor" y el alias inverso "generic.armor".
-- `void playerPrefixYieldsDottedForm()` - "PLAYER_BLOCK_INTERACTION_RANGE" produce "player.block_interaction_range" y "block_interaction_range".
-- `void namespacedInputNormalizes()` - "minecraft:generic.armor" normaliza a "generic.armor".
-- `void candidatesHaveNoDuplicates()` - la lista de candidatos no tiene duplicados para inputs representativos.
-- `void anyArmorAndBodyMapToNull()` - ANY/ARMOR/BODY/null/blank mapean a null (sin slot = cualquier slot).
-- `void mainhandMapsToHand()` - MAINHAND (en ambas cajas) mapea a `EquipmentSlot.HAND`.
-- `void offhandMapsToOffHand()` - OFFHAND mapea a `EquipmentSlot.OFF_HAND`.
-- `void feetMapsDirect()` - FEET mapea directo a `EquipmentSlot.FEET`.
+- `void genericPrefixedNameYieldsModernAndLegacyCandidates()` - "GENERIC_MOVEMENT_SPEED" produces "generic_movement_speed", "movement_speed" and "generic.movement_speed".
+- `void bareModernNameYieldsLegacyAlias()` - "ARMOR" produces "armor" and the inverse alias "generic.armor".
+- `void playerPrefixYieldsDottedForm()` - "PLAYER_BLOCK_INTERACTION_RANGE" produces "player.block_interaction_range" and "block_interaction_range".
+- `void namespacedInputNormalizes()` - "minecraft:generic.armor" normalizes to "generic.armor".
+- `void candidatesHaveNoDuplicates()` - the candidate list has no duplicates for representative inputs.
+- `void anyArmorAndBodyMapToNull()` - ANY/ARMOR/BODY/null/blank map to null (no slot = any slot).
+- `void mainhandMapsToHand()` - MAINHAND (both cases) maps to `EquipmentSlot.HAND`.
+- `void offhandMapsToOffHand()` - OFFHAND maps to `EquipmentSlot.OFF_HAND`.
+- `void feetMapsDirect()` - FEET maps directly to `EquipmentSlot.FEET`.
 
 ### ClickGuardTest
 `src/test/java/com/sn/lib/action/ClickGuardTest.java`
-7 tests sobre los helpers package-private de `com.sn.lib.action.ActionEngine` para guards de click: `matchesExactClickGuard(String, ClickType)` (la matriz de guards nombrados) y `parseClickTypes(String)` (parseo fail-closed del spec de `[click=...]`). JVM puro: solo usa el enum `ClickType` de la API de Bukkit.
+7 tests over the package-private helpers of `com.sn.lib.action.ActionEngine` for click guards: `matchesExactClickGuard(String, ClickType)` (the named guard matrix) and `parseClickTypes(String)` (the fail-closed parse of the `[click=...]` spec). Pure JVM: it only uses the Bukkit API's `ClickType` enum.
 
-- `void rightClickOnlyExcludesShiftAndDouble()` - `[right-click-only]` pasa solo con RIGHT: excluye SHIFT_RIGHT, DOUBLE_CLICK y CREATIVE.
-- `void leftClickOnlyExcludesShiftDoubleAndCreative()` - `[left-click-only]` pasa solo con LEFT: excluye SHIFT_LEFT, DOUBLE_CLICK y CREATIVE.
-- `void inclusiveGuardsKeepLegacySemantics()` - `[right-click]`/`[left-click]` conservan la semantica inclusiva v1.0.0: right pasa con SHIFT_RIGHT y left pasa con SHIFT_LEFT, DOUBLE_CLICK y CREATIVE.
-- `void sugarGuardsMatchExactly()` - los guards azucar matchean exactamente UN ClickType: `[middle-click]` MIDDLE, `[double-click]` DOUBLE_CLICK, `[drop-click]` DROP (CONTROL_DROP no pasa), `[number-key]` NUMBER_KEY, `[swap-offhand]` SWAP_OFFHAND.
-- `void shiftGuardsUnchanged()` - `[shift-right-click]`/`[shift-left-click]` siguen exactos: no pasan con RIGHT/LEFT planos.
-- `void parseClickTypesAcceptsCaseInsensitiveAndDashes()` - el spec acepta nombres case-insensitive y `-` como `_` ("right", "number-key", "MIDDLE,DROP", "swap_offhand").
-- `void parseClickTypesRejectsInvalidWholesale()` - fail-closed total: un nombre desconocido ("RIGTH"), un spec vacio o un token vacio ("RIGHT,,LEFT") devuelven null (la linea entera no corre).
+- `void rightClickOnlyExcludesShiftAndDouble()` - `[right-click-only]` passes only with RIGHT: excludes SHIFT_RIGHT, DOUBLE_CLICK and CREATIVE.
+- `void leftClickOnlyExcludesShiftDoubleAndCreative()` - `[left-click-only]` passes only with LEFT: excludes SHIFT_LEFT, DOUBLE_CLICK and CREATIVE.
+- `void inclusiveGuardsKeepLegacySemantics()` - `[right-click]`/`[left-click]` keep the inclusive v1.0.0 semantics: right passes with SHIFT_RIGHT and left passes with SHIFT_LEFT, DOUBLE_CLICK and CREATIVE.
+- `void sugarGuardsMatchExactly()` - the sugar guards match exactly ONE ClickType: `[middle-click]` MIDDLE, `[double-click]` DOUBLE_CLICK, `[drop-click]` DROP (CONTROL_DROP does not pass), `[number-key]` NUMBER_KEY, `[swap-offhand]` SWAP_OFFHAND.
+- `void shiftGuardsUnchanged()` - `[shift-right-click]`/`[shift-left-click]` stay exact: they do not pass with plain RIGHT/LEFT.
+- `void parseClickTypesAcceptsCaseInsensitiveAndDashes()` - the spec accepts case-insensitive names and `-` as `_` ("right", "number-key", "MIDDLE,DROP", "swap_offhand").
+- `void parseClickTypesRejectsInvalidWholesale()` - total fail-closed: an unknown name ("RIGTH"), an empty spec or an empty token ("RIGHT,,LEFT") return null (the whole line does not run).
 
 ### ClickResolutionTest
 `src/test/java/com/sn/lib/gui/ClickResolutionTest.java`
-6 tests sobre los helpers package-private de `com.sn.lib.gui.GuiItemDef` que sostienen la resolucion de la matriz per-click y el gate strict-clicks: `shiftKey(ClickType)`, `sideKey(ClickType)` y `basicClick(ClickType)`. JVM puro.
+6 tests over the package-private helpers of `com.sn.lib.gui.GuiItemDef` that support the per-click matrix resolution and the strict-clicks gate: `shiftKey(ClickType)`, `sideKey(ClickType)` and `basicClick(ClickType)`. Pure JVM.
 
-- `void shiftKeyMapsOnlyShiftClicks()` - `shiftKey` mapea SOLO SHIFT_RIGHT/SHIFT_LEFT a sus keys; todo lo demas (incluido null) devuelve null.
-- `void sideKeyGroupsRightFamily()` - el lado RIGHT agrupa RIGHT y SHIFT_RIGHT.
-- `void sideKeyGroupsDoubleClickAndCreativeWithLeft()` - el lado LEFT agrupa LEFT, SHIFT_LEFT, DOUBLE_CLICK y CREATIVE (consistente con `isLeftClick()`).
-- `void sideKeyMapsMiddle()` - MIDDLE mapea a su propio lado.
-- `void sideKeyNullForKeyboardAndUnknownClicks()` - NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND y UNKNOWN no tienen lado (null: caen al generico y en strict quedan descartados).
-- `void basicClickIsExactlyTheFourMouseClicks()` - `basicClick` es true exactamente para LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT y false para todo lo demas incluido null (el predicado del gate strict-clicks).
+- `void shiftKeyMapsOnlyShiftClicks()` - `shiftKey` maps ONLY SHIFT_RIGHT/SHIFT_LEFT to their keys; everything else (including null) returns null.
+- `void sideKeyGroupsRightFamily()` - the RIGHT side groups RIGHT and SHIFT_RIGHT.
+- `void sideKeyGroupsDoubleClickAndCreativeWithLeft()` - the LEFT side groups LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE (consistent with `isLeftClick()`).
+- `void sideKeyMapsMiddle()` - MIDDLE maps to its own side.
+- `void sideKeyNullForKeyboardAndUnknownClicks()` - NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND and UNKNOWN have no side (null: they fall to the generic and in strict they stay discarded).
+- `void basicClickIsExactlyTheFourMouseClicks()` - `basicClick` is true exactly for LEFT/RIGHT/SHIFT_LEFT/SHIFT_RIGHT and false for everything else including null (the strict-clicks gate predicate).
 
 ### ItemDefVariantsTest
 `src/test/java/com/sn/lib/item/ItemDefVariantsTest.java`
-4 tests sobre las variantes shift-posicionales y el flag `shift-overrides-generic` de `com.sn.lib.item.ItemDef` construido por builder. JVM puro (los callbacks son lambdas que nunca se invocan).
+4 tests over the shift-positional variants and the `shift-overrides-generic` flag of a builder-built `com.sn.lib.item.ItemDef`. Pure JVM (the callbacks are lambdas never invoked).
 
-- `void shiftPositionalListsDefaultEmpty()` - las 4 listas shift-posicionales default vacias y sus 4 callbacks default null.
-- `void builderSetsShiftPositionalListsAndCallbacks()` - el builder setea las 4 listas y los 4 callbacks y los getters devuelven exactamente lo seteado (mismas instancias de callback).
-- `void shiftOverridesGenericDefaultsTrue()` - `shiftOverridesGeneric()` default true.
-- `void builderDisablesShiftOverridesGeneric()` - el builder puede apagarlo (en shift-click corren ambas variantes del par).
+- `void shiftPositionalListsDefaultEmpty()` - the 4 shift-positional lists default empty and their 4 callbacks default null.
+- `void builderSetsShiftPositionalListsAndCallbacks()` - the builder sets the 4 lists and the 4 callbacks and the getters return exactly what was set (same callback instances).
+- `void shiftOverridesGenericDefaultsTrue()` - `shiftOverridesGeneric()` defaults true.
+- `void builderDisablesShiftOverridesGeneric()` - the builder can turn it off (on shift-click both variants of the pair run).
 
 ### CuboidTest
 `src/test/java/com/sn/lib/CuboidTest.java`
-14 tests sobre el core puro de `com.sn.lib.region.Cuboid` (contencion, iteracion, tamanio, expand y serializacion); JVM puro: ningun test toca los metodos puente que requieren World.
+14 tests over the pure core of `com.sn.lib.region.Cuboid` (containment, iteration, size, expand and serialization); pure JVM: no test touches the bridge methods that require a World.
 
-- `void normalizesCornersOnConstruction()` - el factory normaliza esquinas invertidas (min <= max por eje).
-- `void containsIsEdgeInclusive()` - contains acepta las 8 esquinas y los 6 centros de cara (bordes inclusivos).
-- `void containsRejectsOutsidePoints()` - un bloque fuera por cada uno de los 6 lados se rechaza.
-- `void containsIsWorldAware()` - la variante con worldName rechaza otro mundo y null.
-- `void sizeMatchesInclusiveVolume()` - size es el volumen inclusivo en long (un cuboide 2M x 301 x 2M supera Integer.MAX_VALUE sin overflow).
-- `void forEachVisitsEveryBlockExactlyOnce()` - forEach visita cada bloque exactamente una vez (27 en un 3x3x3).
-- `void forEachOnSingleBlockVisitsOne()` - un cuboide de un bloque visita exactamente ese bloque.
-- `void intersectsDetectsOverlapTouchingAndDisjoint()` - intersects: solapado true (simetrico), tocandose true, disjunto false, otro mundo false.
-- `void expandGrowsBothDirectionsAndClampsCollapse()` - expand crece en ambas direcciones por eje, un encogimiento que colapsa clampa a 1 de ancho sin tirar, y la instancia original queda intacta (inmutabilidad).
-- `void serializeUsesNormalizedMinMaxOrder()` - serialize emite `world;minX;minY;minZ;maxX;maxY;maxZ` normalizado.
-- `void serializeDeserializeRoundTripPreservesEquality()` - round-trip serialize/deserialize preserva equals y hashCode.
-- `void deserializeTrimsPartsLikeLocationSerializer()` - deserialize trimea espacios alrededor de cada parte.
-- `void deserializeReturnsNullOnMalformedInput()` - null, vacio, cantidad de partes incorrecta, numero invalido o mundo vacio devuelven null sin tirar.
-- `void deserializeRenormalizesSwappedCorners()` - un string con esquinas invertidas re-normaliza al deserializar.
+- `void normalizesCornersOnConstruction()` - the factory normalizes inverted corners (min <= max per axis).
+- `void containsIsEdgeInclusive()` - contains accepts the 8 corners and the 6 face centers (inclusive edges).
+- `void containsRejectsOutsidePoints()` - a block outside each of the 6 sides is rejected.
+- `void containsIsWorldAware()` - the worldName variant rejects another world and null.
+- `void sizeMatchesInclusiveVolume()` - size is the inclusive volume in long (a 2M x 301 x 2M cuboid exceeds Integer.MAX_VALUE without overflow).
+- `void forEachVisitsEveryBlockExactlyOnce()` - forEach visits every block exactly once (27 in a 3x3x3).
+- `void forEachOnSingleBlockVisitsOne()` - a one-block cuboid visits exactly that block.
+- `void intersectsDetectsOverlapTouchingAndDisjoint()` - intersects: overlapping true (symmetric), touching true, disjoint false, another world false.
+- `void expandGrowsBothDirectionsAndClampsCollapse()` - expand grows in both directions per axis, a collapsing shrink clamps to 1 width without throwing, and the original instance stays intact (immutability).
+- `void serializeUsesNormalizedMinMaxOrder()` - serialize emits a normalized `world;minX;minY;minZ;maxX;maxY;maxZ`.
+- `void serializeDeserializeRoundTripPreservesEquality()` - the serialize/deserialize round-trip preserves equals and hashCode.
+- `void deserializeTrimsPartsLikeLocationSerializer()` - deserialize trims spaces around each part.
+- `void deserializeReturnsNullOnMalformedInput()` - null, empty, a wrong part count, an invalid number or an empty world return null without throwing.
+- `void deserializeRenormalizesSwappedCorners()` - a string with inverted corners re-normalizes on deserialization.
 
 ### LocationUtilTest
 `src/test/java/com/sn/lib/LocationUtilTest.java`
-3 tests sobre los caminos null-safe de `com.sn.lib.util.LocationUtil` (los unicos testeables sin World: `new Location(null, ...)` no toca estaticos de Bukkit); los caminos positivos world-aware quedan cubiertos por la delegacion en Cuboid (ya testeado) mas el smoke manual de release.
+3 tests over the null-safe paths of `com.sn.lib.util.LocationUtil` (the only ones testable without a World: `new Location(null, ...)` touches no Bukkit statics); the world-aware positive paths are covered by the delegation to Cuboid (already tested) plus the release's manual smoke.
 
-- `void inCuboidNullSafePathsReturnFalse()` - inCuboid con location/corner null o location sin mundo devuelve false sin tirar.
-- `void distance2dNullSafePathsReturnInfinity()` - distance2d/distance2dSquared con null o sin mundo devuelven Double.POSITIVE_INFINITY.
-- `void distanceToBoxNullSafePathsReturnInfinity()` - distanceToBoxSquared con box/location null o location sin mundo devuelve Double.POSITIVE_INFINITY.
+- `void inCuboidNullSafePathsReturnFalse()` - inCuboid with a null location/corner or a worldless location returns false without throwing.
+- `void distance2dNullSafePathsReturnInfinity()` - distance2d/distance2dSquared with null or worldless return Double.POSITIVE_INFINITY.
+- `void distanceToBoxNullSafePathsReturnInfinity()` - distanceToBoxSquared with a null box/location or a worldless location returns Double.POSITIVE_INFINITY.
 
-### Smoke gate de runtime
+### Runtime smoke gate
 
-Ademas de las suites JVM, la lib paso el smoke gate manual en servidor real, en las dos puntas de la matriz soportada, tanto para la release 1.0.0 como para la 1.1.0:
+Besides the JVM suites, the lib passed the manual smoke gate on a real server, at both ends of the supported matrix, for both the 1.0.0 and the 1.1.0 release:
 
-- Paper 1.21.8 build 60 (target): verde en 1.0.0 y en 1.1.0.
-- Paper 1.20.4 build 499 (piso de runtime): verde en 1.0.0 y en 1.1.0.
+- Paper 1.21.8 build 60 (target): green on 1.0.0 and on 1.1.0.
+- Paper 1.20.4 build 499 (runtime floor): green on 1.0.0 and on 1.1.0.
 
-En 1.20.4 el arranque es en modo degradado via `SnCompat.probe` (features 1.21+ apagadas con WARN); el smoke valida que SnLib como plugin standalone enciende y apaga limpio en ambas versiones.
+On 1.20.4 startup runs in degraded mode via `SnCompat.probe` (1.21+ features off with a WARN); the smoke validates that SnLib as a standalone plugin turns on and off cleanly on both versions.
 
-Registro del gate v1.1.0 (Paso 22 del plan v1.1; JVM Java 21 Temurin 21.0.8, jar `SnLib-1.1.0.jar` instalado en `plugins/` de cada Paper local): en ambas versiones arranque sin errores ni excepciones con `SnLib 1.1.0 enabled (API level 2)`; `/snlib version` responde `SnLib version: 1.1.0` + `API level: 2` + la version del server (`1.21.8-R0.1-SNAPSHOT (detected: 1.21.8)` y `1.20.4-R0.1-SNAPSHOT (detected: 1.20.4)`); `/snlib plugins` e `/snlib integrations` responden; bStats (service id 32541) inicializa sin excepcion (la aparicion de datos en el panel de bstats.org es asincronica: verificacion post-deploy NO bloqueante); cero `NoSuchMethodError`/`NoClassDefFoundError` en 1.20.4; apagado limpio sin fugas en consola. Los WARN de degradacion de 1.20.4 (setMaxStackSize/glint y el fallback UUID de AttributeModifier) solo los dispara un consumer que ejercite esos probes: la lib sola no tiene ninguno que disparar y quedan cubiertos por los pilotos, mismo criterio que en v1.0.0. La particula DUST del selection wand resuelve en 1.20.4 via el alias bidireccional DUST/REDSTONE de `SelectionRenderer.resolveParticle` (fallback FLAME con WARN unico si el nombre no resuelve).
+Record of the v1.1.0 gate (Step 22 of the v1.1 plan; JVM Java 21 Temurin 21.0.8, the `SnLib-1.1.0.jar` installed in each local Paper's `plugins/`): on both versions a startup without errors or exceptions with `SnLib 1.1.0 enabled (API level 2)`; `/snlib version` answers `SnLib version: 1.1.0` + `API level: 2` + the server version (`1.21.8-R0.1-SNAPSHOT (detected: 1.21.8)` and `1.20.4-R0.1-SNAPSHOT (detected: 1.20.4)`); `/snlib plugins` and `/snlib integrations` respond; bStats (service id 32541) initializes without exception (data appearing on the bstats.org panel is asynchronous: NON-blocking post-deploy verification); zero `NoSuchMethodError`/`NoClassDefFoundError` on 1.20.4; clean shutdown without leaks in the console. The 1.20.4 degradation WARNs (setMaxStackSize/glint and the AttributeModifier UUID fallback) only fire from a consumer exercising those probes: the lib alone has none to fire and they stay covered by the pilots, same criterion as in v1.0.0. The selection wand's DUST particle resolves on 1.20.4 via the bidirectional DUST/REDSTONE alias of `SelectionRenderer.resolveParticle` (FLAME fallback with a single WARN if the name does not resolve).
 
-### TODOs y limitaciones
+### TODOs and limitations
 
-Resultado del grep `TODO|FIXME|XXX|placeholder|PENDIENTE` sobre `src/` y `README.md`: NO existe ningun comentario TODO/FIXME/XXX en el codigo fuente. Todos los matches de "placeholder" son terminologia de dominio (PlaceholderAPI, placeholders locales), el "TODO" del README (linea 156) es el "todo" español de "arbol root/sub, TODO tab-completable", y los unicos "pendiente" son texto de mensajes WARN en runtime de `YamlUpdater` ("[update-configs] update-configs esta en false: prune pendiente en <archivo>") y prosa del README sobre el write coalescing ("a lo sumo un write pendiente por archivo"), no tareas pendientes de codigo.
+Result of the `TODO|FIXME|XXX|placeholder|PENDIENTE` grep over `src/` and `README.md`: NO TODO/FIXME/XXX comment exists in the source code. All "placeholder" matches are domain terminology (PlaceholderAPI, local placeholders), the README "TODO" match (line 156) was the Spanish word "todo" ("everything") in the phrase "root/sub tree, everything tab-completable", and the only "pendiente" matches are runtime WARN message text from `YamlUpdater` ("[update-configs] update-configs is false: prune pending in <file>") and README prose about write coalescing ("at most one pending write per file"), not pending code tasks.
 
-Pendientes reales conocidos (handoff v1.0.0):
+Known real pendings (v1.0.0 handoff):
 
-- bStats: RESUELTO en v1.1 - service id real `32541` registrado en bstats.org (`private static final int BSTATS_SERVICE_ID = 32541` en `src/main/java/com/sn/lib/SnLibPlugin.java`); pendiente solo la verificacion post-deploy de que el panel recibe datos.
-- El WARN de degradacion en 1.20.4 (features gated por `SnCompat` apagadas) no es ejercitable de punta a punta sin un plugin consumer que use esas features: queda diferido a los pilotos.
-- Repo GitHub privado + release v1.0.0: pendientes de confirmacion.
-- Actualizacion post-release de `sn-core/SKILL.md` y de las skills `sn-deploy`/`sn-change` para el modelo standalone hard-depend: pendiente.
-- Pilotos SnTags y SnCrates consumiendo SnLib, con canary de 48h en servidor productivo: pendientes.
-- japicmp: RESUELTO en v1.1 - el gate additive-only quedo ACTIVO con `oldVersion` explicito `com.sn:snlib:1.0.0` e `ignoreMissingOldVersion=false` (baseline ausente = build roto); la baseline se re-pinnea a 1.1.0 en el proximo plan de release.
-
+- bStats: RESOLVED in v1.1 - the real service id `32541` registered on bstats.org (`private static final int BSTATS_SERVICE_ID = 32541` in `src/main/java/com/sn/lib/SnLibPlugin.java`); only the post-deploy verification that the panel receives data remains.
+- The 1.20.4 degradation WARN (SnCompat-gated features off) is not exercisable end to end without a consumer plugin using those features: deferred to the pilots.
+- Private GitHub repo + v1.0.0 release: pending confirmation.
+- Post-release update of `sn-core/SKILL.md` and the `sn-deploy`/`sn-change` skills for the standalone hard-depend model: pending.
+- SnTags and SnCrates pilots consuming SnLib, with a 48h canary on a production server: pending.
+- japicmp: RESOLVED in v1.1 - the additive-only gate is ACTIVE with an explicit `oldVersion` `com.sn:snlib:1.0.0` and `ignoreMissingOldVersion=false` (missing baseline = broken build); the baseline re-pins to 1.1.0 in the next release plan.
 ---
 ## 17. UpdateChecker (v1.1)
 
-Modulo de update-check PARA LOS PLUGINS CONSUMIDORES (no para SnLib misma): cada consumer lo configura contra SU repo de GitHub y recibe avisos cuando hay un release mas nuevo que la version instalada.
+Update-check module FOR THE CONSUMER PLUGINS (not for SnLib itself): each consumer configures it against ITS GitHub repo and receives notices when a release newer than the installed version exists.
 
 ### UpdateChecker
 `src/main/java/com/sn/lib/update/UpdateChecker.java`
 
-Clase `public final` del paquete nuevo `com.sn.lib.update`; una instancia por contexto, alcanzada via `sn.updates()` (accessor siempre disponible, nunca tira).
+`public final` class of the new `com.sn.lib.update` package; one instance per context, reached via `sn.updates()` (an always-available accessor, it never throws).
 
-Contrato duro del modulo:
+The module's hard contract:
 
-- **Notify-only ESTRICTO y PERMANENTE**: jamas descarga artefactos, jamas toca el jar corriendo, jamas hace auto-swap de ningun tipo (incompatible ademas con el modelo reload-nunca-recarga-clases). Los unicos outputs son un INFO en consola al detectar version nueva y un aviso de chat a los jugadores con permiso al join.
-- **100% opt-in**: un consumer que no declara `SnSpec.builder().updates("owner/repo")` ni llama `watch()`/`checkNow()` no genera NINGUN trafico ni estado (el accessor devuelve una instancia inerte).
+- **STRICT and PERMANENT notify-only**: it never downloads artifacts, never touches the running jar, never does any kind of auto-swap (also incompatible with the reload-never-reloads-classes model). The only outputs are a console INFO on detecting a new version and a chat notice to permissioned players on join.
+- **100% opt-in**: a consumer that declares no `SnSpec.builder().updates("owner/repo")` and calls no `watch()`/`checkNow()` generates NO traffic or state (the accessor returns an inert instance).
 
-API publica:
+Public API:
 
-- `public UpdateChecker(Sn ctx, @Nullable SnYml config)` - instanciado por el contexto en construccion; `config` es la config principal montada del consumer (o `null` sin modulo yml).
-- `public void watch(String ownerRepo)` - arma el check periodico notify-only: primer check a los 60s del enable (`INITIAL_DELAY_TICKS = 1200`), despues cada 6 horas (`PERIOD_TICKS = 432000`), SIEMPRE off-main (`timerAsync`). Formato invalido (regex `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`): WARN "updates: repo invalido '<x>'; formato esperado owner/repo" y no hace nada. Re-watch del mismo repo reemplaza y cancela el timer previo. El watch vive por enable: el reload del consumer no lo rearma ni lo duplica.
-- `public void checkNow(String ownerRepo)` - UN check inmediato off-main sin timer; la via de "llamada explicita" para consumers que no declaran el repo en su spec. Misma validacion de formato.
-- `public static Listener joinListener()` - listener compartido de `PlayerJoinEvent` definido aca e inscripto en el ListenerHub (el `registerEvents` ocurre unicamente en el bootstrap de SnLibPlugin).
-- `public void shutdown()` - teardown idempotente invocado por el paso 12 de `Sn.shutdown()`: cancela todos los timers de watch y libera el HttpClient. La entrada de STATES de este owner NO se toca aca: la barre el `TenantRegistry.sweepOwner` del paso 13.
+- `public UpdateChecker(Sn ctx, @Nullable SnYml config)` - instantiated by the context at construction; `config` is the consumer's mounted main config (or `null` without the yml module).
+- `public void watch(String ownerRepo)` - arms the notify-only periodic check: the first check 60s after enable (`INITIAL_DELAY_TICKS = 1200`), then every 6 hours (`PERIOD_TICKS = 432000`), ALWAYS off-main (`timerAsync`). An invalid format (regex `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`): WARN "updates: invalid repo '<x>'; expected owner/repo format" and it does nothing. A re-watch of the same repo replaces and cancels the previous timer. The watch lives per enable: the consumer's reload neither re-arms nor duplicates it.
+- `public void checkNow(String ownerRepo)` - ONE immediate off-main check without a timer; the "explicit call" path for consumers that do not declare the repo in their spec. Same format validation.
+- `public static Listener joinListener()` - the shared `PlayerJoinEvent` listener defined here and enrolled in the ListenerHub (the `registerEvents` happens solely in the SnLibPlugin bootstrap).
+- `public void shutdown()` - idempotent teardown invoked by step 12 of `Sn.shutdown()`: it cancels all watch timers and releases the HttpClient. This owner's STATES entry is NOT touched here: step 13's `TenantRegistry.sweepOwner` sweeps it.
 
-#### Logica interna
+#### Internal logic
 
-- Request: GET `https://api.github.com/repos/<repo>/releases/latest` con headers `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `User-Agent: SnLib-UpdateChecker`; timeouts 5s connect / 10s request (mismos valores que DiscordWebhook), HttpClient lazy per-instance con double-checked locking (patron exacto de `DiscordWebhook.client()`), `send` sincrono (ya corre en thread async).
-- **Token opcional para repos PRIVADOS**: se lee `update-check.token` de la config principal del CONSUMER en CADA check (toma cambios sin restart) y se manda como `Authorization: Bearer <token>` solo si no esta vacio. Token de solo-lectura recomendado; JAMAS se loguea.
-- Fallos (status != 200, IOException, InterruptedException con re-interrupcion): **warn-once por repo por enable** ("update check de '<repo>' fallo: <detalle>") y silencio despues.
-- Parse sin libreria JSON: helper package-private `static @Nullable String jsonString(String body, String field)` (escaner a mano: primera ocurrencia de `"field"` con comillas, salta espacios y `:`, exige `"` de apertura y lee hasta la de cierre des-escapando `\"`, `\\` y `\/`; formato inesperado devuelve null; asuncion documentada: en el payload de releases/latest la primera ocurrencia de `html_url` es la del release). Y `static String stripTagPrefix(String tag)`: trim + quita la `v`/`V` inicial SOLO si sigue un digito (`v1.4.0` -> `1.4.0`, `vanilla` intacto).
-- Deteccion: `SemverComparator.compareVersions(latest, current) > 0` contra `ctx.plugin().getPluginMeta().getVersion()`. Al detectar guarda un `Finding(latest, current, url)` en el estado del owner y emite el INFO "Version <latest> disponible, instalada <current>: <url>" SOLO en la primera deteccion o ante un release nuevo (sin re-INFO cada 6h); si ya no hay update la entrada se remueve.
-- Estado multi-tenant: `private static final TenantRegistry<UpdateState> STATES` (static server-wide justificado: lo lee el listener compartido; keyed por owner con sweep automatico en disable). `UpdateState` guarda el ctx, el permiso `<plugin>.admin.update` (nombre del plugin en lowercase) y el mapa repo -> `Finding`. El state se registra UNA sola vez por instancia (compareAndSet) en el primer `watch`/`checkNow`.
-- Aviso al join: el `JoinListener` recorre `STATES.forEachOwner`; por cada state con findings pendientes y jugador con `state.permission`, agenda `syncLater(40 ticks)` que re-chequea `player.isOnline()` y envia por cada finding `&e<Plugin> &7tiene una version nueva: &a<latest> &7(instalada &c<current>&7) &f<url>` via `SnText.color`. El consumer que quiera default-op debe declarar `<plugin>.admin.update` en SU plugin.yml; sin declararlo solo lo reciben quienes tengan el permiso explicito.
+- Request: GET `https://api.github.com/repos/<repo>/releases/latest` with headers `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `User-Agent: SnLib-UpdateChecker`; timeouts 5s connect / 10s request (the same values as DiscordWebhook), a lazy per-instance HttpClient with double-checked locking (the exact `DiscordWebhook.client()` pattern), synchronous `send` (it already runs on an async thread).
+- **Optional token for PRIVATE repos**: `update-check.token` reads from the CONSUMER's main config on EVERY check (it picks up changes without restart) and is sent as `Authorization: Bearer <token>` only if non-empty. A read-only token recommended; it is NEVER logged.
+- Failures (status != 200, IOException, InterruptedException with re-interruption): **warn-once per repo per enable** ("update check of '<repo>' failed: <detail>") and silence afterwards.
+- Parsing without a JSON library: the package-private helper `static @Nullable String jsonString(String body, String field)` (a hand scanner: the first occurrence of quoted `"field"`, skips spaces and `:`, demands an opening `"` and reads up to the closing one un-escaping `\"`, `\\` and `\/`; an unexpected format returns null; documented assumption: in the releases/latest payload the first occurrence of `html_url` is the release's). And `static String stripTagPrefix(String tag)`: trim + strips the leading `v`/`V` ONLY if a digit follows (`v1.4.0` -> `1.4.0`, `vanilla` intact).
+- Detection: `SemverComparator.compareVersions(latest, current) > 0` against `ctx.plugin().getPluginMeta().getVersion()`. On detection it stores a `Finding(latest, current, url)` in the owner's state and emits the INFO "Version <latest> available, installed <current>: <url>" ONLY on the first detection or on a new release (no re-INFO every 6h); if there is no longer an update the entry is removed.
+- Multi-tenant state: `private static final TenantRegistry<UpdateState> STATES` (justified server-wide static: the shared listener reads it; keyed by owner with automatic sweep on disable). `UpdateState` holds the ctx, the `<plugin>.admin.update` permission (lowercased plugin name) and the repo -> `Finding` map. The state registers exactly ONCE per instance (compareAndSet) on the first `watch`/`checkNow`.
+- Join notice: the `JoinListener` walks `STATES.forEachOwner`; for each state with pending findings and a player with `state.permission`, it schedules `syncLater(40 ticks)` which re-checks `player.isOnline()` and sends per finding `&e<Plugin> &7has a new version: &a<latest> &7(installed &c<current>&7) &f<url>` via `SnText.color`. A consumer wanting default-op must declare `<plugin>.admin.update` in ITS plugin.yml; without declaring it only those with the explicit permission receive it.
 
-#### Notas y gotchas
+#### Notes and gotchas
 
-- Los PAT de GitHub no contienen `%`: el pipeline de placeholders de `SnYml.getString` es no-op sobre el token.
-- `checkNow` y `watch` comparten el warn-once: el set `warnedRepos` es por instancia (por enable).
-- El Versionator de ManticLib (descarga + auto-swap de jars) queda registrado como anti-ejemplo: esa capacidad esta prohibida para siempre en este modulo.
+- GitHub PATs contain no `%`: `SnYml.getString`'s placeholder pipeline is a no-op over the token.
+- `checkNow` and `watch` share the warn-once: the `warnedRepos` set is per instance (per enable).
+- ManticLib's Versionator (jar download + auto-swap) stands recorded as the anti-example: that capability is forbidden forever in this module.
 
 ### UpdateCheckerJsonTest
 `src/test/java/com/sn/lib/update/UpdateCheckerJsonTest.java`
-5 tests JUnit puros (sin Bukkit init) sobre los helpers package-private `jsonString` y `stripTagPrefix`.
+5 pure JUnit tests (no Bukkit init) over the package-private helpers `jsonString` and `stripTagPrefix`.
 
-- `void jsonStringExtractsTagName()` - payload minimo de release: extrae `v1.4.0` de `tag_name`.
-- `void jsonStringFirstHtmlUrlWins()` - con `html_url` del release y otro dentro de `author`, devuelve el primero.
-- `void jsonStringHandlesEscapedQuotes()` - des-escapa `\"`, `\\` y `\/` dentro del valor.
-- `void jsonStringMissingFieldReturnsNull()` - campo ausente, valor no-string y string sin cierre devuelven null.
-- `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` y `vanilla` intactos.
-- Nota de consistencia del handoff: el handoff menciona "114 tests"; el conteo real verificado en esta documentacion (surefire, `mvn test`) es 204 tests en 21 suites, todos verdes (la baseline 1.0.0 cerro con 104 tests en 11 suites; el paso 1 de v1.1 sumo SmallCapsTest con 16 tests y 1 test nuevo en CenterUtilTest; el paso 4 sumo 9 tests a RequirementEngineTest y llevo SemverComparatorTest de 6 a 10; el paso 5 sumo 3 tests de quoting de keys a YamlUpdaterTest; el paso 7 sumo SnItemAttributeParseTest con 9 tests; los pasos 8-10 sumaron ClickGuardTest con 7, ClickResolutionTest con 6 e ItemDefVariantsTest con 4; el paso 12 sumo GuiMaskTest con 9 tests; el paso 15 sumo UpdateCheckerJsonTest con 5 tests; el paso 16 sumo 6 tests de formatComma a NumberFormatterTest y PlayerLookupParseTest con 4 tests; el paso 18 sumo CuboidTest con 14 tests y LocationUtilTest con 3).
+- `void jsonStringExtractsTagName()` - a minimal release payload: extracts `v1.4.0` from `tag_name`.
+- `void jsonStringFirstHtmlUrlWins()` - with the release's `html_url` and another inside `author`, it returns the first.
+- `void jsonStringHandlesEscapedQuotes()` - un-escapes `\"`, `\\` and `\/` inside the value.
+- `void jsonStringMissingFieldReturnsNull()` - a missing field, a non-string value and an unclosed string return null.
+- `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` and `vanilla` intact.
+- Handoff consistency note: the handoff mentions "114 tests"; the real count verified in this documentation (surefire, `mvn test`) is 204 tests across 21 suites, all green (the 1.0.0 baseline closed with 104 tests in 11 suites; v1.1's step 1 added SmallCapsTest with 16 tests and 1 new test in CenterUtilTest; step 4 added 9 tests to RequirementEngineTest and took SemverComparatorTest from 6 to 10; step 5 added 3 key-quoting tests to YamlUpdaterTest; step 7 added SnItemAttributeParseTest with 9 tests; steps 8-10 added ClickGuardTest with 7, ClickResolutionTest with 6 and ItemDefVariantsTest with 4; step 12 added GuiMaskTest with 9 tests; step 15 added UpdateCheckerJsonTest with 5 tests; step 16 added 6 formatComma tests to NumberFormatterTest and PlayerLookupParseTest with 4 tests; step 18 added CuboidTest with 14 tests and LocationUtilTest with 3).
 
-## 18. Region: seleccion de cuboides (v1.1)
+## 18. Region: cuboid selection (v1.1)
 
-Modulo nuevo `com.sn.lib.region` (port generalizado del Admin Wand de SnGens): selecciones de cuboides MUY visuales para cualquier consumidor, con wand tageada por PDC, renderizado de aristas por particulas, limites configurables y callbacks. Siempre disponible via `sn.selections()` (sin gate de spec, como `actions()` o `cooldowns()`): es 100% programatico y su costo idle es un mapa vacio mas una registracion de quit-cleanup. El paquete `com.sn.lib.region.internal` (listener + renderer) queda fuera del contrato semver por la regla de paquetes `*.internal` (y del analisis japicmp por el patron `com.sn.lib.**.internal.**` ya configurado).
+New module `com.sn.lib.region` (a generalized port of SnGens' Admin Wand): HIGHLY visual cuboid selections for any consumer, with a PDC-tagged wand, particle edge rendering, configurable limits and callbacks. Always available via `sn.selections()` (no spec gate, like `actions()` or `cooldowns()`): it is 100% programmatic and its idle cost is an empty map plus one quit-cleanup registration. The `com.sn.lib.region.internal` package (listener + renderer) sits outside the semver contract per the `*.internal` package rule (and outside the japicmp analysis via the already-configured `com.sn.lib.**.internal.**` pattern).
 
-Flujo canonico de un consumidor:
+A consumer's canonical flow:
 
 ```java
 SelectionSpec spec = SelectionSpec.builder("arena")
-    .permission("miplugin.wand")
+    .permission("myplugin.wand")
     .wandItem(SnItem.builder(Material.GOLDEN_AXE).name("&6&lArena Wand").glow())
     .particle("DUST").dustColor("255, 140, 0").dustSize(1.2f)
     .step(0.5).refreshIntervalTicks(5).renderDistance(48)
@@ -3595,118 +3580,118 @@ SelectionSpec spec = SelectionSpec.builder("arena")
     .build();
 
 sn().selections().giveWand(player, spec);
-// left click = pos1, right click = pos2, aristas renderizadas en vivo;
-// al completarse: SnSelectionCompleteEvent (cancelable) -> onSelect(Cuboid)
+// left click = pos1, right click = pos2, edges rendered live;
+// on completion: SnSelectionCompleteEvent (cancelable) -> onSelect(Cuboid)
 ```
 
 ### Cuboid
 `src/main/java/com/sn/lib/region/Cuboid.java`
 
-Cuboide de BLOQUES inmutable y thread-safe por construccion: `worldName` string mas 6 `int` SIEMPRE normalizados (min <= max por eje) en el factory; bordes inclusivos en `contains`. El core (contencion, iteracion, size, serializacion) es puro y no toca estaticos de Bukkit; solo los metodos puente (`of(Location, Location)`, `contains(Location)`, `world()`, `blocks()`, `center()`) lo hacen, asi el core se testea en JUnit plano (`CuboidTest`).
+An immutable BLOCK cuboid, thread-safe by construction: a `worldName` string plus 6 `int`s ALWAYS normalized (min <= max per axis) in the factory; inclusive edges in `contains`. The core (containment, iteration, size, serialization) is pure and touches no Bukkit statics; only the bridge methods (`of(Location, Location)`, `contains(Location)`, `world()`, `blocks()`, `center()`) do, so the core is testable in plain JUnit (`CuboidTest`).
 
-- Factories: `of(String worldName, x1, y1, z1, x2, y2, z2)` (normaliza; worldName null/blank lanza `IllegalArgumentException`) y `of(Location a, Location b)` (block coords; null, sin mundo cargado o mundos distintos LANZAN: camino de programador, fail fast).
-- Getters puros: `worldName()`, `minX()/minY()/minZ()/maxX()/maxY()/maxZ()`, `widthX()/heightY()/depthZ()` (conteo inclusivo), `size()` en `long` (nunca overflow int).
-- Contencion: `contains(int, int, int)` (pura, ignora mundo), `contains(String, int, int, int)` (world-aware), `contains(@Nullable Location)` (null/sin mundo/mundo distinto -> false, nunca lanza), `intersects(Cuboid)` (mundos distintos -> false; overlap inclusivo: tocarse en un borde cuenta).
-- Derivados: `expand(dx, dy, dz)` devuelve instancia NUEVA que crece (o encoge con negativos) en AMBAS direcciones por eje; si min cruza a max al encoger, ese eje colapsa a 1 bloque en el punto medio (nunca lanza).
-- Iteracion: `forEach(BlockConsumer)` (pura, visita cada bloque una vez en orden x -> y -> z) y `blocks()` (puente Bukkit LAZY que nunca materializa listas; mundo no cargado -> Iterable vacio, nunca lanza).
-- Puentes: `world()` (null si no esta cargado) y `center()` (centro geometrico +0.5 por eje, null sin mundo).
-- Serializacion: `serialize()` emite `world;minX;minY;minZ;maxX;maxY;maxZ` (orden normalizado) y `deserialize(String)` es la inversa null-safe que NUNCA lanza (null/blank, != 7 partes, numero malformado o world blank -> null; cada parte se trimea; re-normaliza esquinas; NO exige mundo cargado, el binding es lazy via `world()`). Formato HERMANO de `LocationSerializer` (mismo separador `;`, trim por parte, deserialize leniente) pero NO parseable por el (esa clase espera 4 o 6 partes).
-- `equals`/`hashCode` por worldName + 6 coords; `toString()` es la forma serializada.
+- Factories: `of(String worldName, x1, y1, z1, x2, y2, z2)` (normalizes; a null/blank worldName throws `IllegalArgumentException`) and `of(Location a, Location b)` (block coords; null, an unloaded world or different worlds THROW: a programmer path, fail fast).
+- Pure getters: `worldName()`, `minX()/minY()/minZ()/maxX()/maxY()/maxZ()`, `widthX()/heightY()/depthZ()` (inclusive count), `size()` in `long` (never int overflow).
+- Containment: `contains(int, int, int)` (pure, ignores world), `contains(String, int, int, int)` (world-aware), `contains(@Nullable Location)` (null/worldless/different world -> false, never throws), `intersects(Cuboid)` (different worlds -> false; inclusive overlap: touching on an edge counts).
+- Derivatives: `expand(dx, dy, dz)` returns a NEW instance that grows (or shrinks with negatives) in BOTH directions per axis; if min crosses max while shrinking, that axis collapses to 1 block at the midpoint (never throws).
+- Iteration: `forEach(BlockConsumer)` (pure, visits every block once in x -> y -> z order) and `blocks()` (a LAZY Bukkit bridge that never materializes lists; an unloaded world -> an empty Iterable, never throws).
+- Bridges: `world()` (null if not loaded) and `center()` (the geometric center +0.5 per axis, null without a world).
+- Serialization: `serialize()` emits `world;minX;minY;minZ;maxX;maxY;maxZ` (normalized order) and `deserialize(String)` is the null-safe inverse that NEVER throws (null/blank, != 7 parts, a malformed number or a blank world -> null; each part trims; corners re-normalize; it does NOT require a loaded world, binding is lazy via `world()`). A SIBLING format of `LocationSerializer`'s (same `;` separator, per-part trim, lenient deserialize) but NOT parseable by it (that class expects 4 or 6 parts).
+- `equals`/`hashCode` by worldName + the 6 coords; `toString()` is the serialized form.
 
-Politica lanzar-vs-null documentada: `of(Location, Location)` lanza (camino programatico) y `deserialize` devuelve null (camino de datos/config), consistente con la filosofia del paquete util.
+Documented throw-vs-null policy: `of(Location, Location)` throws (the programmatic path) and `deserialize` returns null (the data/config path), consistent with the util package's philosophy.
 
 ### SelectionSpec
 `src/main/java/com/sn/lib/region/SelectionSpec.java`
 
-Declaracion inmutable de una clase de seleccion (wand + visual + limites + callbacks), identificada por un `id` corto que viaja en el PDC de la wand. Patron builder; TODOS los campos tienen default y los clamps se aplican una sola vez en `build()`. Los campos visuales se guardan PUROS (particula por NOMBRE, color dust como 3 ints): la resolucion a tipos Bukkit vive en el renderer.
+An immutable declaration of a selection class (wand + visuals + limits + callbacks), identified by a short `id` that travels in the wand's PDC. Builder pattern; ALL fields have defaults and clamps apply once in `build()`. The visual fields are stored PURE (the particle by NAME, the dust color as 3 ints): resolution to Bukkit types lives in the renderer.
 
-- `builder(String id)` (id null/blank -> "default") y `toBuilder()` (copia todos los campos a un builder nuevo, para componer callbacks sobre un spec cargado de YML).
-- `public static SelectionSpec fromConfig(Sn ctx, SnYml yml, String path, String id)` - lee la seccion YML de la spec golden `docs/selection-example.yml`: campos ausentes caen a los defaults del builder; valores invalidos WARNean una vez y caen al default (los getters tipados de SnYml ya resuelven fallback + WARN de tipo). La seccion `item` mapea por `SnItem.fromConfig` SOLO si existe (ausente -> fallback BLAZE_ROD del manager); `permission` vacio o ausente -> null (sin gate); `visibility` es enum leniente (invalido -> OWNER_ONLY + WARN once). Composicion canonica: `SelectionSpec.fromConfig(sn(), sn().yml().config(), "selection-wand", "arena").toBuilder().onSelect(...).build()`. Sin modulo nuevo en SnSpec: la integracion YML es 100% opt-in del consumidor.
-- Getters con default y clamp: `permission()` (null = sin gate), `wandItem()` (null = fallback), `particleName()` (default "DUST"), `dustRed()/dustGreen()/dustBlue()` (default 255, 140, 0; clamp 0..255), `dustSize()` (default 1.2, clamp 0.1..4.0), `step()` (default 0.5, min 0.1), `refreshIntervalTicks()` (default 5, min 1), `renderDistance()` (default 64), `visibility()` (enum anidado `Visibility { OWNER_ONLY, WORLD }`, default OWNER_ONLY), `particleBudget()` (default 2000, por refresh POR viewer), `maxRenderVolume()` (default 250000), `maxVolume()` (default 0 = sin cap), `timeoutTicks()` (default 0 = no expira), `completeEnds()` (default false), `silent()` (default false).
-- Callbacks opcionales: `onSelect()` (`Consumer<Cuboid>`), `onUpdate()` (`Consumer<SelectionSession>`) y `onCancel()` (`Consumer<UUID>`: UUID y no Player porque en quit/kick el Player puede ya no ser valido, y los callbacks de quit deben ser idempotentes por contrato de QuitCleanupListener).
-- Builder fluido: un metodo por campo, incluyendo `wandItem(SnItem)` / `wandItem(ItemStack)` (template clonado; cada uno reemplaza al otro), `particle(String)` / `particle(Particle)` (azucar que guarda `name()`), `dustColor(int, int, int)` / `dustColor(String)` (parse puro leniente de `"R, G, B"` o `"#RRGGBB"`; malformado conserva el actual + WARN once por input).
+- `builder(String id)` (a null/blank id -> "default") and `toBuilder()` (copies all fields to a new builder, for composing callbacks over a YML-loaded spec).
+- `public static SelectionSpec fromConfig(Sn ctx, SnYml yml, String path, String id)` - reads the YML section of the golden spec `docs/selection-example.yml`: absent fields fall to the builder defaults; invalid values WARN once and fall to the default (SnYml's typed getters already resolve fallback + type WARN). The `item` section maps via `SnItem.fromConfig` ONLY if it exists (absent -> the manager's BLAZE_ROD fallback); an empty or absent `permission` -> null (no gate); `visibility` is a lenient enum (invalid -> OWNER_ONLY + WARN once). Canonical composition: `SelectionSpec.fromConfig(sn(), sn().yml().config(), "selection-wand", "arena").toBuilder().onSelect(...).build()`. No new SnSpec module: the YML integration is 100% consumer opt-in.
+- Getters with defaults and clamps: `permission()` (null = no gate), `wandItem()` (null = fallback), `particleName()` (default "DUST"), `dustRed()/dustGreen()/dustBlue()` (defaults 255, 140, 0; clamp 0..255), `dustSize()` (default 1.2, clamp 0.1..4.0), `step()` (default 0.5, min 0.1), `refreshIntervalTicks()` (default 5, min 1), `renderDistance()` (default 64), `visibility()` (the nested enum `Visibility { OWNER_ONLY, WORLD }`, default OWNER_ONLY), `particleBudget()` (default 2000, per refresh PER viewer), `maxRenderVolume()` (default 250000), `maxVolume()` (default 0 = no cap), `timeoutTicks()` (default 0 = never expires), `completeEnds()` (default false), `silent()` (default false).
+- Optional callbacks: `onSelect()` (`Consumer<Cuboid>`), `onUpdate()` (`Consumer<SelectionSession>`) and `onCancel()` (`Consumer<UUID>`: a UUID and not a Player because on quit/kick the Player may no longer be valid, and quit callbacks must be idempotent per the QuitCleanupListener contract).
+- Fluent builder: one method per field, including `wandItem(SnItem)` / `wandItem(ItemStack)` (cloned template; each replaces the other), `particle(String)` / `particle(Particle)` (sugar storing `name()`), `dustColor(int, int, int)` / `dustColor(String)` (a lenient pure parse of `"R, G, B"` or `"#RRGGBB"`; malformed keeps the current one + WARN once per input).
 
 ### SelectionManager
 `src/main/java/com/sn/lib/region/SelectionManager.java`
 
-Modulo de seleccion de un contexto Sn (`sn.selections()`): registra specs por id, entrega wands fisicas tageadas y es dueño de una `SelectionSession` por jugador seleccionando. Mutaciones de sesion main-thread only.
+Selection module of an Sn context (`sn.selections()`): it registers specs by id, hands out tagged physical wands and owns one `SelectionSession` per selecting player. Session mutations are main-thread only.
 
-Constante publica: `WAND_TAG = "snlib_selection_wand"` (key PDC, namespaceada por owner via TagIo; el VALUE es el spec id, NO un UUID random: wands identicas stackean sin consecuencias y el id resuelve el spec tras relog).
+Public constant: `WAND_TAG = "snlib_selection_wand"` (a PDC key, owner-namespaced via TagIo; the VALUE is the spec id, NOT a random UUID: identical wands stack without consequences and the id resolves the spec after a relog).
 
-Estatico server-wide justificado (patron ItemPropertyListener.track): `TenantRegistry<SelectionManager> MANAGERS` con callback `shutdownQuietly`; sus dos unicos propositos son (a) que el listener compartido resuelva el manager dueño de una wand por el namespace de su key PDC, (b) doble red de sweep si el owner nunca hizo shutdown.
+Justified server-wide static (the ItemPropertyListener.track pattern): `TenantRegistry<SelectionManager> MANAGERS` with the `shutdownQuietly` callback; its two only purposes are (a) letting the shared listener resolve a wand's owning manager by its PDC key namespace, (b) a double sweep net if the owner never shut down.
 
-API publica:
+Public API:
 
-- `begin(Player, SelectionSpec)` - registra el spec y abre una sesion nueva, cancelando antes la previa de ESTE contexto (renderer cortado + onCancel del spec previo; sin evento ni mensaje). No entrega wand (componer con `giveWand`).
-- `current(Player)` / `current(UUID)` - sesion activa o null.
-- `cancel(Player)` / `cancel(UUID)` - corta el renderer, remueve la sesion y corre el `onCancel` del spec con el UUID (try/catch Throwable + WARN). Idempotente.
-- `registerSpec(SelectionSpec)` - registra o reemplaza por id SIN abrir sesion; existe para el patron "registrar en onInnerEnable, dar wands despues por comando": una wand vieja en un inventario vuelve a funcionar apenas su spec esta registrado (el listener auto-abre la sesion al primer click).
-- `createWand(SelectionSpec)` - registra el spec y construye la wand fisica (SnItem renderizado, template clonado o fallback BLAZE_ROD "&6&lRegion Wand") con el tag PDC.
-- `giveWand(Player, SelectionSpec)` - createWand + `InvUtil.giveItems` (overflow a los pies).
-- `isWand(ItemStack)` / `wandSpecId(ItemStack)` - chequeo/lectura del tag de ESTE contexto (null/air/sin meta -> false/null).
-- `shutdown()` - teardown idempotente invocado por el paso 4 de `Sn.shutdown()` y por el sweep como doble red: corta cada render task (cancel con catch, el scheduler puede estar muriendo) y limpia sesiones y specs. Deliberadamente NO corre ningun `onCancel` (correr callbacks de consumidor durante teardown es peligroso, misma politica que las close-actions de GUI).
-- Puentes internos publicos fuera del contrato de consumidor: `forNamespace(String)` y `handleWandClick(...)` (para el listener compartido), `handleRendererOffline(UUID)` y `handleRendererTimeout(UUID)` (para el renderer, que vive en `region.internal` y no alcanza los miembros package-private).
+- `begin(Player, SelectionSpec)` - registers the spec and opens a new session, first cancelling THIS context's previous one (renderer cut + the previous spec's onCancel; no event or message). It hands out no wand (compose with `giveWand`).
+- `current(Player)` / `current(UUID)` - the active session or null.
+- `cancel(Player)` / `cancel(UUID)` - cuts the renderer, removes the session and runs the spec's `onCancel` with the UUID (Throwable try/catch + WARN). Idempotent.
+- `registerSpec(SelectionSpec)` - registers or replaces by id WITHOUT opening a session; it exists for the "register in onInnerEnable, give wands later by command" pattern: an old wand in an inventory works again as soon as its spec is registered (the listener auto-opens the session on the first click).
+- `createWand(SelectionSpec)` - registers the spec and builds the physical wand (a rendered SnItem, a cloned template or the BLAZE_ROD "&6&lRegion Wand" fallback) with the PDC tag.
+- `giveWand(Player, SelectionSpec)` - createWand + `InvUtil.giveItems` (overflow at the feet).
+- `isWand(ItemStack)` / `wandSpecId(ItemStack)` - check/read of THIS context's tag (null/air/meta-less -> false/null).
+- `shutdown()` - idempotent teardown invoked by step 4 of `Sn.shutdown()` and by the sweep as a double net: it cuts every render task (cancel with catch, the scheduler may be dying) and clears sessions and specs. It deliberately runs NO `onCancel` (running consumer callbacks during teardown is dangerous, same policy as the GUI close-actions).
+- Public internal bridges outside the consumer contract: `forNamespace(String)` and `handleWandClick(...)` (for the shared listener), `handleRendererOffline(UUID)` and `handleRendererTimeout(UUID)` (for the renderer, which lives in `region.internal` and cannot reach the package-private members).
 
-Pipeline de completitud (corazon del contrato; corre en cada set de pos por wand o setter): (1) guarda la pos clonada y refresca el renderer; (2) mensaje `pos1-set`/`pos2-set` (y `different-worlds` si ambas pos quedaron en mundos distintos: aviso explicito en vez del silencio confuso de SnGens); (3) `onUpdate` del spec; (4) si `hasBothPositions()`: construye el `Cuboid`; si `maxVolume > 0` y `size() > maxVolume` manda `too-big` (placeholders `{volume}` `{max}`), la pos QUEDA seteada y NO hay evento ni onSelect; (5) si pasa el cap dispara `SnSelectionCompleteEvent` (cancelable vinculante); (6) si sobrevive corre `onSelect(cuboid)` (try/catch + WARN); (7) la sesion NO se cierra sola salvo `completeEnds()` (cancelSilently: sin onCancel, la seleccion termino bien).
+Completion pipeline (the contract's heart; it runs on every pos set by wand or setter): (1) stores the cloned pos and refreshes the renderer; (2) the `pos1-set`/`pos2-set` message (and `different-worlds` if both positions ended up in different worlds: an explicit notice instead of SnGens' confusing silence); (3) the spec's `onUpdate`; (4) if `hasBothPositions()`: builds the `Cuboid`; if `maxVolume > 0` and `size() > maxVolume` it sends `too-big` (placeholders `{volume}` `{max}`), the pos STAYS set and there is NO event or onSelect; (5) past the cap it fires `SnSelectionCompleteEvent` (binding cancelable); (6) if it survives it runs `onSelect(cuboid)` (try/catch + WARN); (7) the session does NOT close itself except with `completeEnds()` (cancelSilently: no onCancel, the selection ended well).
 
-Mensajes: resuelve via `ctx.lang()` si el modulo esta declarado (patron `langOrNull()`); sin lang manda los defaults en ingles embebidos (espejo de `snlib-messages.yml`) por `SnText.color`. Con `silent()` no manda nada.
+Messages: resolved via `ctx.lang()` if the module is declared (the `langOrNull()` pattern); without lang it sends the embedded English defaults (a mirror of `snlib-messages.yml`) through `SnText.color`. With `silent()` it sends nothing.
 
-Politica de reload: el reload NO toca selecciones (estado transitorio de jugador, no derivado de archivos; un reload a mitad de seleccion no le roba la seleccion al admin); los renderers siguen corriendo; si el consumidor re-construye specs desde YML en su Reloadable, `registerSpec` reemplaza por id y las sesiones vivas siguen apuntando al spec viejo (inmutable, sin estado inconsistente) hasta el proximo begin/click. ReloadManager no se modifica.
+Reload policy: the reload does NOT touch selections (transient player state, not file-derived; a mid-selection reload does not steal the admin's selection); renderers keep running; if the consumer rebuilds specs from YML in its Reloadable, `registerSpec` replaces by id and live sessions keep pointing at the old spec (immutable, no inconsistent state) until the next begin/click. ReloadManager is not modified.
 
-Cleanup completo: quit/kick via `QuitCleanupListener.register` (onQuit = cancel, idempotente porque kick dispara kick y quit); `clearPositions` corta el renderer con la sesion viva; cada `refreshRenderer` re-arma; `shutdown()` desde el paso 4 del teardown de Sn; doble red por el callback `shutdownQuietly` de MANAGERS (paso 13 del shutdown y TenantSweeper de un owner que nunca cerro); el disable de SnLib misma cae en la cascada existente `TenantSweeper.cascadeAll` sin codigo nuevo.
+Complete cleanup: quit/kick via `QuitCleanupListener.register` (onQuit = cancel, idempotent because a kick fires kick and quit); `clearPositions` cuts the renderer with the session alive; every `refreshRenderer` re-arms; `shutdown()` from step 4 of the Sn teardown; a double net via MANAGERS' `shutdownQuietly` callback (step 13 of the shutdown and the TenantSweeper of an owner that never closed); SnLib's own disable falls into the existing `TenantSweeper.cascadeAll` cascade with no new code.
 
 ### SelectionSession
 `src/main/java/com/sn/lib/region/SelectionSession.java`
 
-Estado mutable por jugador, propiedad del manager; main-thread only. JAMAS se persiste a disco (estado transitorio); para persistir el resultado usar `Cuboid.serialize()`.
+Per-player mutable state, owned by the manager; main-thread only. It is NEVER persisted to disk (transient state); to persist the result use `Cuboid.serialize()`.
 
-- `playerId()`, `spec()`, `createdAtMillis()` (instante de creacion; el timeout del spec cuenta desde ahi).
-- `pos1()` / `pos2()` - copias defensivas (clone), null si no seteada.
-- `setPos1(Location)` / `setPos2(Location)` - setters programaticos con las MISMAS consecuencias que un click de wand (refresh del renderer, mensajes, onUpdate y pipeline de completitud); null borra esa pos. Delegan en el manager.
-- `hasBothPositions()` - ambas != null, con mundo cargado y MISMO mundo por nombre.
-- `cuboid()` - `Cuboid.of(pos1, pos2)` si `hasBothPositions()`, si no null.
-- `clearPositions()` - borra ambas pos y corta el renderer; la sesion sigue viva.
+- `playerId()`, `spec()`, `createdAtMillis()` (creation instant; the spec's timeout counts from there).
+- `pos1()` / `pos2()` - defensive copies (clone), null if not set.
+- `setPos1(Location)` / `setPos2(Location)` - programmatic setters with the SAME consequences as a wand click (renderer refresh, messages, onUpdate and the completion pipeline); null clears that pos. They delegate to the manager.
+- `hasBothPositions()` - both != null, with a loaded world and the SAME world by name.
+- `cuboid()` - `Cuboid.of(pos1, pos2)` if `hasBothPositions()`, otherwise null.
+- `clearPositions()` - clears both positions and cuts the renderer; the session stays alive.
 
 ### SnSelectionCompleteEvent
 `src/main/java/com/sn/lib/event/SnSelectionCompleteEvent.java`
 
-`public final class SnSelectionCompleteEvent extends SnPlayerEvent` (par getHandlers/getHandlerList, patron SnArmourEquipEvent). Sincronico, main thread, despachado via `event.call()`.
+`public final class SnSelectionCompleteEvent extends SnPlayerEvent` (the getHandlers/getHandlerList pair, the SnArmourEquipEvent pattern). Synchronous, main thread, dispatched via `event.call()`.
 
-- Constructor `(Player player, Plugin owner, String specId, Cuboid cuboid)`; accessors `owner()` (plugin consumidor dueño), `specId()` y `cuboid()` (inmutable, compartible sin copiar).
-- Cancelacion VINCULANTE: cancelado, `onSelect` NO corre y la sesion queda viva (el jugador puede re-clickear). Permite a plugins de proteccion/staff vetar selecciones ajenas (caso multi-tenant real).
-- Es el UNICO evento del modulo por diseño: NO hay SnSelectionUpdateEvent porque cada click dispararia un evento server-wide; el callback `onUpdate` del spec cubre ese caso con costo global cero (agregable additive despues si aparece la necesidad).
+- Constructor `(Player player, Plugin owner, String specId, Cuboid cuboid)`; accessors `owner()` (the owning consumer plugin), `specId()` and `cuboid()` (immutable, shareable without copying).
+- BINDING cancellation: cancelled, `onSelect` does NOT run and the session stays alive (the player can re-click). It lets protection/staff plugins veto foreign selections (a real multi-tenant case).
+- It is the module's ONLY event by design: there is NO SnSelectionUpdateEvent because every click would fire a server-wide event; the spec's `onUpdate` callback covers that case at zero global cost (addable additively later if the need appears).
 
 ### SelectionWandListener (internal)
 `src/main/java/com/sn/lib/region/internal/SelectionWandListener.java`
 
-Listener compartido final, propiedad de SnLib, inscripto como listener 14 del ListenerHub (`registerEvents` ocurre UNICAMENTE en el bootstrap de SnLibPlugin). Handler unico `@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)` sobre `PlayerInteractEvent`.
+Final shared listener, owned by SnLib, enrolled as listener 14 of the ListenerHub (`registerEvents` happens SOLELY in the SnLibPlugin bootstrap). A single handler `@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)` on `PlayerInteractEvent`.
 
-Orden exacto de chequeos (quick-exit en capas, contrato hot-path): (1) action LEFT_CLICK_BLOCK o RIGHT_CLICK_BLOCK (aire y PHYSICAL se ignoran; sin raytrace, ampliable additive); (2) `getHand() == EquipmentSlot.HAND` (descarta el eco de offhand del doble fire); (3) item null/air/sin meta; (4) scan de keys PDC buscando `snlib_selection_wand` y resolucion del manager dueño por namespace (`SelectionManager.forNamespace`, mismo patron que ItemPropertyListener.match); (5) clickedBlock null; (6) `event.setCancelled(true)` ANTES del permiso (decision SnGens preservada: una wand en mano nunca rompe/usa bloques, ni siquiera sin permiso; LOWEST + ignoreCancelled=false hace que la wand gane a protecciones de terreno por ser herramienta administrativa); (7) delega en `manager.handleWandClick` (spec no registrado -> nota de debug sin spam al jugador; gate de permiso con mensaje `no-permission`; auto-begin de sesion, lo que hace que la wand funcione tras relog; LEFT = pos1, RIGHT = pos2 y pipeline de completitud).
+Exact check order (layered quick exit, hot-path contract): (1) action LEFT_CLICK_BLOCK or RIGHT_CLICK_BLOCK (air and PHYSICAL are ignored; no raytrace, additively extendable); (2) `getHand() == EquipmentSlot.HAND` (discards the dual-fire's offhand echo); (3) null/air/meta-less item; (4) a PDC key scan for `snlib_selection_wand` and resolution of the owning manager by namespace (`SelectionManager.forNamespace`, the same pattern as ItemPropertyListener.match); (5) null clickedBlock; (6) `event.setCancelled(true)` BEFORE the permission (a preserved SnGens decision: a wand in hand never breaks/uses blocks, not even without permission; LOWEST + ignoreCancelled=false makes the wand win over land protections by being an administrative tool); (7) it delegates to `manager.handleWandClick` (an unregistered spec -> a debug note without spamming the player; the permission gate with the `no-permission` message; session auto-begin, which makes the wand work after a relog; LEFT = pos1, RIGHT = pos2 and the completion pipeline).
 
 ### SelectionRenderer (internal)
 `src/main/java/com/sn/lib/region/internal/SelectionRenderer.java`
 
-`public final class SelectionRenderer implements Runnable`: UNA instancia por sesion con renderer activo, armada por `SelectionManager.refreshRenderer` via `ctx.scheduler().timer(1L, spec.refreshIntervalTicks(), renderer)` cuando hay AL MENOS UNA pos seteada (mejora sobre SnGens, que exigia ambas). Cachea una vez por instancia el `Particle` resuelto y las `DustOptions` (`Color.fromRGB` + `dustSize`).
+`public final class SelectionRenderer implements Runnable`: ONE instance per session with an active renderer, armed by `SelectionManager.refreshRenderer` via `ctx.scheduler().timer(1L, spec.refreshIntervalTicks(), renderer)` when AT LEAST ONE pos is set (an improvement over SnGens, which demanded both). It caches once per instance the resolved `Particle` and the `DustOptions` (`Color.fromRGB` + `dustSize`).
 
-Resolucion LENIENTE de la particula (politica de enums abiertos): `valueOf` del nombre en mayusculas con alias bidireccional REDSTONE <-> DUST; nombre irresoluble -> fallback FLAME + WARN once por nombre; cualquier particula distinta de DUST cuyo dataType requerido no sea Void se degrada a FLAME con WARN once (la gramatica rica de dataTypes pertenece a la accion `[particle]`, no aca). Solo DUST recibe data en la emision.
+LENIENT particle resolution (the open-enums policy): `valueOf` of the uppercased name with the bidirectional REDSTONE <-> DUST alias; an unresolvable name -> FLAME fallback + WARN once per name; any particle other than DUST whose required dataType is not Void degrades to FLAME with WARN once (the rich dataType grammar belongs to the `[particle]` action, not here). Only DUST receives data on emission.
 
-Logica de `run()` en orden: (1) owner offline -> `handleRendererOffline` (cancel silencioso; cierra el leak leve de SnGens: la task no corre en vano y cubre la carrera que el quit-cleanup no vio); (2) timeout: `timeoutTicks > 0` y `now - createdAtMillis >= timeoutTicks * 50` -> `handleRendererTimeout` (cancel CON onCancel + mensaje `timeout` salvo silent); decision: el timeout vive en el renderer y no en un task aparte, porque el renderer existe siempre que haya algo que mostrar y una sesion sin ninguna pos no expira; (3) geometria: UNA pos -> marker box de 1 bloque `[b, b+1)` (feedback del primer click); ambas pos mismo mundo -> bounding box `[min, max + 1.0)` en doubles; pos en mundos DISTINTOS -> marker de la pos que este en el mundo del OWNER (ninguna -> no dibuja este tick, la task sigue); (4) presupuesto: `points = ceil(4 * (dx + dy + dz) / step)`; si excede `particleBudget` se recalcula el step efectivo (el box ENTERO se ve, mas ralo; nunca se corta a mitad de arista); si `size() > maxRenderVolume` NO dibuja aristas: solo las 8 esquinas como mini-cruz de 3 segmentos cortos (1 bloque por eje con el step del spec; < 200 puntos, mas visible que el punto unico de SnGens); (5) viewers: OWNER_ONLY -> solo el owner; WORLD -> `world.getPlayers()`; en ambos casos culling por viewer via `LocationUtil.distanceToBoxSquared` contra el punto MAS CERCANO del box (clamp por eje, no el centro: correcto en boxes enormes); el budget aplica POR viewer (el costo escala viewers x puntos, documentado); (6) emision `viewer.spawnParticle(particle, x, y, z, 1, 0, 0, 0, 0[, dustOptions])`.
+`run()` logic in order: (1) owner offline -> `handleRendererOffline` (silent cancel; it closes SnGens' slight leak: the task does not run in vain and covers the race the quit-cleanup missed); (2) timeout: `timeoutTicks > 0` and `now - createdAtMillis >= timeoutTicks * 50` -> `handleRendererTimeout` (cancel WITH onCancel + the `timeout` message unless silent); decision: the timeout lives in the renderer and not in a separate task, because the renderer exists whenever there is something to show and a session with no pos never expires; (3) geometry: ONE pos -> a 1-block marker box `[b, b+1)` (first-click feedback); both positions same world -> a bounding box `[min, max + 1.0)` in doubles; positions in DIFFERENT worlds -> the marker of whichever pos is in the OWNER's world (neither -> nothing drawn this tick, the task continues); (4) budget: `points = ceil(4 * (dx + dy + dz) / step)`; if it exceeds `particleBudget` the effective step recomputes (the WHOLE box shows, sparser; an edge is never cut mid-way); if `size() > maxRenderVolume` it draws NO edges: only the 8 corners as a mini-cross of 3 short segments (1 block per axis with the spec's step; < 200 points, more visible than SnGens' single dot); (5) viewers: OWNER_ONLY -> only the owner; WORLD -> `world.getPlayers()`; in both cases per-viewer culling via `LocationUtil.distanceToBoxSquared` against the box's CLOSEST point (per-axis clamp, not the center: correct on huge boxes); the budget applies PER viewer (cost scales viewers x points, documented); (6) emission `viewer.spawnParticle(particle, x, y, z, 1, 0, 0, 0, 0[, dustOptions])`.
 
-Justificacion Folia (documentada en el Javadoc): corre en main thread / global region via SnScheduler; `spawnParticle` per-player solo manda packets al viewer y el renderer JAMAS toca logica de mundo (ni bloques, ni entidades, ni chunk loads); cero NMS. Misma justificacion documentada que SnGens.
+Folia justification (documented in the Javadoc): it runs on the main thread / global region via SnScheduler; per-player `spawnParticle` only sends packets to the viewer and the renderer NEVER touches world logic (no blocks, no entities, no chunk loads); zero NMS. The same documented justification as SnGens.
 
-### LocationUtil (en el paquete util)
+### LocationUtil (in the util package)
 `src/main/java/com/sn/lib/util/LocationUtil.java`
 
-Helpers estaticos de matematica de ubicaciones (D11), clase final del paquete `com.sn.lib.util` que NUNCA lanza: input invalido devuelve false o `Double.POSITIVE_INFINITY`.
+Static location math helpers (D11), a final class of the `com.sn.lib.util` package that NEVER throws: invalid input returns false or `Double.POSITIVE_INFINITY`.
 
-- `inCuboid(point, cornerA, cornerB)` - contencion world-aware desde dos esquinas sueltas (el patron que cada plugin re-escribia con bugs de borde); null/mundos ausentes o distintos -> false; DELEGA en `Cuboid.of(...).contains(point)`: una sola fuente de verdad de bordes inclusivos y normalizacion min/max (el Cuboid de vida corta lo resuelve escape analysis; convenience, no hot-path).
-- `distance2dSquared(a, b)` / `distance2d(a, b)` - distancia horizontal ignorando Y; null/mundos distintos -> infinito.
-- `distanceToBoxSquared(box, point)` - distancia al punto MAS CERCANO del bounding box `[min, max + 1)` (clamp por eje); mundo distinto/nulo -> infinito. ES el helper de culling del SelectionRenderer, y publico porque es exactamente el "esta cerca de la region" que un plugin de zonas necesita. Combina con SnChunkMoveEvent (seccion 10): cuboid-check al cruzar chunk en vez de por cada move.
+- `inCuboid(point, cornerA, cornerB)` - world-aware containment from two loose corners (the pattern every plugin kept rewriting with edge bugs); null/absent or different worlds -> false; it DELEGATES to `Cuboid.of(...).contains(point)`: a single source of truth for inclusive edges and min/max normalization (the short-lived Cuboid is resolved by escape analysis; a convenience, not hot-path).
+- `distance2dSquared(a, b)` / `distance2d(a, b)` - horizontal distance ignoring Y; null/different worlds -> infinity.
+- `distanceToBoxSquared(box, point)` - distance to the CLOSEST point of the bounding box `[min, max + 1)` (per-axis clamp); a different/null world -> infinity. It IS the SelectionRenderer's culling helper, and public because it is exactly the "is it near the region" a zones plugin needs. It combines with SnChunkMoveEvent (section 10): a cuboid check on chunk crossing instead of on every move.
 
-#### Notas y gotchas del modulo
+#### Module notes and gotchas
 
-- Additive puro: cero firmas existentes tocadas; el accessor `selections()` y el listener 14 son crecimientos permitidos del entrypoint.
-- 1.20.4: la resolucion de particula es por NOMBRE leniente con alias REDSTONE <-> DUST y fallback FLAME, asi ninguna combinacion version/nombre crashea; verificacion puntual de `Particle.DUST` en el smoke gate 1.20.4 del release.
-- Hot-path: PlayerInteractEvent es frecuente; el quick-exit del listener (action -> hand -> null/air -> meta -> scan PDC) deja el costo en nanosegundos para todo item normal (mismo presupuesto que ItemInteractListener).
-- Presupuesto de particulas: budget por viewer + step efectivo + corners-only sobre `max-render-volume` garantizan que ninguna seleccion, por absurda que sea, tire el cliente ni sature el main thread.
-- Fuera del alcance v1.1 (evitable como additive futuro): seleccion por click al aire/raytrace, expansion tipo WorldEdit por comandos, multiples selecciones nombradas por jugador.
+- Purely additive: zero existing signatures touched; the `selections()` accessor and listener 14 are permitted growths of the entrypoint.
+- 1.20.4: particle resolution is by lenient NAME with the REDSTONE <-> DUST alias and the FLAME fallback, so no version/name combination crashes; a targeted `Particle.DUST` verification in the release's 1.20.4 smoke gate.
+- Hot path: PlayerInteractEvent is frequent; the listener's quick exit (action -> hand -> null/air -> meta -> PDC scan) keeps the cost in nanoseconds for every normal item (the same budget as ItemInteractListener).
+- Particle budget: the per-viewer budget + the effective step + corners-only above `max-render-volume` guarantee that no selection, however absurd, drops the client or saturates the main thread.
+- Out of v1.1 scope (avoidable as future additive work): air-click/raytrace selection, WorldEdit-style expansion by commands, multiple named selections per player.

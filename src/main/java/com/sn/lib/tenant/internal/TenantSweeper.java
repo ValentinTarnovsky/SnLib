@@ -101,7 +101,7 @@ public final class TenantSweeper implements Listener {
         }
         if (current != null && !current.isShuttingDown()) {
             owner.getLogger().warning(
-                    "Contexto SnLib no cerrado en onDisable; shutdown forzado por el sweeper (doble red)");
+                    "SnLib context not closed in onDisable; shutdown forced by the sweeper (double net)");
             shutdownQuietly(current);
         }
         OPEN_HOLDERS.removeOwner(owner);
@@ -125,7 +125,7 @@ public final class TenantSweeper implements Listener {
             Plugin owner = ctx.plugin();
             if (!ctx.isShuttingDown() && !(owner instanceof SnLibPlugin)) {
                 owner.getLogger().warning(
-                        "Contexto SnLib no cerrado en onDisable; shutdown forzado por el sweeper (doble red)");
+                        "SnLib context not closed in onDisable; shutdown forced by the sweeper (double net)");
             }
             shutdownQuietly(ctx);
             OPEN_HOLDERS.removeOwner(owner);
@@ -137,7 +137,7 @@ public final class TenantSweeper implements Listener {
         try {
             ctx.shutdown();
         } catch (Throwable t) {
-            ctx.plugin().getLogger().warning("Shutdown del contexto fallo: " + t);
+            ctx.plugin().getLogger().warning("Context shutdown failed: " + t);
         }
     }
 
@@ -147,7 +147,7 @@ public final class TenantSweeper implements Listener {
                 viewer.closeInventory();
             }
         } catch (Throwable t) {
-            holder.owner().getLogger().warning("No se pudo cerrar un inventario de la lib: " + t);
+            holder.owner().getLogger().warning("Could not close a library inventory: " + t);
         }
     }
 

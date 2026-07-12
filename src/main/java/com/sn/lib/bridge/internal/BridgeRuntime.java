@@ -123,7 +123,7 @@ public final class BridgeRuntime {
     public static SnBridgeChannel claim(Sn ctx, String namespace, int msgset) {
         BridgeRuntime runtime = instance;
         if (runtime == null) {
-            throw new IllegalStateException("SnBridge no inicializado: SnLib no esta habilitado");
+            throw new IllegalStateException("SnBridge not initialized: SnLib is not enabled");
         }
         return runtime.doClaim(ctx, namespace, msgset);
     }
@@ -133,9 +133,9 @@ public final class BridgeRuntime {
         SnBridgeChannel existing = channels.get(namespace);
         if (existing != null) {
             if (existing.owner() != ctx.plugin()) {
-                throw new IllegalStateException("Namespace de bridge '" + namespace
-                        + "' ya reclamado por " + existing.owner().getName()
-                        + " (first-claim-wins, elegir otro namespace)");
+                throw new IllegalStateException("Bridge namespace '" + namespace
+                        + "' already claimed by " + existing.owner().getName()
+                        + " (first-claim-wins, pick another namespace)");
             }
             return existing;
         }
@@ -272,10 +272,10 @@ public final class BridgeRuntime {
     public List<String> statusLines() {
         List<String> lines = new ArrayList<>(channels.size() + 1);
         if (!available()) {
-            lines.add("&cBridge SIN secreto HMAC: nada fluye (ver log de arranque de SnLib).");
+            lines.add("&cBridge WITHOUT HMAC secret: nothing flows (see the SnLib startup log).");
         }
         if (channels.isEmpty()) {
-            lines.add("&7Sin namespaces de bridge reclamados.");
+            lines.add("&7No bridge namespaces claimed.");
             return lines;
         }
         List<SnBridgeChannel> sorted = new ArrayList<>(channels.values());
@@ -285,10 +285,10 @@ public final class BridgeRuntime {
             lines.add("&8- &f" + core.namespace()
                     + " &7(" + channel.owner().getName() + ") &f"
                     + core.state().name().toLowerCase(Locale.ROOT)
-                    + " &7sesiones=" + core.readySessionCount() + "/" + core.sessionCount()
+                    + " &7sessions=" + core.readySessionCount() + "/" + core.sessionCount()
                     + " msgset=" + core.msgset()
                     + (core.remoteMsgset() >= 0 ? "->" + core.remoteMsgset() : "")
-                    + " cola=" + core.pending());
+                    + " queue=" + core.pending());
             lines.add("&8    " + core.counters().snapshot());
         }
         return lines;
@@ -296,12 +296,12 @@ public final class BridgeRuntime {
 
     private static void validateNamespace(String namespace) {
         if (namespace == null || namespace.isBlank() || !namespace.matches("[a-z0-9_-]+")) {
-            throw new IllegalArgumentException("Namespace de bridge invalido: '" + namespace
-                    + "' (minusculas [a-z0-9_-], sin ':' ni '/')");
+            throw new IllegalArgumentException("Invalid bridge namespace: '" + namespace
+                    + "' (lowercase [a-z0-9_-], no ':' or '/')");
         }
         if (namespace.startsWith("snlib")) {
             throw new IllegalArgumentException(
-                    "Namespace '" + namespace + "' reservado para SnLib");
+                    "Namespace '" + namespace + "' is reserved for SnLib");
         }
     }
 }

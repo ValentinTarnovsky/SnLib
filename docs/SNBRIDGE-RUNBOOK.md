@@ -1,135 +1,138 @@
-# SnBridge - Runbook operativo
+# SnBridge - Operations runbook
 
-> Compañero de SNBRIDGE-SPEC.md. Escrito ANTES de implementar, a proposito: si algo de este
-> runbook resulta inaceptable en la practica, el diseño se corrige antes de escribir codigo.
-> Audiencia: el operador de OkiMC (proxy Velocity + backends Gens, Gens-Old, Gens-Dev, Work,
-> OkiPVP, Lobby, Worldbox) con deploys manuales via SSH/Pterodactyl y restarts a mano.
+> Companion to SNBRIDGE-SPEC.md. Written BEFORE implementing, on purpose: if anything in this
+> runbook turns out to be unacceptable in practice, the design gets fixed before writing code.
+> Audience: the OkiMC operator (Velocity proxy + the Gens, Gens-Old, Gens-Dev, Work,
+> OkiPVP, Lobby, Worldbox backends) with manual deploys via SSH/Pterodactyl and manual restarts.
 
-## 1. Modelo mental de versiones
+## 1. Version mental model
 
-Con el jar universal hay UNA version de SnLib por servidor (proxy incluido) y un msgset por
-plugin. Ejes reales:
+With the universal jar there is ONE SnLib version per server (proxy included) and one msgset per
+plugin. Real axes:
 
 ```
-SnLib en proxy        1 version
-SnLib por backend     7 versiones (skew de dias es lo normal, no la excepcion)
-msgset por plugin     1 por par proxy/paper (viaja con los jars del plugin)
+SnLib on the proxy    1 version
+SnLib per backend     7 versions (days of skew is the norm, not the exception)
+msgset per plugin     1 per proxy/paper pair (travels with the plugin's jars)
 ```
 
-El handshake HELLO negocia el minimo comun por (backend, namespace). Flota mixta NO rompe:
-degrada con resultado tipado visible (`UNSUPPORTED_MSGSET`, `UNSUPPORTED_AT_DESTINATION`).
-Lo que SI seria roto: silencio. Si hay silencio, algo esta mal (ver seccion 5).
+The HELLO handshake negotiates the common minimum per (backend, namespace). A mixed fleet does
+NOT break: it degrades with a visible typed result (`UNSUPPORTED_MSGSET`,
+`UNSUPPORTED_AT_DESTINATION`).
+What WOULD be broken: silence. If there is silence, something is wrong (see section 5).
 
-## 2. Reglas duras de deploy (NUNCA violar)
+## 2. Hard deploy rules (NEVER violate)
 
-1. **Backends antes que proxy.** SnLib nuevo se instala primero en los backends (en el proximo
-   ciclo de restarts manuales), el proxy al final.
-2. **Nunca** un release de plugin proxy que EXIJA (hard-requiera, sin degradacion elegante) un
-   msgset o verbo por encima del piso (floor) de la flota de backends donde corre. La ventana
-   transitoria de msgset mixto que produce la regla 4 con restarts escalonados es ESPERADA y
-   esta cubierta: HELLO negocia y los sends resuelven `UNSUPPORTED_MSGSET` tipado mientras dura.
-3. **Nunca** rollback de SnLib en un backend por debajo del floor de verbos/msgsets que los
-   plugins proxy ya usan (strippea capacidades en silencio para otros plugins).
-4. Los pares proxy/paper de un plugin (ej. SnCredits velocity + su consumer paper) se despliegan
-   juntos, como hoy.
-5. Ningun restart automatico: los restarts los programa el operador a mano, como siempre
-   (sn-deploy no reinicia nada; eso no cambia).
+1. **Backends before proxy.** New SnLib gets installed on the backends first (on the next cycle
+   of manual restarts), the proxy last.
+2. **Never** release a proxy plugin that REQUIRES (hard-requires, without graceful degradation)
+   a msgset or verb above the floor of the backend fleet it runs on. The transient mixed-msgset
+   window that rule 4 produces with staggered restarts is EXPECTED and covered: HELLO negotiates
+   and sends resolve as a typed `UNSUPPORTED_MSGSET` while it lasts.
+3. **Never** roll back SnLib on a backend below the floor of verbs/msgsets that the proxy
+   plugins already use (it silently strips capabilities from other plugins).
+4. The proxy/paper pair of a plugin (e.g. SnCredits velocity + its paper consumer) deploys
+   together, as today.
+5. No automatic restarts: restarts are scheduled by the operator by hand, as always
+   (sn-deploy restarts nothing; that does not change).
 
-## 3. Orden concreto de un rollout de SnLib (ej. 1.2.0 -> 1.2.1)
+## 3. Concrete order of an SnLib rollout (e.g. 1.2.0 -> 1.2.1)
 
-1. Subir `SnLib-1.2.1.jar` a cada backend (reemplaza el viejo). NO reiniciar todavia si no toca.
-2. En cada ciclo natural de restart de cada modalidad, el backend levanta con 1.2.1.
-   Flota mixta durante dias: OK por diseño.
-3. Cuando TODOS los backends relevantes corren 1.2.1, subir al proxy y reiniciarlo en horario
-   de bajo trafico.
-4. Verificar: `/snlibv status` en proxy -> todos los backends con handshake READY y la version
-   esperada.
+1. Upload `SnLib-1.2.1.jar` to each backend (replaces the old one). Do NOT restart yet if not
+   needed.
+2. On each game mode's natural restart cycle, the backend comes up with 1.2.1.
+   Mixed fleet for days: OK by design.
+3. When ALL relevant backends run 1.2.1, upload to the proxy and restart it during low-traffic
+   hours.
+4. Verify: `/snlibv status` on the proxy -> every backend with a READY handshake and the
+   expected version.
 
-## 4. Diagnostico: comandos y que mirar
+## 4. Diagnostics: commands and what to look at
 
-| Donde | Comando | Que muestra |
+| Where | Command | What it shows |
 |-------|---------|-------------|
-| Backend | `/snlib bridge status` | handshake por namespace, versiones negociadas, cola, drops/expirados, NACKs, frames HMAC invalidos |
-| Proxy | `/snlibv status` | tabla agregada por backend: frame, msgset, estado, cola, drops |
-| Proxy | `/snlibv allowlist-audit` | diff de allowlists efectivas del verbo console entre backends |
+| Backend | `/snlib bridge status` | handshake per namespace, negotiated versions, queue, drops/expired, NACKs, invalid HMAC frames |
+| Proxy | `/snlibv status` | aggregated table per backend: frame, msgset, state, queue, drops |
+| Proxy | `/snlibv allowlist-audit` | diff of the console verb's effective allowlists across backends |
 
-Los NACKs (comando denegado, verbo no soportado, msgset viejo) aparecen rate-limited en el log
-del proxy: un solo lugar que mirar, no 8 consolas.
+NACKs (denied command, unsupported verb, old msgset) show up rate-limited in the proxy log:
+a single place to look at, not 8 consoles.
 
-## 5. Checklist "no llega un mensaje"
+## 5. "A message is not arriving" checklist
 
-En orden:
+In order:
 
-1. **Hay handshake?** `/snlibv status`. Si el backend figura sin handshake:
-   - Backend vacio? El handshake necesita un jugador carrier. Sin jugadores no hay canal. Punto.
-   - SnLib instalado y arrancado en ese backend? (`/snlib version` en su consola)
-   - Version de SnLib demasiado vieja para el frame? El status lo dice explicito.
-2. **Estado WARMING?** Acaba de reiniciar el backend y todavia no entro el primer jugador, o
-   entro hace instantes y el resync esta en curso. Esperar al primer join; el plugin decide que
-   mostrar mientras tanto (eso es responsabilidad del consumer, no del transporte).
-3. **Resultado del send?** Todo send devuelve resultado terminal del enum unico
-   `SnDeliveryResult`. Buscar en el log del plugin proxy:
-   `EXPIRED_TTL` (expiro en cola: sin carrier, sin handshake, o carrier caido a mitad de chunk),
-   `UNSUPPORTED_MSGSET` (actualizar SnLib o el consumer en ese backend),
-   `UNSUPPORTED_AT_DESTINATION` (solo verbos: SnLib de ese backend no conoce el verbo),
-   `DENIED_BY_ALLOWLIST` (solo verbos, ver punto 6), `UNKNOWN_SERVER` (typo en el nombre).
-4. **HMAC drops?** `/snlib bridge status` en el backend. Contador de HMAC invalido subiendo =
-   el forwarding secret difiere entre `velocity.toml` y `paper-global.yml` de ese backend
-   (tipicamente despues de rotar el secret en uno solo de los lados).
-5. **detectLegacy avisando?** "contraparte desactualizada detectada" = un lado del plugin quedo
-   en el stack viejo durante una migracion a medias. Actualizar el lado que falta.
-6. Nada de lo anterior y sigue mudo: revisar que el plugin proxy declare `dependencies: snlib`
-   y que el namespace reclamado sea el mismo string en ambos lados.
+1. **Is there a handshake?** `/snlibv status`. If the backend shows no handshake:
+   - Empty backend? The handshake needs a carrier player. No players, no channel. Period.
+   - SnLib installed and started on that backend? (`/snlib version` on its console)
+   - SnLib version too old for the frame? The status says it explicitly.
+2. **WARMING state?** The backend just restarted and the first player has not joined yet, or
+   joined moments ago and the resync is in progress. Wait for the first join; the plugin
+   decides what to show meanwhile (that is the consumer's responsibility, not the transport's).
+3. **Send result?** Every send returns a terminal result from the single `SnDeliveryResult`
+   enum. Look in the proxy plugin's log for:
+   `EXPIRED_TTL` (expired in queue: no carrier, no handshake, or carrier dropped mid-chunk),
+   `UNSUPPORTED_MSGSET` (update SnLib or the consumer on that backend),
+   `UNSUPPORTED_AT_DESTINATION` (verbs only: that backend's SnLib does not know the verb),
+   `DENIED_BY_ALLOWLIST` (verbs only, see point 6), `UNKNOWN_SERVER` (typo in the name).
+4. **HMAC drops?** `/snlib bridge status` on the backend. Invalid HMAC counter going up =
+   the forwarding secret differs between `velocity.toml` and that backend's `paper-global.yml`
+   (typically after rotating the secret on only one of the sides).
+5. **detectLegacy warning?** "outdated counterpart detected" = one side of the plugin stayed
+   on the old stack during a half-done migration. Update the missing side.
+6. None of the above and still mute: check that the proxy plugin declares `dependencies: snlib`
+   and that the claimed namespace is the same string on both sides.
 
-## 6. Allowlist del verbo console
+## 6. Console verb allowlist
 
-- Vive en `plugins/SnLib/config.yml` de CADA backend (backend-autoritativa a proposito: un
-  proxy comprometido no puede auto-ampliarse permisos).
-- Patrones anclados por argumento: `crates key give <player> vote <int:1..64>`. Prohibido
+- Lives in `plugins/SnLib/config.yml` of EACH backend (backend-authoritative on purpose: a
+  compromised proxy cannot widen its own permissions).
+- Patterns anchored per argument: `crates key give <player> vote <int:1..64>`. Forbidden:
   `crates key give *`.
-- Despues de tocar la allowlist de un backend: correr `/snlibv allowlist-audit` y verificar que
-  el diff entre backends sea el esperado. El merge de ymls de sn-deploy PRESERVA divergencias
-  locales: sin el audit, un comando permitido en Gens y olvidado en Work es un ghost incident.
-- Un rechazo se ve como NACK en el proxy con el patron que fallo. No es un bug del bridge: es
-  la allowlist trabajando.
+- After touching a backend's allowlist: run `/snlibv allowlist-audit` and verify that the diff
+  across backends is the expected one. sn-deploy's yml merge PRESERVES local divergences:
+  without the audit, a command allowed on Gens and forgotten on Work is a ghost incident.
+- A rejection shows up as a NACK on the proxy with the pattern that failed. It is not a bridge
+  bug: it is the allowlist working.
 
-## 7. Rotacion del forwarding secret
+## 7. Forwarding secret rotation
 
-El HMAC del bridge usa el forwarding secret moderno de Velocity por default. Ubicaciones reales:
-en el proxy es el archivo `forwarding.secret` (apuntado por `forwarding-secret-file` en
-`velocity.toml`), en cada backend `config/paper-global.yml` (`proxies.velocity.secret`). Al rotarlo:
+The bridge HMAC uses Velocity's modern forwarding secret by default. Real locations:
+on the proxy it is the `forwarding.secret` file (pointed to by `forwarding-secret-file` in
+`velocity.toml`), on each backend `config/paper-global.yml` (`proxies.velocity.secret`).
+When rotating it:
 
-1. Actualizar el archivo `forwarding.secret` del proxy y el `paper-global.yml` de TODOS los
-   backends en la misma ventana de mantenimiento (esto ya es asi hoy: sin secret coherente los
-   jugadores no entran).
-2. El bridge se re-handshakea solo: HELLO es por conexion de carrier y se dispara cuando la
-   conexion registra el canal (minecraft:register del proxy, que llega despues del join), con
-   reintentos automaticos si el registro tarda. El primer join tras cada restart rearma el
-   canal. Contadores de HMAC invalido durante la ventana son esperables; despues deben quedar
-   en cero.
-3. Si se prefiere desacoplar el bridge de esa rotacion: configurar el secreto dedicado
-   (`bridge.hmac-secret` en `plugins/SnLib/config.yml` + config equivalente en el proxy) en
-   TODOS los servers. Un secreto mas que mantener coherente: decision del operador.
+1. Update the proxy's `forwarding.secret` file and the `paper-global.yml` of ALL the backends
+   in the same maintenance window (this is already the case today: without a coherent secret,
+   players cannot join).
+2. The bridge re-handshakes on its own: HELLO is per carrier connection and fires when the
+   connection registers the channel (the proxy's minecraft:register, which arrives after the
+   join), with automatic retries if registration takes long. The first join after each restart
+   rebuilds the channel. Invalid HMAC counters during the window are expected; afterwards they
+   must stay at zero.
+3. If decoupling the bridge from that rotation is preferred: configure the dedicated secret
+   (`bridge.hmac-secret` in `plugins/SnLib/config.yml` + the equivalent config on the proxy) on
+   ALL servers. One more secret to keep coherent: the operator's call.
 
-## 8. Limites que no son bugs
+## 8. Limits that are not bugs
 
-- **Backend vacio = inalcanzable.** Plugin messaging viaja sobre conexiones de jugadores. Nada
-  llega a (ni sale de) un backend sin jugadores. Flujos pagos usan persistencia DB
-  (`pending_commands` de SnCredits) y se entregan al proximo join. Un verbo `console` a un
-  backend vacio expira con `EXPIRED_TTL`, visible y contado: comportamiento correcto.
-- **Resync = primer join post-restart.** No hay estado sincronizado antes de eso; WARMING lo
-  hace explicito.
-- **At-most-once.** El bridge nunca reintenta solo. Reintentos y deduplicacion son del consumer,
-  con su DB, si el caso lo paga.
+- **Empty backend = unreachable.** Plugin messaging travels over player connections. Nothing
+  reaches (or leaves) a backend without players. Paid flows use DB persistence
+  (SnCredits' `pending_commands`) and get delivered on the next join. A `console` verb to an
+  empty backend expires with `EXPIRED_TTL`, visible and counted: correct behavior.
+- **Resync = first join post-restart.** There is no synced state before that; WARMING makes it
+  explicit.
+- **At-most-once.** The bridge never retries on its own. Retries and deduplication belong to
+  the consumer, with its DB, if the use case pays for it.
 
-## 9. Matriz rapida de compatibilidad
+## 9. Quick compatibility matrix
 
-| Situacion | Comportamiento |
+| Situation | Behavior |
 |-----------|----------------|
-| Proxy 1.2.1, backend 1.2.0, frames compatibles | Negocia el minimo; features nuevas del frame no se usan con ese backend |
-| Proxy exige msgset 3, backend consumer msgset 2 | `UNSUPPORTED_MSGSET` tipado en cada send + NACK; nada explota |
-| Verbo nuevo del proxy, SnLib viejo en backend | `UNSUPPORTED_AT_DESTINATION`; actualizar SnLib de ese backend |
-| Plugin proxy viejo (canal legacy) + consumer nuevo | Silencio de protocolo; el lado NUEVO loguea "contraparte desactualizada" via `detectLegacy` (el lado viejo es codigo viejo: sigue mudo) |
-| SnLib ausente en backend | Sin handshake; visible en `/snlibv status` |
-| Cliente hackeado manda frames al canal | HMAC invalido -> descarte + contador |
-| Frame autentico capturado y reflejado a la otra direccion | Check de direccion del receptor en decode -> descarte + contador propio |
+| Proxy 1.2.1, backend 1.2.0, compatible frames | Negotiates the minimum; new frame features are not used with that backend |
+| Proxy requires msgset 3, backend consumer on msgset 2 | Typed `UNSUPPORTED_MSGSET` on every send + NACK; nothing explodes |
+| New proxy verb, old SnLib on the backend | `UNSUPPORTED_AT_DESTINATION`; update that backend's SnLib |
+| Old proxy plugin (legacy channel) + new consumer | Protocol silence; the NEW side logs "outdated counterpart" via `detectLegacy` (the old side is old code: it stays mute) |
+| SnLib missing on a backend | No handshake; visible in `/snlibv status` |
+| Hacked client sends frames to the channel | Invalid HMAC -> discard + counter |
+| Authentic frame captured and reflected to the other direction | Receiver direction check in decode -> discard + its own counter |

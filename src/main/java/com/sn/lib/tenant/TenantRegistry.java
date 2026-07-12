@@ -51,8 +51,8 @@ public final class TenantRegistry<T> {
 
     /** Registers a value under its owner. */
     public void add(Plugin owner, T value) {
-        // Mutacion dentro de compute: atomica por key contra el drop de remove(), asi una
-        // alta concurrente jamas cae en un set cuya key acaba de removerse.
+        // Mutation inside compute: atomic per key against the drop in remove(), so a
+        // concurrent add never lands on a set whose key was just removed.
         byOwner.compute(owner, (key, values) -> {
             Set<T> set = values == null ? ConcurrentHashMap.<T>newKeySet() : values;
             set.add(value);
@@ -89,7 +89,7 @@ public final class TenantRegistry<T> {
                 try {
                     onSweep.accept(value);
                 } catch (Throwable t) {
-                    owner.getLogger().warning("Sweep de una registracion fallo: " + t);
+                    owner.getLogger().warning("Sweep of a registration failed: " + t);
                 }
             }
         }

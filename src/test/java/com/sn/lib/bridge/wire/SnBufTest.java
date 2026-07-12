@@ -24,7 +24,7 @@ class SnBufTest {
         w.f64(-2.718281828);
         w.bool(true);
         w.bool(false);
-        w.str("hola ñandú 🎉");
+        w.str("héllo wörld 🎉"); // 2-byte and 4-byte UTF-8 sequences are load-bearing here
         w.str("");
         w.bytes(new byte[] {1, 2, 3});
         w.uuid(uuid);
@@ -39,7 +39,7 @@ class SnBufTest {
         assertEquals(-2.718281828, r.f64());
         assertTrue(r.bool());
         assertEquals(false, r.bool());
-        assertEquals("hola ñandú 🎉", r.str());
+        assertEquals("héllo wörld 🎉", r.str());
         assertEquals("", r.str());
         assertArrayEquals(new byte[] {1, 2, 3}, r.bytes());
         assertEquals(uuid, r.uuid());
@@ -112,13 +112,13 @@ class SnBufTest {
         SnBuf outer = SnBuf.forWrite(32);
         outer.i32(payload.length);
         outer.raw(payload, 0, payload.length);
-        outer.str("despues");
+        outer.str("afterwards");
 
         SnBuf r = SnBuf.forRead(outer.toByteArray());
         SnBuf slice = r.readSlice(r.i32());
         assertEquals(7, slice.i32());
         // old decoder stops here; outer cursor already sits past the whole slice
-        assertEquals("despues", r.str());
+        assertEquals("afterwards", r.str());
         assertEquals(8, slice.remaining());
     }
 

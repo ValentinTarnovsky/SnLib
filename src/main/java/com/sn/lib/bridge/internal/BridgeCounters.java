@@ -3,7 +3,7 @@ package com.sn.lib.bridge.internal;
 /**
  * Per-namespace transport counters, main-thread confined (plain longs on purpose).
  * Surfaced by {@code /snlib bridge status}: for an operator with 8 Pterodactyl consoles,
- * these numbers are the difference between "expiro y quedo contado" and ghost silence.
+ * these numbers are the difference between "expired and accounted for" and ghost silence.
  */
 public final class BridgeCounters {
 
@@ -51,9 +51,9 @@ public final class BridgeCounters {
     /** One-line snapshot for the status command. */
     public String snapshot() {
         return "tx=" + sent + " rx=" + received + " handshakes=" + handshakes
-                + " expirados=" + expired + " overflow=" + queueOverflow
-                + " hmacDrop=" + hmacDrops + " malformados=" + malformed
+                + " expired=" + expired + " overflow=" + queueOverflow
+                + " hmacDrop=" + hmacDrops + " malformed=" + malformed
                 + " nackIn=" + nacksReceived + " nackOut=" + nacksSent
-                + " legacy=" + legacyFrames + " huerfanos=" + orphanFrames;
+                + " legacy=" + legacyFrames + " orphans=" + orphanFrames;
     }
 }

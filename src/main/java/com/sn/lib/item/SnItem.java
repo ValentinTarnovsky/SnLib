@@ -420,9 +420,9 @@ public final class SnItem {
         }
         if (skullOwner != null) {
             if (headBase64 != null) {
-                warnOnce("skull-owner-conflict:" + material, "skull-owner y textura base64 "
-                        + "definidos a la vez para " + material
-                        + "; gana skull-owner y la textura base64 se ignora");
+                warnOnce("skull-owner-conflict:" + material, "skull-owner and base64 texture "
+                        + "defined at the same time for " + material
+                        + "; skull-owner wins and the base64 texture is ignored");
             }
             applySkullOwner(meta);
         } else if (headBase64 != null) {
@@ -466,8 +466,8 @@ public final class SnItem {
         while (i < tokens.size()) {
             String id = tokens.get(i++);
             if (isInt(id)) {
-                warnOnce("ench-shape:" + id, "Nivel de encantamiento '" + id
-                        + "' sin id previo; se ignora (formato esperado: [id, nivel, ...])");
+                warnOnce("ench-shape:" + id, "Enchantment level '" + id
+                        + "' without a preceding id; ignored (expected format: [id, level, ...])");
                 continue;
             }
             int level = 1;
@@ -493,8 +493,8 @@ public final class SnItem {
             String[] tokens = line.trim().split("\\s+");
             Double amount = tokens.length < 3 ? null : parseDouble(tokens[2]);
             if (amount == null) {
-                warnOnce("attr-line:" + line, "Linea de atributo invalida '" + line
-                        + "' (formato: ATTRIBUTE OPERATION amount [slot-group]); se ignora");
+                warnOnce("attr-line:" + line, "Invalid attribute line '" + line
+                        + "' (format: ATTRIBUTE OPERATION amount [slot-group]); ignored");
                 continue;
             }
             item.attribute(tokens[0], tokens[1], amount, tokens.length >= 4 ? tokens[3] : null);
@@ -513,8 +513,8 @@ public final class SnItem {
         for (Map.Entry<String, Integer> entry : enchants.entrySet()) {
             Enchantment enchantment = resolveEnchant(entry.getKey());
             if (enchantment == null) {
-                warnOnce("ench:" + entry.getKey(), "Encantamiento invalido '" + entry.getKey()
-                        + "': no se resolvio por Registry ni por nombre legacy; se ignora");
+                warnOnce("ench:" + entry.getKey(), "Invalid enchantment '" + entry.getKey()
+                        + "': not resolved by Registry nor by legacy name; ignored");
                 continue;
             }
             meta.addEnchant(enchantment, Math.max(1, entry.getValue()), true);
@@ -528,8 +528,8 @@ public final class SnItem {
                 glint.invoke(meta, Boolean.TRUE);
                 return;
             } catch (ReflectiveOperationException e) {
-                warnOnce("glint-invoke", "setEnchantmentGlintOverride fallo (" + e
-                        + "); degradando a encantamiento real + HIDE_ENCHANTS");
+                warnOnce("glint-invoke", "setEnchantmentGlintOverride failed (" + e
+                        + "); degrading to a real enchantment + HIDE_ENCHANTS");
             }
         }
         if (!meta.hasEnchants()) {
@@ -563,7 +563,7 @@ public final class SnItem {
             try {
                 meta.addItemFlags(ItemFlag.valueOf(flagName));
             } catch (IllegalArgumentException absentOnThisServer) {
-                // Nombre de otra rama de versiones; se salta sin WARN.
+                // Name from another version branch; skipped without a WARN.
             }
         }
     }
@@ -577,13 +577,13 @@ public final class SnItem {
                 try {
                     ItemFlag aliased = ItemFlag.valueOf(alias);
                     warnOnce("flag-alias:" + flagName, "ItemFlag " + flagName
-                            + " no existe en este server; aliasado a " + alias);
+                            + " does not exist on this server; aliased to " + alias);
                     return aliased;
                 } catch (IllegalArgumentException aliasAlsoUnknown) {
-                    // Cae al WARN generico.
+                    // Falls through to the generic WARN.
                 }
             }
-            warnOnce("flag:" + flagName, "ItemFlag invalido '" + flagName + "'; se ignora");
+            warnOnce("flag:" + flagName, "Invalid ItemFlag '" + flagName + "'; ignored");
             return null;
         }
     }
@@ -601,8 +601,8 @@ public final class SnItem {
     private void applyColor(ItemMeta meta) {
         Color parsed = parseColor(color);
         if (parsed == null) {
-            warnOnce("color:" + color, "Color invalido '" + color
-                    + "' (se espera 'R, G, B' o hex 'RRGGBB'); se ignora");
+            warnOnce("color:" + color, "Invalid color '" + color
+                    + "' (expected 'R, G, B' or hex 'RRGGBB'); ignored");
             return;
         }
         if (meta instanceof LeatherArmorMeta leather) {
@@ -610,8 +610,8 @@ public final class SnItem {
         } else if (meta instanceof PotionMeta potion) {
             potion.setColor(parsed);
         } else {
-            warnOnce("color-meta:" + material, "color definido para " + material
-                    + " que no soporta tintado; se ignora");
+            warnOnce("color-meta:" + material, "color defined for " + material
+                    + " which does not support tinting; ignored");
         }
     }
 
@@ -633,7 +633,7 @@ public final class SnItem {
                 return Color.fromRGB(Integer.parseInt(value, 16));
             }
         } catch (IllegalArgumentException invalid) {
-            // Numero mal formado o canal fuera de 0-255; el caller avisa con UN WARN.
+            // Malformed number or channel outside 0-255; the caller warns with ONE WARN.
         }
         return null;
     }
@@ -645,25 +645,25 @@ public final class SnItem {
             return;
         }
         if (!(meta instanceof ArmorMeta armor)) {
-            warnOnce("trim-meta:" + material, "trim definido para " + material
-                    + " que no es armadura; se ignora");
+            warnOnce("trim-meta:" + material, "trim defined for " + material
+                    + " which is not armour; ignored");
             return;
         }
         if (!hasPattern || !hasMaterial) {
             warnOnce("trim-pair:" + trimPattern + "/" + trimMaterial,
-                    "trim-pattern y trim-material deben definirse juntos; se ignora");
+                    "trim-pattern and trim-material must be defined together; ignored");
             return;
         }
         TrimPattern pattern = resolveTrimPattern(trimPattern);
         if (pattern == null) {
-            warnOnce("trim-pattern:" + trimPattern, "trim-pattern invalido '" + trimPattern
-                    + "'; se ignora");
+            warnOnce("trim-pattern:" + trimPattern, "Invalid trim-pattern '" + trimPattern
+                    + "'; ignored");
             return;
         }
         TrimMaterial trimMat = resolveTrimMaterial(trimMaterial);
         if (trimMat == null) {
-            warnOnce("trim-material:" + trimMaterial, "trim-material invalido '" + trimMaterial
-                    + "'; se ignora");
+            warnOnce("trim-material:" + trimMaterial, "Invalid trim-material '" + trimMaterial
+                    + "'; ignored");
             return;
         }
         armor.setTrim(new ArmorTrim(trimMat, pattern));
@@ -686,7 +686,7 @@ public final class SnItem {
                     return modern;
                 }
             } catch (Throwable registryAccessUnavailable) {
-                // Server sin RegistryAccess pese a la version: cae al campo legacy.
+                // Server without RegistryAccess despite the version: falls to the legacy field.
             }
         }
         return legacyTrimPattern(key);
@@ -705,18 +705,18 @@ public final class SnItem {
                     return modern;
                 }
             } catch (Throwable registryAccessUnavailable) {
-                // Server sin RegistryAccess pese a la version: cae al campo legacy.
+                // Server without RegistryAccess despite the version: falls to the legacy field.
             }
         }
         return legacyTrimMaterial(key);
     }
 
-    @SuppressWarnings("deprecation") // Registry.TRIM_* deprecado desde 1.20.6; fallback 1.20.4.
+    @SuppressWarnings("deprecation") // Registry.TRIM_* deprecated since 1.20.6; 1.20.4 fallback.
     private static @Nullable TrimPattern legacyTrimPattern(NamespacedKey key) {
         return Registry.TRIM_PATTERN.get(key);
     }
 
-    @SuppressWarnings("deprecation") // Registry.TRIM_* deprecado desde 1.20.6; fallback 1.20.4.
+    @SuppressWarnings("deprecation") // Registry.TRIM_* deprecated since 1.20.6; 1.20.4 fallback.
     private static @Nullable TrimMaterial legacyTrimMaterial(NamespacedKey key) {
         return Registry.TRIM_MATERIAL.get(key);
     }
@@ -726,8 +726,8 @@ public final class SnItem {
             return;
         }
         if (!(meta instanceof PotionMeta potion)) {
-            warnOnce("potion-meta:" + material, "potion-effects definidos para " + material
-                    + " sin PotionMeta; se ignoran");
+            warnOnce("potion-meta:" + material, "potion-effects defined for " + material
+                    + " without PotionMeta; ignored");
             return;
         }
         List<String> tokens = tokenize(potionEffects);
@@ -735,8 +735,8 @@ public final class SnItem {
         while (i < tokens.size()) {
             String id = tokens.get(i++);
             if (isInt(id)) {
-                warnOnce("potion-shape:" + id, "Valor numerico '" + id
-                        + "' sin efecto previo; se ignora (formato: [efecto, nivel, duracion])");
+                warnOnce("potion-shape:" + id, "Numeric value '" + id
+                        + "' without a preceding effect; ignored (format: [effect, level, duration])");
                 continue;
             }
             int level = 1;
@@ -751,7 +751,7 @@ public final class SnItem {
             }
             PotionEffectType type = resolveEffect(id);
             if (type == null) {
-                warnOnce("effect:" + id, "Efecto de pocion invalido '" + id + "'; se ignora");
+                warnOnce("effect:" + id, "Invalid potion effect '" + id + "'; ignored");
                 continue;
             }
             potion.addCustomEffect(
@@ -764,9 +764,9 @@ public final class SnItem {
             AttributeLine line = attributes.get(i);
             Attribute attribute = resolveAttribute(line.attribute());
             if (attribute == null) {
-                warnOnce("attribute:" + line.attribute(), "Atributo invalido '"
+                warnOnce("attribute:" + line.attribute(), "Invalid attribute '"
                         + line.attribute()
-                        + "': no se resolvio por Registry en ninguna de sus formas; se ignora");
+                        + "': not resolved by Registry in any of its forms; ignored");
                 continue;
             }
             AttributeModifier.Operation operation = parseOperation(line.operation());
@@ -841,8 +841,8 @@ public final class SnItem {
         try {
             return AttributeModifier.Operation.valueOf(name);
         } catch (IllegalArgumentException unknown) {
-            warnOnce("attr-op:" + raw, "Operacion de atributo invalida '" + raw
-                    + "' (se espera ADD_NUMBER, ADD_SCALAR o MULTIPLY_SCALAR_1); se ignora");
+            warnOnce("attr-op:" + raw, "Invalid attribute operation '" + raw
+                    + "' (expected ADD_NUMBER, ADD_SCALAR or MULTIPLY_SCALAR_1); ignored");
             return null;
         }
     }
@@ -862,7 +862,7 @@ public final class SnItem {
                 return new AttributeModifier(NamespacedKey.fromString("snlib:" + keyName),
                         amount, operation, resolveSlotGroup(slotGroup));
             } catch (Throwable modernUnavailable) {
-                // Constructor o EquipmentSlotGroup ausentes pese a la version: rama legacy.
+                // Constructor or EquipmentSlotGroup absent despite the version: legacy branch.
             }
         }
         return legacyModifier(keyName, amount, operation, slotGroup);
@@ -875,14 +875,14 @@ public final class SnItem {
         EquipmentSlotGroup group =
                 EquipmentSlotGroup.getByName(slotGroup.trim().toLowerCase(Locale.ROOT));
         if (group == null) {
-            warnOnce("attr-slot:" + slotGroup, "Slot-group de atributo invalido '" + slotGroup
-                    + "'; se usa ANY");
+            warnOnce("attr-slot:" + slotGroup, "Invalid attribute slot-group '" + slotGroup
+                    + "'; using ANY");
             return EquipmentSlotGroup.ANY;
         }
         return group;
     }
 
-    @SuppressWarnings("deprecation") // Constructor UUID pre-NamespacedKey; fallback 1.20.4.
+    @SuppressWarnings("deprecation") // Pre-NamespacedKey UUID constructor; 1.20.4 fallback.
     private static AttributeModifier legacyModifier(String keyName, double amount,
             AttributeModifier.Operation operation, @Nullable String slotGroup) {
         UUID id = UUID.nameUUIDFromBytes(keyName.getBytes(StandardCharsets.UTF_8));
@@ -907,8 +907,8 @@ public final class SnItem {
         }
         EquipmentSlot slot = parseEquipmentSlot(slotGroup);
         if (slot == null) {
-            warnOnce("attr-slot:" + slotGroup, "Slot-group de atributo invalido '" + slotGroup
-                    + "'; se aplica a cualquier slot");
+            warnOnce("attr-slot:" + slotGroup, "Invalid attribute slot-group '" + slotGroup
+                    + "'; applied to every slot");
         }
         return slot;
     }
@@ -932,8 +932,8 @@ public final class SnItem {
      */
     private void applyDamage(ItemMeta meta) {
         if (material.getMaxDurability() <= 0 || !(meta instanceof Damageable damageable)) {
-            warnOnce("damage-meta:" + material, "damage definido para " + material
-                    + " sin durabilidad vanilla; se ignora");
+            warnOnce("damage-meta:" + material, "damage defined for " + material
+                    + " without vanilla durability; ignored");
             return;
         }
         damageable.setDamage(Math.max(0, Math.min(vanillaDamage, material.getMaxDurability())));
@@ -942,13 +942,13 @@ public final class SnItem {
     private void applyMaxStackSize(ItemMeta meta) {
         Method setter = SnCompat.probe(ItemMeta.class, "setMaxStackSize", Integer.class);
         if (setter == null) {
-            // 1.20.4: el probe ya aviso con UN WARN; se omite el campo.
+            // 1.20.4: the probe already warned with ONE WARN; the field is skipped.
             return;
         }
         try {
             setter.invoke(meta, Integer.valueOf(Math.max(1, Math.min(99, maxStackSize))));
         } catch (ReflectiveOperationException e) {
-            warnOnce("maxstack-invoke", "setMaxStackSize fallo (" + e + "); se omite");
+            warnOnce("maxstack-invoke", "setMaxStackSize failed (" + e + "); skipped");
         }
     }
 
@@ -956,22 +956,22 @@ public final class SnItem {
         if (meta instanceof SkullMeta skull) {
             HeadUtil.applyBase64(skull, headBase64);
         } else {
-            warnOnce("head-meta:" + material, "headBase64 requiere PLAYER_HEAD; material actual "
-                    + material + "; se ignora");
+            warnOnce("head-meta:" + material, "headBase64 requires PLAYER_HEAD; current material "
+                    + material + "; ignored");
         }
     }
 
     private void applySkullOwner(ItemMeta meta) {
         if (!(meta instanceof SkullMeta skull)) {
-            warnOnce("skull-owner-meta:" + material, "skull-owner requiere PLAYER_HEAD; "
-                    + "material actual " + material + "; se ignora");
+            warnOnce("skull-owner-meta:" + material, "skull-owner requires PLAYER_HEAD; "
+                    + "current material " + material + "; ignored");
             return;
         }
         OfflinePlayer resolved = resolveSkullOwner(skullOwner);
         if (resolved == null) {
             warnOnce("skull-owner:" + skullOwner, "skull-owner '" + skullOwner
-                    + "' no es un UUID ni un nombre cacheado en este server; "
-                    + "se deja la cabeza por defecto");
+                    + "' is neither a UUID nor a name cached on this server; "
+                    + "keeping the default head");
             return;
         }
         HeadUtil.applyOwner(skull, resolved);
@@ -995,8 +995,8 @@ public final class SnItem {
             return;
         }
         if (parseEquipmentSlot(equipmentSlot) == null) {
-            warnOnce("slot:" + equipmentSlot, "equipment-slot invalido '" + equipmentSlot
-                    + "' (se espera MAINHAND, OFFHAND, HEAD, CHEST, LEGS o FEET)");
+            warnOnce("slot:" + equipmentSlot, "Invalid equipment-slot '" + equipmentSlot
+                    + "' (expected MAINHAND, OFFHAND, HEAD, CHEST, LEGS or FEET)");
         }
     }
 
@@ -1015,11 +1015,11 @@ public final class SnItem {
                 return byKey;
             }
         }
-        warnOnce("material:" + raw, "Material invalido '" + raw + "'; usando STONE");
+        warnOnce("material:" + raw, "Invalid material '" + raw + "'; using STONE");
         return Material.STONE;
     }
 
-    @SuppressWarnings("deprecation") // getByName resuelve nombres legacy pre-Registry.
+    @SuppressWarnings("deprecation") // getByName resolves legacy pre-Registry names.
     private static @Nullable Enchantment resolveEnchant(String id) {
         NamespacedKey key = registryKey(id);
         if (key != null) {

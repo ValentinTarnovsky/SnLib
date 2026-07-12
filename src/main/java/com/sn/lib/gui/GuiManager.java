@@ -75,13 +75,13 @@ public final class GuiManager {
         try {
             files = ctx.yml();
         } catch (UnsupportedOperationException e) {
-            plugin.getLogger().warning("guis() declarado sin config(): la carpeta guis/ "
-                    + "no se puede cargar y sn.guis() queda vacio");
+            plugin.getLogger().warning("guis() declared without config(): the guis/ folder "
+                    + "cannot be loaded and sn.guis() stays empty");
             return;
         }
         File dir = new File(plugin.getDataFolder(), "guis");
         if (!dir.exists() && !dir.mkdirs()) {
-            plugin.getLogger().warning("No se pudo crear la carpeta " + dir.getPath());
+            plugin.getLogger().warning("Could not create folder " + dir.getPath());
             return;
         }
         File[] found = dir.listFiles(

@@ -57,9 +57,9 @@ public final class BukkitCommandRegistry {
             declared.setTabCompleter(adapter);
             registerDynamicAliases(owner, command, declared);
         } else {
-            owner.getLogger().warning("Comando '/" + command.getName()
-                    + "' no declarado en el plugin.yml de " + owner.getName()
-                    + "; registro dinamico via CommandMap");
+            owner.getLogger().warning("Command '/" + command.getName()
+                    + "' not declared in the plugin.yml of " + owner.getName()
+                    + "; dynamic registration via CommandMap");
             Bukkit.getCommandMap().register(prefix(owner), command);
         }
         COMMANDS.add(owner, command);
@@ -113,9 +113,9 @@ public final class BukkitCommandRegistry {
         if (dynamic.isEmpty()) {
             return;
         }
-        owner.getLogger().warning("Aliases " + dynamic + " de '/" + command.getName()
-                + "' no declarados en el plugin.yml de " + owner.getName()
-                + "; registro dinamico via CommandMap");
+        owner.getLogger().warning("Aliases " + dynamic + " of '/" + command.getName()
+                + "' not declared in the plugin.yml of " + owner.getName()
+                + "; dynamic registration via CommandMap");
         Map<String, Command> known = Bukkit.getCommandMap().getKnownCommands();
         for (String alias : dynamic) {
             known.putIfAbsent(alias, command);
