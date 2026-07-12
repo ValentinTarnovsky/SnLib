@@ -78,8 +78,14 @@ public final class SnProxyChannel {
     public <T, R> void respond(SnWireType<T> requestType, SnWireType<R> responseType,
             BiFunction<SnProxySource, T, R> handler) {
         core.respond(requestType.wireId(), responseType, (carrier, serverName, request) -> {
-            SnProxySource source = resolveSource(carrier, serverName);
-            return handler.apply(source, (T) request);
+            Player player = runtime.proxy().getPlayer(carrier).orElse(null);
+            if (player == null) {
+                // SnProxySource.player() is a NEVER-null contract: if the carrier left in
+                // flight, fail cleanly so the core NACKs INTERNAL_ERROR with an honest
+                // message instead of handing the handler a null it will NPE on
+                throw new SnWireException("carrier player left before the responder ran");
+            }
+            return handler.apply(new SnProxySource(player, serverName), (T) request);
         });
     }
 
@@ -89,7 +95,7 @@ public final class SnProxyChannel {
     }
 
     /** Negotiation data of one backend, or empty while it has no live session. */
-    public Optional<ProxyChannelCore.BackendInfo> capabilities(String serverName) {
+    public Optional<SnBackendInfo> capabilities(String serverName) {
         return Optional.ofNullable(core.capabilities(normalize(serverName)));
     }
 
@@ -111,10 +117,6 @@ public final class SnProxyChannel {
         runtime.registerLegacy(legacyChannel, core);
     }
 
-    private SnProxySource resolveSource(java.util.UUID carrier, String serverName) {
-        Player player = runtime.proxy().getPlayer(carrier).orElse(null);
-        return new SnProxySource(player, serverName);
-    }
 
     /** One-backend send surface. */
     @SnExperimental
@@ -139,6 +141,24 @@ public final class SnProxyChannel {
             }
             // Normalized: getServer is case-insensitive but the core matches exactly
             return core.sendToServer(normalize(serverName), type, message, opts.ttlMillis());
+        }
+
+        /**
+         * Request/response toward THIS backend: correlated by msgId, bounded by
+         * {@code timeout}. The future completes with the typed response, or exceptionally
+         * on NACK ({@link SnNackException}) or timeout. This is the Velocity end of a
+         * Velocity-to-Paper request; the Paper side answers via
+         * {@code SnBridgeChannel.respond(...)}.
+         */
+        @SuppressWarnings("unchecked")
+        public <T, R> CompletableFuture<R> request(SnWireType<T> requestType, T request,
+                SnWireType<R> responseType, java.time.Duration timeout) {
+            if (runtime.proxy().getServer(serverName).isEmpty()) {
+                return CompletableFuture.failedFuture(new SnWireException(
+                        "'" + serverName + "' is not a server registered in velocity.toml"));
+            }
+            return core.request(normalize(serverName), requestType, request, responseType,
+                    Math.max(1L, timeout.toMillis())).thenApply(message -> (R) message);
         }
     }
 

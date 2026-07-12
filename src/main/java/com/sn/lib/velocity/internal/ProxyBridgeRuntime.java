@@ -350,7 +350,7 @@ public final class ProxyBridgeRuntime {
                     .append(" queue=").append(core.pending())
                     .append(' ').append(core.counters().snapshot()).append('\n');
             for (String server : core.liveServers()) {
-                ProxyChannelCore.BackendInfo info = core.capabilities(server);
+                com.sn.lib.velocity.SnBackendInfo info = core.capabilities(server);
                 report.append("    ").append(server)
                         .append(": sessions=").append(core.readySessionsOn(server));
                 if (info != null) {

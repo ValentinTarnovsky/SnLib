@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.bridge.SnDelivery;
 import com.sn.lib.bridge.SnDeliveryResult;
+import com.sn.lib.velocity.SnBackendInfo;
 import com.sn.lib.bridge.internal.BridgeCounters;
 import com.sn.lib.bridge.wire.ChunkReassembler;
 import com.sn.lib.bridge.wire.Chunker;
@@ -166,10 +167,10 @@ public final class ProxyChannelCore {
     }
 
     /** Negotiation data of the given backend, or null while no session lives there. */
-    public synchronized @Nullable BackendInfo capabilities(String serverName) {
+    public synchronized @Nullable SnBackendInfo capabilities(String serverName) {
         for (Session session : sessions.values()) {
             if (session.serverName.equals(serverName)) {
-                return new BackendInfo(session.remoteMsgset, session.remoteLibVersion,
+                return new SnBackendInfo(session.remoteMsgset, session.remoteLibVersion,
                         session.remoteCapabilities);
             }
         }
@@ -238,7 +239,7 @@ public final class ProxyChannelCore {
         UUID carrier = pickCarrierOn(serverName);
         if (carrier != null) {
             int msgId = msgIds.getAsInt();
-            requests.put(msgId, new PendingRequest(responseType.wireId(), future, deadline));
+            requests.put(msgId, new PendingRequest(serverName, responseType.wireId(), future, deadline));
             Session session = sessions.get(carrier);
             if (deliverFrames(carrier, serverName, body, msgId, session.sessionNonce, false)) {
                 counters.sent++;
@@ -251,7 +252,7 @@ public final class ProxyChannelCore {
             return future;
         }
         CompletableFuture<SnDelivery> sendFuture = new CompletableFuture<>();
-        PendingRequest pending = new PendingRequest(responseType.wireId(), future, deadline);
+        PendingRequest pending = new PendingRequest(serverName, responseType.wireId(), future, deadline);
         enqueue(new QueuedSend(serverName, requestType.wireId(), body, deadline, sendFuture,
                 pending));
         sendFuture.thenAccept(delivery -> {
@@ -505,8 +506,11 @@ public final class ProxyChannelCore {
         }
         if (message instanceof NackMsg nack) {
             counters.nacksReceived++;
-            PendingRequest pending = requests.remove(nack.refMsgId());
-            if (pending != null) {
+            // Bind to the intended backend: a fleet shares the HMAC secret, so a valid
+            // NACK carrying another backend's in-flight msgId must not satisfy this request
+            PendingRequest pending = requests.get(nack.refMsgId());
+            if (pending != null && pending.serverName.equals(session.serverName)) {
+                requests.remove(nack.refMsgId());
                 post.add(() -> pending.future.completeExceptionally(new SnNackException(
                         nack.reason(), "backend NACK (" + nack.reason() + "): " + nack.detail())));
             }
@@ -526,10 +530,12 @@ public final class ProxyChannelCore {
             }
         }
         // Correlation REQUIRES the response flag (a push with a colliding msgId must
-        // never be swallowed); completion is consumer-visible, so it runs post-lock
+        // never be swallowed) AND the response must come from the backend the request
+        // targeted (fleet-shared secret: another backend's msgId must not satisfy it)
         if (isResponse) {
             PendingRequest pending = requests.get(msgId);
-            if (pending != null && pending.responseWireId.equals(decoded.type().wireId())) {
+            if (pending != null && pending.serverName.equals(session.serverName)
+                    && pending.responseWireId.equals(decoded.type().wireId())) {
                 requests.remove(msgId);
                 post.add(() -> pending.future.complete(message));
             }
@@ -541,15 +547,18 @@ public final class ProxyChannelCore {
             String requestWireId = decoded.type().wireId();
             // The responder is consumer code: it runs OUTSIDE the monitor
             post.add(() -> {
-                Object response;
+                byte[] responseBody;
                 try {
-                    response = responderEntry.responder.respond(carrier, serverName, message);
+                    // Encode INSIDE the try so a null/wrong-type response or codec failure
+                    // NACKs INTERNAL_ERROR too, never leaves the backend request hanging
+                    Object response = responderEntry.responder.respond(carrier, serverName, message);
+                    responseBody = encodeResponse(responderEntry.responseType, response);
                 } catch (Throwable t) {
                     log.warn("[" + namespace + "] responder of " + requestWireId + " threw " + t);
                     nackResponderFailure(carrier, msgId, requestWireId, t);
                     return;
                 }
-                deliverResponse(carrier, msgId, responderEntry.responseType, response);
+                sendResponse(carrier, msgId, responseBody);
             });
             return;
         }
@@ -559,14 +568,12 @@ public final class ProxyChannelCore {
         post.add(() -> dispatcher.dispatch(type, carrier, serverName, message));
     }
 
-    /** Re-acquires the monitor to answer a request; the session may be gone by now. */
-    private synchronized void deliverResponse(UUID carrier, int msgId,
-            SnWireType<?> responseType, Object response) {
+    /** Re-acquires the monitor to send an already-encoded response; session may be gone. */
+    private synchronized void sendResponse(UUID carrier, int msgId, byte[] responseBody) {
         Session session = sessions.get(carrier);
         if (session == null || closed) {
             return; // the backend is gone: the request will die by timeout over there
         }
-        byte[] responseBody = encodeResponse(responseType, response);
         // The response travels with the SAME msgId + response flag: how the backend correlates
         if (deliverFrames(carrier, session.serverName, responseBody, msgId,
                 session.sessionNonce, true)) {
@@ -590,6 +597,7 @@ public final class ProxyChannelCore {
     }
 
     private void flushQueue(String serverName, UUID carrier, List<Runnable> post) {
+        long now = clock.getAsLong();
         for (Iterator<QueuedSend> it = queue.iterator(); it.hasNext();) {
             QueuedSend entry = it.next();
             if (!entry.serverName.equals(serverName)) {
@@ -597,7 +605,13 @@ public final class ProxyChannelCore {
             }
             it.remove();
             SnDelivery delivery;
-            if (entry.request != null) {
+            // Recheck the TTL: a handshake landing just after the deadline must not
+            // transmit an already-expired send
+            if (now >= entry.expiresAt) {
+                counters.expired++;
+                delivery = SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
+                        "expired before flush (" + entry.wireId + ")");
+            } else if (entry.request != null) {
                 int msgId = msgIds.getAsInt();
                 requests.put(msgId, entry.request);
                 if (deliverFrames(carrier, serverName, entry.body, msgId,
@@ -680,10 +694,6 @@ public final class ProxyChannelCore {
         queue.addLast(entry);
     }
 
-    /** Negotiation snapshot of one backend. */
-    public record BackendInfo(int msgset, String libVersion, Map<String, Integer> capabilities) {
-    }
-
     private record RespondEntry(SnWireType<?> responseType, Responder responder) {
     }
 
@@ -691,8 +701,8 @@ public final class ProxyChannelCore {
             CompletableFuture<SnDelivery> future, @Nullable PendingRequest request) {
     }
 
-    private record PendingRequest(String responseWireId, CompletableFuture<Object> future,
-            long deadline) {
+    private record PendingRequest(String serverName, String responseWireId,
+            CompletableFuture<Object> future, long deadline) {
     }
 
     private static final class Session {

@@ -178,6 +178,14 @@ public final class ChannelCore {
 
     public void onState(Consumer<SnBridgeState> callback) {
         stateCallbacks.add(callback);
+        // Deliver the CURRENT state immediately: a consumer subscribing after READY must
+        // not miss it and then block forever waiting for a transition that already fired
+        SnBridgeState current = state();
+        try {
+            callback.accept(current);
+        } catch (Throwable t) {
+            log.warn("[" + namespace + "] state callback threw " + t);
+        }
     }
 
     /**
@@ -371,6 +379,15 @@ public final class ChannelCore {
             sendNack(carrier, session, header.msgId(), "", NackReason.MALFORMED, e.getMessage());
             return;
         }
+        // Before the handshake completes only HELLO_ACK is allowed: an application frame
+        // signed with the handshake nonce (still HMAC-valid) must never reach a handler
+        // or responder pre-READY
+        if (!session.ready && !(decoded.message() instanceof HelloAckMsg)) {
+            counters.malformed++;
+            log.debug(() -> "[" + namespace + "] pre-handshake application frame "
+                    + decoded.type().wireId() + " dropped");
+            return;
+        }
         route(carrier, session, header.msgId(), header.isResponse(), decoded);
     }
 
@@ -505,9 +522,12 @@ public final class ChannelCore {
         }
         RespondEntry responderEntry = responders.get(decoded.type().wireId());
         if (responderEntry != null) {
-            Object response;
+            byte[] responseBody;
             try {
-                response = responderEntry.responder.respond(carrier, message);
+                // Encode INSIDE the try: a null/wrong-type response or a codec failure must
+                // NACK INTERNAL_ERROR too, never leave the remote request to time out
+                Object response = responderEntry.responder.respond(carrier, message);
+                responseBody = encodeResponse(responderEntry.responseType, response);
             } catch (Throwable t) {
                 log.warn("[" + namespace + "] responder for " + decoded.type().wireId()
                         + " threw " + t);
@@ -516,8 +536,7 @@ public final class ChannelCore {
                 return;
             }
             // The reply travels under the SAME msgId + response flag: proxy-side correlation
-            if (deliverFrames(carrier, encodeResponse(responderEntry.responseType, response),
-                    msgId, session.sessionNonce, true)) {
+            if (deliverFrames(carrier, responseBody, msgId, session.sessionNonce, true)) {
                 counters.sent++;
             }
             return;
@@ -557,6 +576,7 @@ public final class ChannelCore {
 
     private void flushQueue(UUID readyCarrier) {
         List<Completion> completions = null;
+        long now = clock.getAsLong();
         for (Iterator<QueuedSend> it = queue.iterator(); it.hasNext();) {
             QueuedSend entry = it.next();
             UUID carrier = entry.target == null ? readyCarrier : entry.target;
@@ -566,7 +586,13 @@ public final class ChannelCore {
             }
             it.remove();
             SnDelivery delivery;
-            if (entry.request != null) {
+            // Recheck the TTL: a handshake completing just after the deadline but before
+            // the next sweep must NOT transmit an already-expired send (esp. a verb)
+            if (now >= entry.expiresAt) {
+                counters.expired++;
+                delivery = SnDelivery.of(SnDeliveryResult.EXPIRED_TTL,
+                        "expired before flush (" + entry.wireId + ")");
+            } else if (entry.request != null) {
                 int msgId = msgIds.getAsInt();
                 requests.put(msgId, entry.request);
                 if (deliverFrames(carrier, entry.body, msgId, session.sessionNonce)) {

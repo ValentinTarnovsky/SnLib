@@ -100,7 +100,7 @@ public final class ItemRegistry {
      */
     public void register(String id, ItemDef def) {
         if (id == null || id.isBlank() || def == null) {
-            plugin.getLogger().warning("register de item ignorado: id o definicion nulos");
+            plugin.getLogger().warning("item register ignored: null id or definition");
             return;
         }
         String key = id.trim();

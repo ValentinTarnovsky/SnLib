@@ -130,7 +130,7 @@ class YamlUpdaterTest {
     private static List<String> fixture(String name) throws IOException {
         try (InputStream in = YamlUpdaterTest.class.getResourceAsStream("/yml/" + name)) {
             if (in == null) {
-                throw new IOException("Fixture no encontrado: " + name);
+                throw new IOException("Fixture not found: " + name);
             }
             List<String> lines = new ArrayList<>();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {

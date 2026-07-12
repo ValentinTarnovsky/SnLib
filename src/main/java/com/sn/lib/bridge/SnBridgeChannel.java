@@ -94,6 +94,24 @@ public final class SnBridgeChannel {
         handlers.put(type, handler);
     }
 
+    /**
+     * Serves a request type coming FROM the proxy: the handler's return value travels
+     * back auto-correlated (same msgId + response flag) so the proxy's request future
+     * completes. Runs on the main thread; a handler throw answers a typed INTERNAL_ERROR
+     * NACK instead of silence. This is the Paper end of a Velocity-to-Paper request.
+     */
+    @SuppressWarnings("unchecked")
+    public <T, R> void respond(SnWireType<T> requestType, SnWireType<R> responseType,
+            java.util.function.BiFunction<Player, T, R> handler) {
+        core.respond(requestType.wireId(), responseType, (carrier, request) -> {
+            Player player = org.bukkit.Bukkit.getPlayer(carrier);
+            if (player == null) {
+                throw new SnWireException("carrier player left before the responder ran");
+            }
+            return handler.apply(player, (T) request);
+        });
+    }
+
     /** State transitions (WARMING/READY); fired on the main thread. */
     public void onState(Consumer<SnBridgeState> callback) {
         core.onState(callback);

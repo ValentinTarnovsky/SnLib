@@ -149,7 +149,7 @@ class ProxyChannelCoreTest {
     void helloGetsAckAndSessionTracksBackend() {
         backendHandshake("gens");
         assertEquals(1, core.readySessionsOn("gens"));
-        ProxyChannelCore.BackendInfo info = core.capabilities("gens");
+        com.sn.lib.velocity.SnBackendInfo info = core.capabilities("gens");
         assertNotNull(info);
         assertEquals(7, info.msgset());
         assertEquals(Map.of("bossbar", 1), info.capabilities());
@@ -176,6 +176,40 @@ class ProxyChannelCoreTest {
         assertEquals(777, answers.get(0).msgId(), "the response travels with the SAME msgId");
         assertEquals(new SyncConfig("blob-for-work"), answers.get(0).message());
         assertTrue(dispatched.isEmpty(), "a served request never goes through on()");
+    }
+
+    @Test
+    void responseFromWrongBackendDoesNotSatisfyTheRequest() {
+        // Request is sent to "gens"; a response with the same msgId arriving from "work"
+        // (a fleet backend sharing the HMAC secret) must NOT complete it
+        UUID carrierWork = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
+        backendHandshake("gens"); // CARRIER on gens, learns sessionNonce
+        long gensNonce = sessionNonce;
+
+        int before = deliveries.size();
+        CompletableFuture<Object> future = core.request("gens", ReqConfig.TYPE,
+                new ReqConfig("cfg?"), SyncConfig.TYPE, 5_000L);
+        int reqMsgId = decodeRange(before, before + 1, gensNonce).get(0).msgId();
+
+        // A second backend "work" handshakes on its own carrier
+        long workBackendNonce = 0x0BADF00DL;
+        HelloMsg workHello = new HelloMsg(1, WireProtocol.FRAME_VERSION, 7, "backend",
+                workBackendNonce, Map.of());
+        int beforeWork = deliveries.size();
+        for (byte[] f : Chunker.split(HelloMsg.TYPE.encodeMessage(workHello), true, false,
+                601, signer, WireProtocol.HANDSHAKE_NONCE)) {
+            core.onFrame(carrierWork, "work", f);
+        }
+        HelloAckMsg workAck = (HelloAckMsg) decodeRange(beforeWork, beforeWork + 1,
+                WireProtocol.HANDSHAKE_NONCE).get(0).message();
+        long workNonce = workBackendNonce ^ workAck.nonce();
+
+        // "work" answers with the gens request's msgId + response flag
+        byte[] spoof = SyncConfig.TYPE.encodeMessage(new SyncConfig("wrong-backend"));
+        for (byte[] f : Chunker.split(spoof, true, true, reqMsgId, signer, workNonce)) {
+            core.onFrame(carrierWork, "work", f);
+        }
+        assertFalse(future.isDone(), "a response from the wrong backend must be ignored");
     }
 
     @Test

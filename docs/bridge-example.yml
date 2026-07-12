@@ -1,0 +1,52 @@
+# =============================================================================
+#  bridge-example.yml - golden reference for the SnBridge section of
+#  plugins/SnLib/config.yml (BACKEND / Paper side).
+#
+#  This is NOT a standalone file: these keys live under the top-level `bridge:`
+#  block of SnLib's own config.yml. It documents every bridge setting with its
+#  default. SnBridge is experimental (v1.2); keys may change until it freezes.
+#
+#  Editing any of these requires a server RESTART: the HMAC signer and the
+#  console allowlist are read once at enable, `/snlib reload` does not re-read
+#  them.
+# =============================================================================
+
+bridge:
+
+  # Dedicated HMAC secret for frame authentication. Empty = use the Velocity
+  # modern forwarding secret this backend already has in
+  # config/paper-global.yml (proxies.velocity.secret). Set a value only to
+  # decouple the bridge from forwarding-secret rotation; then the PROXY must
+  # carry the same secret in plugins/snlib/hmac-secret.txt.
+  hmac-secret: ""
+
+  # Default queue TTL (seconds) for a send waiting on a carrier/handshake.
+  # A send that outlives this resolves EXPIRED_TTL instead of firing stale.
+  default-ttl-seconds: 30
+
+  # Max queued messages per namespace; overflow resolves EXPIRED_TTL at once.
+  queue-cap: 256
+
+  # Max bytes of one reassembled message (memory cap against hostile clients).
+  max-message-bytes: 8388608
+
+  # Max partially-received messages per connection.
+  max-pending-messages: 8
+
+  # Tier 2 console verb allowlist (backend-authoritative). EMPTY = deny EVERY
+  # console command. Anchored per-argument patterns only, NEVER prefix
+  # wildcards. Tokens:
+  #   literal        exact token, case-sensitive
+  #   <player>       a valid Minecraft name ([A-Za-z0-9_]{1,16})
+  #   <word>         any single token
+  #   <int:min..max> an integer within the inclusive range
+  # A command matches only when the token COUNT is exact and every token
+  # matches its pattern token. Examples:
+  console-allowlist:
+    - "crates key give <player> vote <int:1..64>"
+    - "eco give <player> <int:1..1000000>"
+    - "broadcast <word>"
+
+  # Max console verb executions per second (rate limit, shared across callers).
+  # The `actions` verb shares this limit.
+  console-rate-limit-per-second: 10

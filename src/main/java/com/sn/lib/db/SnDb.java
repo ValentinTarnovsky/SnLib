@@ -247,7 +247,7 @@ public final class SnDb {
         CompletableFuture<R> result = new CompletableFuture<>();
         SnFuture<R> future = new SnFuture<>(ctx, this, result);
         if (closed.get()) {
-            result.completeExceptionally(new IllegalStateException("SnDb cerrado: " + poolName));
+            result.completeExceptionally(new IllegalStateException("SnDb closed: " + poolName));
             return future;
         }
         try {
@@ -272,7 +272,7 @@ public final class SnDb {
         synchronized (dataSourceLock) {
             if (dataSource == null) {
                 if (closed.get()) {
-                    throw new IllegalStateException("SnDb cerrado: " + poolName);
+                    throw new IllegalStateException("SnDb closed: " + poolName);
                 }
                 dataSource = createDataSource();
             }

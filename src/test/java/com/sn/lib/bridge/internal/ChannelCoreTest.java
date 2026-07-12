@@ -172,12 +172,12 @@ class ChannelCoreTest {
     @Test
     void handshakeReachesReadyAndReportsRemoteMsgset() {
         List<SnBridgeState> states = new ArrayList<>();
-        core.onState(states::add);
+        core.onState(states::add); // fires the current state (WARMING) immediately
         assertEquals(SnBridgeState.WARMING, core.state());
         handshake(CARRIER_A);
         assertEquals(SnBridgeState.READY, core.state());
         assertEquals(5, core.remoteMsgset());
-        assertEquals(List.of(SnBridgeState.READY), states);
+        assertEquals(List.of(SnBridgeState.WARMING, SnBridgeState.READY), states);
     }
 
     @Test
@@ -343,11 +343,12 @@ class ChannelCoreTest {
     @Test
     void lastCarrierQuitFallsBackToWarming() {
         List<SnBridgeState> states = new ArrayList<>();
-        core.onState(states::add);
+        core.onState(states::add); // immediate WARMING, then READY, then WARMING again
         handshake(CARRIER_A);
         core.closeSession(CARRIER_A);
         assertEquals(SnBridgeState.WARMING, core.state());
-        assertEquals(List.of(SnBridgeState.READY, SnBridgeState.WARMING), states);
+        assertEquals(List.of(SnBridgeState.WARMING, SnBridgeState.READY, SnBridgeState.WARMING),
+                states);
     }
 
     @Test
@@ -405,10 +406,17 @@ class ChannelCoreTest {
     @Test
     void stateCallbackRegisteringAnotherCallbackIsSafe() {
         List<SnBridgeState> late = new ArrayList<>();
-        core.onState(state -> core.onState(late::add));
-        handshake(CARRIER_A); // fires READY while a callback mutates the callback list
-        core.closeSession(CARRIER_A); // WARMING reaches the late-registered callback too
-        assertEquals(List.of(SnBridgeState.WARMING), late);
+        boolean[] registered = {false};
+        // A callback that, once, registers a second observer: must not throw (no CME) and
+        // the second observer gets the current state immediately then the next transition
+        core.onState(state -> {
+            if (!registered[0]) {
+                registered[0] = true;
+                core.onState(late::add);
+            }
+        });
+        handshake(CARRIER_A); // READY reaches both callbacks without a ConcurrentModification
+        assertEquals(List.of(SnBridgeState.WARMING, SnBridgeState.READY), late);
     }
 
     @Test
@@ -478,6 +486,50 @@ class ChannelCoreTest {
         assertTrue(request.isCompletedExceptionally());
         core.openSession(CARRIER_A);
         assertEquals(0, core.sessionCount(), "a closed core opens no sessions");
+    }
+
+    @Test
+    void preHandshakeApplicationFrameIsDropped() {
+        // A frame signed with the handshake nonce (HMAC-valid) but carrying an app message
+        // must NOT reach a handler before HELLO completes
+        core.openSession(CARRIER_A); // sends HELLO, session not ready yet (no ACK fed)
+        feed(CARRIER_A, TestMsg.TYPE.encodeMessage(new TestMsg(CARRIER_A, "early")),
+                8_000, WireProtocol.HANDSHAKE_NONCE);
+        assertTrue(dispatched.isEmpty(), "no application frame is routed pre-READY");
+    }
+
+    @Test
+    void expiredQueuedSendIsNotTransmittedOnFlush() {
+        // Queue a send with a short TTL, let the deadline pass, THEN complete the handshake:
+        // the flush must resolve EXPIRED_TTL, not transmit the stale send
+        CompletableFuture<SnDelivery> future = core.send(null,
+                TestMsg.TYPE, new TestMsg(CARRIER_A, "stale"), 1_000L);
+        clock.addAndGet(1_001L);
+        int before = deliveries.size();
+        handshake(CARRIER_A); // handshake lands AFTER the deadline
+        assertEquals(SnDeliveryResult.EXPIRED_TTL, future.join().result());
+        // only handshake traffic went out, never the stale TestMsg
+        for (int i = before; i < deliveries.size(); i++) {
+            for (ProxyView view : proxyDecode(CARRIER_A, i)) {
+                assertFalse(view.message() instanceof TestMsg,
+                        "an expired send must never be transmitted on flush");
+            }
+        }
+    }
+
+    @Test
+    void responderCodecFailureNacksInsteadOfHanging() {
+        handshake(CARRIER_A);
+        // Responder returns the WRONG type: encoding it fails and must NACK, not hang
+        core.respond(ReqMsg.TYPE.wireId(), RespMsg.TYPE,
+                (carrier, request) -> "not a RespMsg record");
+        int before = deliveries.size();
+        feed(CARRIER_A, ReqMsg.TYPE.encodeMessage(new ReqMsg("q")), 8_100,
+                proxyNonces.get(CARRIER_A));
+        List<ProxyView> seen = proxyDecode(CARRIER_A, before);
+        assertEquals(1, seen.size());
+        assertTrue(seen.get(0).message() instanceof NackMsg, "a codec failure must NACK");
+        assertEquals(NackReason.INTERNAL_ERROR, ((NackMsg) seen.get(0).message()).reason());
     }
 
     @Test

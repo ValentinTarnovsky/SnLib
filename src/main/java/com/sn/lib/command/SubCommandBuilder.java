@@ -94,7 +94,7 @@ public final class SubCommandBuilder {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(arg, "arg");
         if (args.put(name, arg) != null) {
-            throw new IllegalArgumentException("Argumento duplicado: '" + name + "'");
+            throw new IllegalArgumentException("Duplicate argument: '" + name + "'");
         }
     }
 

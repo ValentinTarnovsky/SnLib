@@ -25,6 +25,7 @@
 - [16. Build, tests, golden specs and TODOs](#16-build-tests-golden-specs-and-todos)
 - [17. UpdateChecker (v1.1)](#17-updatechecker-v11)
 - [18. Region: cuboid selection (v1.1)](#18-region-cuboid-selection-v11)
+- [19. SnBridge: cross-server messaging (v1.2, experimental)](#19-snbridge-cross-server-messaging-v12-experimental)
 
 ---
 ## 01. Architecture and lifecycle
@@ -201,7 +202,7 @@ Immutable declaration of the SnLib modules a consumer plugin uses. Part of the f
 
 Public API level of this SnLib build. `final` class with a private constructor; a single public constant:
 
-- `public static final int LEVEL = 1` - API level of this build. Policy: it goes up by exactly 1 on EVERY release that adds public methods or classes to the API; the surface is frozen under an additive-only japicmp gate. It is the number every consumer handshakes against via `SnPlugin#requiredApiLevel()`: the required level is inlined into the consumer's bytecode at compile time, so a consumer compiled against a newer level than the installed SnLib.jar disables itself cleanly instead of failing with `NoSuchMethodError`.
+- `public static final int LEVEL = 2` - API level of this build. Policy: it goes up by exactly 1 on EVERY release that adds public methods or classes to the FROZEN API; the surface is frozen under an additive-only japicmp gate. The SnBridge packages (`com.sn.lib.bridge.*`, `com.sn.lib.velocity.*`) are `@SnExperimental` and excluded from the gate and from this level until they freeze (see section 19), so they can add public API during the experimental window without bumping LEVEL. It is the number every consumer handshakes against via `SnPlugin#requiredApiLevel()`: the required level is inlined into the consumer's bytecode at compile time, so a consumer compiled against a newer level than the installed SnLib.jar disables itself cleanly instead of failing with `NoSuchMethodError`.
 
 ### Ph
 `src/main/java/com/sn/lib/Ph.java`
@@ -3695,3 +3696,127 @@ Static location math helpers (D11), a final class of the `com.sn.lib.util` packa
 - Hot path: PlayerInteractEvent is frequent; the listener's quick exit (action -> hand -> null/air -> meta -> PDC scan) keeps the cost in nanoseconds for every normal item (the same budget as ItemInteractListener).
 - Particle budget: the per-viewer budget + the effective step + corners-only above `max-render-volume` guarantee that no selection, however absurd, drops the client or saturates the main thread.
 - Out of v1.1 scope (avoidable as future additive work): air-click/raytrace selection, WorldEdit-style expansion by commands, multiple named selections per player.
+
+---
+## 19. SnBridge: cross-server messaging (v1.2, experimental)
+
+SnBridge lets a Velocity proxy plugin and a Paper backend plugin talk over plugin
+messaging without each pair reimplementing a codec, a listener and a handshake. The SAME
+`SnLib.jar` is BOTH a Paper plugin and a Velocity plugin (dual descriptor: `plugin.yml`
+and `velocity-plugin.json`), so it drops into `plugins/` of the proxy exactly as it does
+into each backend.
+
+**Experimental**: every bridge type is `@SnExperimental`. The packages
+`com.sn.lib.bridge.*` and `com.sn.lib.velocity.*` are OUTSIDE the japicmp gate and outside
+`SnApi.LEVEL` until they freeze (planned for the release that migrates the first real
+consumers). Their public API may change until then. The full design is in
+`docs/SNBRIDGE-SPEC.md`; the operator runbook is `docs/SNBRIDGE-RUNBOOK.md`.
+
+### 19.1 Model
+
+- **Transport**: plugin messages ride a player connection. An empty backend (no players)
+  is unreachable in both directions by design; paid or critical flows still need
+  DB-backed persistence and idempotency (delivery is at-most-once, not durable).
+- **Security floor**: every frame is HMAC-SHA256 authenticated with the Velocity modern
+  forwarding secret both sides already share (or a dedicated secret, see 19.6). A frame
+  with a bad tag is dropped and counted; without a matching secret the bridge stays off
+  (fail-closed) and every send resolves a terminal result instead of hanging.
+- **Handshake**: the backend sends HELLO on the first carrier that registers the channel
+  (a `minecraft:register`, which arrives AFTER the player join behind a proxy); the proxy
+  answers HELLO_ACK. A namespace is WARMING until a session is ready, then READY. Queued
+  sends flush strictly after the ACK.
+- **Wire discipline**: typed messages (`SnWireType`) with a stable string wireId, explicit
+  positional codecs and additive-only evolution (length-prefixed body, so an older decoder
+  skips trailing fields a newer emitter added). Reflection over records is forbidden.
+
+### 19.2 Two tiers
+
+- **Tier 1 - typed channels**: each consumer claims a namespace (`snlib:ext/<namespace>`)
+  and exchanges its own message records. Fire-and-forget, request/response (correlated by
+  msgId + a response flag), state callbacks.
+- **Tier 2 - verbs**: generic actions SnLib itself runs on the backend over `snlib:bridge`,
+  so a proxy-only plugin needs NO Paper jar: `console` (allowlist-gated), `message`,
+  `title`, `actionbar`, `sound`, `bossbar`, `actions`. Every verb answers a terminal
+  `SnDelivery`.
+
+### 19.3 Paper side (backend consumer)
+
+The message records live in the plugin's platform-neutral common module and are shared
+with the Velocity side. `sn.bridge()` is always available (like `sn.selections()`).
+
+- `SnBridgeChannel`: `register`, `on`, `respond` (answers a proxy request), `onState`
+  (fires the CURRENT state immediately, then transitions), `send`/`sendAny`, `request`
+  (returns `SnFuture`; responses/timeouts/teardown resolve on the main thread, so
+  `join()` on the main thread throws instead of deadlocking), `detectLegacy`, `state`,
+  `remoteMsgset`, `pending`. Handlers run on the main thread with the carrier `Player`.
+
+### 19.4 Velocity side (proxy consumer)
+
+The consumer's `velocity-plugin.json` declares `"dependencies": [{ "id": "snlib" }]`.
+
+- `SnProxy.channel(owner, namespace, msgset)` is first-claim-wins per plugin instance;
+  claiming a namespace another plugin holds is a hard error.
+- `SnProxyChannel`: `register`, `on`, `respond`, `to(server)` -> `Destination.send` /
+  `Destination.request` (Velocity to Paper request/response), `capabilities(server)` ->
+  `Optional<SnBackendInfo>`, `detectLegacy`, `pending`. Every `send` resolves a terminal
+  `SnDelivery` (including `UNKNOWN_SERVER`). Handlers and completions run on the Velocity
+  event thread that produced them; there is no main thread on the proxy.
+
+### 19.5 Verbs (proxy)
+
+`SnVerbs verbs = SnProxy.verbs();` then `verbs.on(server).console/message/title/actionbar/
+sound/bossbar/actions/allowlist(...)`. Every verb resolves a terminal `SnDelivery`:
+
+- `DELIVERED`, `DENIED_BY_ALLOWLIST` (blocked console/actions), `UNSUPPORTED_AT_DESTINATION`
+  (unknown verb/action tag on an older backend), `FAILED_AT_DESTINATION` (player offline,
+  bad sound spec, unknown bar), `UNKNOWN_SERVER`, `EXPIRED_TTL` (timeout / no session).
+- **console** runs only commands matching the backend-authoritative anchored allowlist
+  (`bridge.console-allowlist`, EMPTY = deny all), rate-limited, no prefix wildcards.
+- **actions** is presentation-only and fail-closed: a `[console]`/`[player-as-op]` tag (or
+  any unknown tag) denies the WHOLE verb; command execution goes only through console.
+- **bossbar** verbs are per-player (a shared barId never evicts another player's bar);
+  `bossbarHide` unregisters the bar. **sound** spec is `SOUND_ID [volume] [pitch]`.
+
+### 19.6 Config and diagnostics
+
+Backend `plugins/SnLib/config.yml` `bridge:` block: `hmac-secret` (empty = use the Velocity
+forwarding secret from `config/paper-global.yml`), `default-ttl-seconds`, `queue-cap`,
+`max-message-bytes`, `max-pending-messages`, `console-allowlist` (see
+`docs/bridge-example.yml`), `console-rate-limit-per-second`. Proxy dedicated secret (opt-in)
+lives in `plugins/snlib/hmac-secret.txt`. Editing a secret or the allowlist requires a
+server restart; `/snlib reload` does not re-read them.
+
+- Backend: `/snlib bridge status` - handshake state, negotiated versions, queue depth,
+  drops, NACKs, per namespace.
+- Proxy: `/snlibv status` (and `SnProxy.statusReport()`) - per-backend table for the
+  namespaces with a live session.
+
+### 19.7 Semantics to remember
+
+- **msgset differences are handled by additive evolution**, not by hard rejection: a
+  backend at a lower msgset still decodes a higher-msgset message (it skips trailing new
+  fields) and vice versa (the decoder defaults missing fields). `UNSUPPORTED_MSGSET` is
+  reserved for a future non-additive escape hatch and is not emitted on the normal path.
+- **ACK vs NACK**: allowlist denial and unknown action vocabulary travel as verb ACK codes
+  (mapped to `DENIED_BY_ALLOWLIST` / `UNSUPPORTED_AT_DESTINATION`); wire-level problems
+  (`UNKNOWN_WIRE_ID`, `MALFORMED`, `INTERNAL_ERROR`) travel as NACKs (a typed
+  `SnNackException`, never a plain timeout).
+- **Tier 1 `SENT`** means frames were handed to a live connection, NOT an application ack.
+
+### 19.8 Known limitations and deferred work (v1.2 experimental)
+
+Surfaced by the v1.2 final check; tracked for the freeze release:
+
+- Velocity has no per-consumer release; a proxy-plugin hot reload is unsafe until proxy
+  restart (Paper releases owners on `Sn.shutdown`).
+- `/snlibv` prints status only; the documented `allowlist-audit` subcommand is not wired
+  (the programmatic `SnVerbs.allowlist()` audit exists). Proxy status lists only backends
+  with a live session, not every configured backend, and omits WARMING/frame version.
+- Verb capabilities are advertised in HELLO but not preflight-enforced (an old backend
+  answers `UNKNOWN_WIRE_ID`, mapped to `UNSUPPORTED_AT_DESTINATION`).
+- Frame version negotiation computes a common version but the encoder always writes the
+  current one (harmless while only frame v1 exists).
+- Drop counters collapse garbage / bad-HMAC / reflected frames into one counter.
+- `SnYml` has player-aware `getString`/`getStringList` only; numeric/boolean getters have
+  no viewer overload.
+- `DiscordWebhook` and `UpdateChecker` expose no completion future (fire-and-forget).

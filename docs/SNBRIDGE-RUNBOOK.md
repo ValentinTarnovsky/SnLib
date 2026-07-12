@@ -89,9 +89,12 @@ In order:
   compromised proxy cannot widen its own permissions).
 - Patterns anchored per argument: `crates key give <player> vote <int:1..64>`. Forbidden:
   `crates key give *`.
-- After touching a backend's allowlist: run `/snlibv allowlist-audit` and verify that the diff
-  across backends is the expected one. sn-deploy's yml merge PRESERVES local divergences:
-  without the audit, a command allowed on Gens and forgotten on Work is a ghost incident.
+- After touching a backend's allowlist: audit the effective patterns per backend. The
+  programmatic audit is `SnVerbs.on(server).allowlist()` (returns an `AllowlistReport` with the
+  live patterns or a failure result); a dedicated `/snlibv allowlist-audit` subcommand that
+  diffs the whole fleet is deferred (see SNLIB-DOCS 19.8). sn-deploy's yml merge PRESERVES local
+  divergences: without an audit, a command allowed on Gens and forgotten on Work is a ghost
+  incident.
 - A rejection shows up as a NACK on the proxy with the pattern that failed. It is not a bridge
   bug: it is the allowlist working.
 
@@ -110,9 +113,16 @@ When rotating it:
    join), with automatic retries if registration takes long. The first join after each restart
    rebuilds the channel. Invalid HMAC counters during the window are expected; afterwards they
    must stay at zero.
-3. If decoupling the bridge from that rotation is preferred: configure the dedicated secret
-   (`bridge.hmac-secret` in `plugins/SnLib/config.yml` + the equivalent config on the proxy) on
-   ALL servers. One more secret to keep coherent: the operator's call.
+3. If decoupling the bridge from that rotation is preferred, configure the dedicated secret on
+   ALL servers. The dedicated-secret locations are ASYMMETRIC by platform:
+   - Backend (Paper): `bridge.hmac-secret` key in `plugins/SnLib/config.yml`.
+   - Proxy (Velocity): the file `plugins/snlib/hmac-secret.txt`.
+   One more secret to keep coherent across the fleet: the operator's call.
+
+**No hot reload of secrets or allowlist.** Both HMAC signers are built once at enable, and the
+console allowlist is parsed once when the verb service installs. Editing a secret,
+`bridge.console-allowlist`, or `console-rate-limit-per-second` and running `/snlib reload` does
+NOT re-read them; a server RESTART is required for those to take effect.
 
 ## 8. Limits that are not bugs
 

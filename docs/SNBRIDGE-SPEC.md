@@ -322,34 +322,45 @@ public final class SnCreditsBridge extends SnPlugin {
 ```
 
 ### Velocity side (proxy plugin, SnLib as a plugin dependency, NO shading)
+
+The consumer's `velocity-plugin.json` declares `"dependencies": [{ "id": "snlib" }]`.
+These are the REAL entry points (`SnProxy.channel`/`SnProxyChannel`/`SnVerbs`/`SnDelivery`);
+the earlier `SnProxy.init`/`SnProxyBridge`/`SnVerbResult` sketch was never implemented.
+
 ```java
 @Plugin(id = "sncredits", dependencies = {@Dependency(id = "snlib")})
 public final class SnCreditsVelocity {
   @Subscribe void onInit(ProxyInitializeEvent e) {
-    SnProxyBridge bridge = SnProxy.init(this, proxy, logger)
-        .channel("sncredits", /*msgset*/ 3);
+    SnProxyChannel bridge = SnProxy.channel(this, "sncredits", /*msgset*/ 3);
     bridge.register(OpenConfirm.TYPE, ShopClick.TYPE, SyncBalance.TYPE, SyncConfig.TYPE);
 
     bridge.on(ShopClick.TYPE, (src, msg) -> shop.handleClick(src.player(), msg));
-    bridge.respond(RequestConfig.TYPE, (src, req) -> new SyncConfig(configBlob)); // chunks at ~24KB
+    bridge.respond(RequestConfig.TYPE, SyncConfig.TYPE,
+        (src, req) -> new SyncConfig(configBlob)); // reply chunked at ~24KB toward the backend
 
-    bridge.to("gens").send(new OpenConfirm(uuid, itemId, 500.0), SnSendOpts.ttl(ofSeconds(10)))
-        .thenAccept(d -> { if (d.result() != SnDeliveryResult.SENT) log.warn("gens: " + d.result()); });
+    bridge.to("gens").send(OpenConfirm.TYPE, new OpenConfirm(uuid, itemId, 500.0),
+            SnSendOpts.ttl(Duration.ofSeconds(10)))
+        .thenAccept(d -> { if (!d.ok()) log.warn("gens: " + d.result()); }); // SnDelivery
 
-    // Verbs (Tier 2): no own Paper jar on the other side
-    SnVerbs verbs = SnProxy.verbs(this);
+    // Verbs (Tier 2): no own Paper jar on the other side. Explicit wire type + record.
+    SnVerbs verbs = SnProxy.verbs();
     verbs.on("gens").console("crates key give " + name + " vote 1")
-        .thenAccept(r -> { if (r != SnVerbResult.DELIVERED) log.warn("gens console: " + r); });
-    // new glue over the existing BossBarUtil (create(id)/show(player,id)/setText/setProgress)
-    verbs.on("work").bossbar(playerUuid, bar -> bar.text("<red>KeyAll in 5m").progress(0.5f));
+        .thenAccept(d -> { if (!d.ok()) log.warn("gens console: " + d); }); // SnDelivery, not SnVerbResult
+    verbs.on("work").bossbar(playerUuid, "keyall",
+        bar -> bar.text("<red>KeyAll in 5m").progress(0.5f)); // bossbar takes a barId
 
-    bridge.capabilities("work").ifPresentOrElse(
+    bridge.capabilities("work").ifPresentOrElse(         // Optional<SnBackendInfo>
         c -> { if (c.msgset() < 3) log.warn("work runs msgset " + c.msgset()); },
         () -> log.warn("work: no handshake (empty backend or old SnLib)"));
-    log.info(SnProxy.statusReport());  // table: backend | frame | msgset | state | queue | drops
+    log.info(SnProxy.statusReport());  // per-backend table for namespaces with a live session
   }
 }
 ```
+
+> Reverse request/response (Velocity requests, Paper answers) is available:
+> `SnProxyChannel.Destination.request(...)` on the proxy and `SnBridgeChannel.respond(...)`
+> on Paper. The Paper-requests-Velocity-answers direction uses `SnBridgeChannel.request(...)`
+> and `SnProxyChannel.respond(...)`.
 
 ## 10. Diagnostics (a 1.0 deliverable, not a follow-up)
 
