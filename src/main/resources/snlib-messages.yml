@@ -21,10 +21,11 @@ snlib:
   # Sent to the sender after a successful reload.
   reload-done: "&aConfiguration reloaded."
   help:
-    # Header line printed before the generated help entries.
-    header: "&6&lCommands"
-    # One line per subcommand visible to the sender; {usage} is its syntax and {permission} its permission node.
-    entry: "&e{usage} &8- &7{permission}"
+    # Header line printed before the generated help entries; {plugin} is the plugin name.
+    header: "&8&m----------&r &e&l{plugin} &8&m----------"
+    # One line per subcommand visible to the sender; {usage} is its syntax, {description} its
+    # description and {permission} its permission node.
+    entry: "&e{usage}&8: &7{description}"
     # Printed after the entries only when the help spans several pages; {command} is the root command name.
     footer: "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"
   selection:

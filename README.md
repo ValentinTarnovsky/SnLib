@@ -557,7 +557,7 @@ against a live network.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.2.0`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.2.1`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items), `docs/selection-example.yml`
@@ -570,6 +570,6 @@ against a live network.
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
   every release that adds public API (2 since the 1.1.0 release, unchanged in
-  1.2.0). SnBridge (`com.sn.lib.bridge.*`, `com.sn.lib.velocity.*`) is
+  1.2.0 and 1.2.1). SnBridge (`com.sn.lib.bridge.*`, `com.sn.lib.velocity.*`) is
   `@SnExperimental` and stays OUTSIDE both the japicmp gate and `SnApi.LEVEL`
   until a real migration stress-tests it and it freezes - not scheduled yet.

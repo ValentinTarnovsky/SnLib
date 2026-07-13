@@ -6,7 +6,7 @@
 
     <groupId>com.sn</groupId>
     <artifactId>snlib</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <packaging>jar</packaging>
 
     <name>SnLib</name>

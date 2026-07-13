@@ -48,12 +48,12 @@ public final class RootCommand extends Command implements Registrable {
             Map.entry("snlib.player-not-found", "&cPlayer not found: &f{value}"),
             Map.entry("snlib.unknown-subcommand", "&cUnknown subcommand: &f{value}"),
             Map.entry("snlib.reload-done", "&aConfiguration reloaded."),
-            Map.entry("snlib.help.header", "&6&lCommands"),
-            Map.entry("snlib.help.entry", "&e{usage} &8- &7{permission}"),
+            Map.entry("snlib.help.header", "&8&m----------&r &e&l{plugin} &8&m----------"),
+            Map.entry("snlib.help.entry", "&e{usage}&8: &7{description}"),
             Map.entry("snlib.help.footer", "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"));
 
     /** Entries per generated help page. */
-    private static final int HELP_PAGE_SIZE = 8;
+    private static final int HELP_PAGE_SIZE = 10;
 
     private final Sn ctx;
     private final @Nullable SnLang lang;
@@ -255,11 +255,12 @@ public final class RootCommand extends Command implements Registrable {
         }
         Page<Sub> page = Page.of(permitted, HELP_PAGE_SIZE);
         int current = page.clamp(pageNumber);
-        send(sender, "snlib.help.header");
+        send(sender, "snlib.help.header", Ph.of("plugin", ctx.plugin().getName()));
         for (Sub sub : page.page(current)) {
             String permission = effectivePermission(sub);
             send(sender, "snlib.help.entry",
                     Ph.of("usage", usageOf(sub)),
+                    Ph.of("description", sub.description),
                     Ph.of("permission", permission == null ? "" : permission));
         }
         if (page.totalPages() > 1) {

@@ -1,12 +1,13 @@
-# SnLib v1.2.0 - Technical documentation of the current state
+# SnLib v1.2.1 - Technical documentation of the current state
 
 > Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11 for
-> the 1.1.0 release, and again on 2026-07-12 for the 1.2.0 release (SnBridge, section 19).
+> the 1.1.0 release, again on 2026-07-12 for the 1.2.0 release (SnBridge, section 19), and for the
+> 1.2.1 release (generated help: `{plugin}` on the header, `{description}` on entries, 10 per page).
 > Coverage: every class under `src/main/java/com/sn/lib` (165 java files), resources, build and
 > tests (37 suites, 323 tests).
 
 **Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins, now shipped as a
-DUAL-PLATFORM jar: the SAME `SnLib-1.2.0.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
+DUAL-PLATFORM jar: the SAME `SnLib-1.2.1.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
 provided scope) AND a Velocity plugin (`velocity-plugin.json`, entry `SnLibVelocity`), so it hosts
 SnBridge's proxy side on the proxy and its backend side on every Paper server. Java 21, floor
 1.20.4, target 1.21.8, forward 1.22+ with WARN. 323 green JUnit tests across 37 suites; smoke gate
@@ -740,8 +741,8 @@ Resource packaged inside SnLib.jar with the shared `snlib.*` message keys. The a
 | `snlib.player-not-found` | `{value}` | Sent when an argument expected an online player. |
 | `snlib.unknown-subcommand` | `{value}` | Sent when the given subcommand does not exist. |
 | `snlib.reload-done` | (none) | Sent to the sender after a successful reload. |
-| `snlib.help.header` | (none) | Header line printed before the generated help entries. |
-| `snlib.help.entry` | `{usage}`, `{permission}` | One line per subcommand visible to the sender. |
+| `snlib.help.header` | `{plugin}` | Header line printed before the generated help entries; `{plugin}` is the plugin name (v1.2.1). |
+| `snlib.help.entry` | `{usage}`, `{description}`, `{permission}` | One line per subcommand visible to the sender (`{description}` added in v1.2.1). |
 | `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Printed after the entries only when the help spans multiple pages; `{command}` is the root command name. |
 | `snlib.selection.pos1-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 1 (v1.1, section 18). |
 | `snlib.selection.pos2-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 2 (v1.1, section 18). |
@@ -2481,7 +2482,7 @@ Root of a command tree; extends `org.bukkit.command.Command` and implements `Reg
 
 Constants (private, but they define the observable contract):
 - `DEFAULT_MESSAGES` - static map of default templates mirroring `snlib-messages.yml` (server-wide static justified by being constant). Keys: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry`, `snlib.help.footer`.
-- `HELP_PAGE_SIZE = 8` - entries per page of the generated help.
+- `HELP_PAGE_SIZE = 10` - entries per page of the generated help.
 
 Public methods:
 - `public JavaPlugin owner()` - consumer plugin owning this tree.
@@ -2506,7 +2507,7 @@ Public methods:
 - For arguments: the sub's permission gate again; `argIndex = args.length - 2`; if the index exceeds the declared args, only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial)`. A `suggest` returning null normalizes to an empty list.
 
 **Internal logic (generated help)**
-Header `snlib.help.header`, one `snlib.help.entry` per visible and permitted subcommand (placeholders `{usage}` and `{permission}`, empty if public), paginated with `Page` in pages of 8; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
+Header `snlib.help.header` (placeholder `{plugin}`, the plugin name), one `snlib.help.entry` per visible and permitted subcommand (placeholders `{usage}`, `{description}` and `{permission}`, the latter empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
 
 **Notes and gotchas**
 - Defaults inject in the constructor only if no sub with that name or alias already exists (`hasSub`): a consumer's sub named `reload`/`help`/`debug` replaces the default.
