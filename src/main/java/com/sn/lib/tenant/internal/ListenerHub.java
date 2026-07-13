@@ -51,7 +51,6 @@ public final class ListenerHub {
         inscribe(UpdateChecker.joinListener());
         inscribe(new HologramChunkListener());
         inscribe(new SelectionWandListener());
-        inscribe(new com.sn.lib.bridge.internal.BridgeConnectionListener());
     }
 
     private ListenerHub() {

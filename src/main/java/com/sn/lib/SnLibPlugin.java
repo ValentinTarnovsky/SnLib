@@ -65,7 +65,6 @@ public final class SnLibPlugin extends JavaPlugin {
         ListenerHub.registerAll(this);
         Sn ctx = SnLib.init(this, buildSelfSpec());
         this.selfCtx = ctx;
-        com.sn.lib.bridge.internal.BridgeRuntime.init(this, ctx);
         SnLibCommand.register(this, ctx);
         if (ctx.yml().config().getBoolean("bstats", true)) {
             this.metrics = new Metrics(this, BSTATS_SERVICE_ID);
@@ -78,7 +77,6 @@ public final class SnLibPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         TenantSweeper.cascadeAll();
-        com.sn.lib.bridge.internal.BridgeRuntime.shutdownRuntime();
         Metrics activeMetrics = this.metrics;
         if (activeMetrics != null) {
             activeMetrics.shutdown();

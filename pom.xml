@@ -268,10 +268,7 @@
                         <excludes>
                             <exclude>com.sn.lib.**.internal.**</exclude>
                             <exclude>com.sn.lib.libs.**</exclude>
-                            <!-- SnBridge @SnExperimental: outside the gate until the SnCredits
-                                 migration (see docs/SNBRIDGE-SPEC.md section 3); on freeze these
-                                 two excludes go away and SnApi.LEVEL bumps. -->
-                            <exclude>com.sn.lib.bridge.**</exclude>
+                            <!-- Velocity base: excluded from the additive gate while it stabilizes. -->
                             <exclude>com.sn.lib.velocity.**</exclude>
                             <!-- Shaded WITHOUT relocation (JNI/driver): not SnLib API. -->
                             <exclude>com.mysql.**</exclude>

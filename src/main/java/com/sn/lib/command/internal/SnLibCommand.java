@@ -72,13 +72,6 @@ public final class SnLibCommand {
                         .description("Dumps the PDC tags of the held item")
                         .executes(SnLibCommand::itemInfo)
                         .and()
-                .sub("bridge")
-                        .permission("snlib.admin.bridge")
-                        .usage("/snlib bridge status")
-                        .description("SnBridge diagnostics: handshakes, queues and drop counters")
-                        .argOptional("action", Args.oneOf(() -> List.of("status")))
-                        .executes(context -> bridgeStatus(context.sender()))
-                        .and()
                 .sub("reload")
                         .permission("snlib.admin.reload")
                         .usage("/snlib reload [plugin]")
@@ -87,20 +80,6 @@ public final class SnLibCommand {
                         .executes(context -> reload(plugin, selfCtx, context))
                         .and()
                 .register();
-    }
-
-    /** {@code /snlib bridge status}: per-namespace handshake state, queues and counters. */
-    private static void bridgeStatus(CommandSender sender) {
-        com.sn.lib.bridge.internal.BridgeRuntime runtime =
-                com.sn.lib.bridge.internal.BridgeRuntime.live();
-        if (runtime == null) {
-            send(sender, "&7Bridge runtime off.");
-            return;
-        }
-        send(sender, "&7SnBridge status:");
-        for (String line : runtime.statusLines()) {
-            send(sender, line);
-        }
     }
 
     private static void version(SnLibPlugin plugin, CommandSender sender) {
