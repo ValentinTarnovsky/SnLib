@@ -19,7 +19,7 @@ The file name encodes the language code (`en`, `es`, `fr`, and so on). Which lan
 Open the language file for your chosen language, change any message text, save, and reload the plugin. Nothing else is affected. You can:
 
 - Rewrite the phrasing of any message.
-- Add or change color codes and formatting.
+- Add or change color codes and formatting - see [Text Formatting and Colors](text-formatting.md) for the full list of codes and the `[small]`/`[rgb]`/`[center]` tags.
 - Adjust punctuation, capitalization, and tone to match your server's style.
 
 Because these files are [managed the same way as config files](configuration-files.md), your edits survive plugin updates. When a plugin adds a new message in an update, the new key is merged into your file automatically, in the right place, without disturbing the lines you have already customized.

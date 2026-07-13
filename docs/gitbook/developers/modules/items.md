@@ -165,6 +165,125 @@ A Java callback per interact variant is only available through the builder, so w
 
 The header of `ItemDef.java` carries a field-by-field checklist against the golden spec with the exact parse point for each field. When in doubt about a field's name or default, `docs/item-example.yml` is the source of truth.
 
+## Full field reference example
+
+Every field an item can carry, in one realistic definition. Nothing here is required - an item with just `material` is valid - but this is what the item YAML looks like when every section is actually used:
+
+```yaml
+items:
+  legendary-blade:
+    # --- Appearance ---
+    display-name: "[rgb]&lLegendary Blade"
+    material: DIAMOND_SWORD
+    custom-model-data: 1001
+    amount: 1
+    glow: true
+    lore:
+      - "&7A blade forged in starlight."
+      - ""
+      - "[small]&7Right-click to unleash its power"
+    enchantments: [sharpness, 5, unbreaking, 3]
+    flags:
+      - HIDE_ENCHANTS
+      - HIDE_ATTRIBUTES
+      - HIDE_UNBREAKABLE
+    color: "255, 85, 85"          # or hex: "#FF5555" - leather armor / potions only
+    trim-pattern: SILVER          # armor only
+    trim-material: DIAMOND        # armor only
+    potion-effects: [SPEED, 1, 200]
+    attributes:
+      - "GENERIC_ATTACK_DAMAGE ADD_NUMBER 4 MAINHAND"
+    damage: 0                     # vanilla durability already spent, independent of custom-durability
+
+    # --- Properties ---
+    unbreakable: true
+    max-stack-size: 1
+    droppable: true
+    moveable: true
+    placeable: false
+    tradeable: true
+    despawnable: true
+    keep-on-death: true
+    cooldown: 20                  # ticks between interactions, 0 = no cooldown
+
+    # --- Locked mode and obtain control ---
+    locked: true
+    no-drop: false                # locked already blocks extraction; no-drop is the narrower droppable:false alias
+    no-manual-equip: false
+    obtain-via: COMMAND_ONLY      # "" = unrestricted (default)
+
+    # --- Custom durability (separate from vanilla) ---
+    custom-durability:
+      max: 100
+      damage-per-use: 1
+      lore-format: "&7Durability: &f%durability%/%max_durability%"
+      break-actions:
+        - "[sound] ENTITY_ITEM_BREAK"
+        - "[message] &cYour blade has shattered!"
+
+    # --- Interact actions: all 12 variants ---
+    right-click-actions:
+      - "[player] spawn"
+      - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP"
+      - "[particle] FLAME 50 0.5 0.5 0.5 0.1"
+      - "[potion] SPEED 200 1"
+      - "[remove-item] 1"
+    left-click-actions:
+      - "[message] &7You swing the blade."
+    shift-right-click-actions:
+      - "[message] &6You channel its power!"
+    shift-left-click-actions: []
+    right-click-block-actions:
+      - "[message] &7You struck a block."
+    right-click-air-actions:
+      - "[message] &7You swung at the air."
+    left-click-block-actions: []
+    left-click-air-actions: []
+    shift-right-click-block-actions: []
+    shift-right-click-air-actions: []
+    shift-left-click-block-actions: []
+    shift-left-click-air-actions: []
+    shift-overrides-generic: true
+
+    # --- Interact requirements ---
+    interact-requirements:
+      - "%player_level% >= 10"
+    deny-actions:
+      - "[message] &cYou need to be level 10 to wield this."
+      - "[sound] ENTITY_VILLAGER_NO"
+
+    # --- Pickup / drop ---
+    pickup-actions:
+      - "[message] &aYou picked up the Legendary Blade!"
+    drop-actions:
+      - "[message] &cYou dropped the Legendary Blade."
+
+    # --- Held effects, keyed by slot ---
+    held-effects:
+      mainhand:
+        - "STRENGTH 0"
+      offhand: []
+      armor: []
+
+    # --- Equipment slot restriction ---
+    equipment-slot: ""            # MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET, or "" for any
+
+    # --- Crafting recipe ---
+    recipe:
+      type: SHAPED                 # SHAPED, SHAPELESS, FURNACE, SMOKING, BLASTING, CAMPFIRE, STONECUTTING
+      shape:
+        - "DDD"
+        - "DSD"
+        - "DDD"
+      ingredients:
+        D: DIAMOND
+        S: STICK
+```
+
+{% hint style="info" %}
+A `PLAYER_HEAD` item adds `skull-owner` (a player name, UUID, or `%placeholder%` resolved per viewer). See the [full player-head example](menus.md#full-field-reference-example) in the menus page for that field in context.
+{% endhint %}
+
 ## Related pages
 
 - [Menus](menus.md) - GUI icons and the shared action/requirement grammar used in `*-click-actions`.

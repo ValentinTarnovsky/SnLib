@@ -14,6 +14,7 @@ If you also write plugins on top of SnLib, the developer-facing API is documente
 - [Configuration Files](configuration-files.md) - how every Sn plugin keeps your YAML config files up to date without ever overwriting your settings, and how it protects you from a corrupted file.
 - [Permissions and Updates](permissions-and-updates.md) - the `<plugin>.admin.*` permission convention shared by every Sn plugin, and the notify-only update-check system.
 - [Language Files](language-files.md) - where messages live, how to edit wording, and how missing translations fall back safely.
+- [Text Formatting and Colors](text-formatting.md) - legacy color codes, hex colors, MiniMessage tags, and the `[small]`/`[rgb]`/`[center]` tags usable in any text field.
 - [GUIs and Items in YAML](guis-and-items-yaml.md) - customizing menus and physical items entirely through YAML, with no code changes.
 - [Actions and Requirements](actions-and-requirements.md) - the `[tag] argument` mini-language you can write inside menu and item YAML to make things happen and to gate them behind conditions.
 - [The /snlib Command](snlib-command.md) - the full reference for SnLib's own diagnostic command.

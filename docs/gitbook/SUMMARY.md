@@ -9,6 +9,7 @@
 * [Configuration Files](admins/configuration-files.md)
 * [Permissions and Update Notifications](admins/permissions-and-updates.md)
 * [Language Files](admins/language-files.md)
+* [Text Formatting and Colors](admins/text-formatting.md)
 * [Menus and Items via YAML](admins/guis-and-items-yaml.md)
 * [Actions and Requirements](admins/actions-and-requirements.md)
 * [The /snlib Command](admins/snlib-command.md)

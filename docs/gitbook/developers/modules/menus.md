@@ -200,6 +200,141 @@ On reload or disable, the consumer's open GUIs are closed natively with no `Clas
 
 `docs/menu-example.yml` is the golden spec: it documents every supported field with its default and its behavior, and it is the acceptance contract for the module. When you want to know whether something is configurable (it almost always is), that file is the source of truth. The header of `GuiDef.java` and `GuiItemDef.java` carries the same checklist with the exact parse point for each field.
 
+## Full field reference example
+
+Every menu-level field, plus an item using every appearance/behavior field and the full per-click matrix, plus a filler, paginated navigation with `nav-disabled`, a player head, and a template - all in one file:
+
+```yaml
+title: "[rgb]&lThe Shop"
+rows: 6
+inventory-type: CHEST
+open-sound: BLOCK_CHEST_OPEN
+close-sound: BLOCK_CHEST_CLOSE
+update-interval: 100
+pagination: true
+strict-clicks: false
+
+layout:
+  - "fffffffff"
+  - "f ddddd f"
+  - "f ddddd f"
+  - "f ddddd f"
+  - "f ddddd f"
+  - "f       f"
+paged-key: d
+
+items:
+  legendary-blade-icon:
+    # appearance
+    display-name: "[rgb]&lLegendary Blade"
+    material: DIAMOND_SWORD
+    attributes:
+      - "GENERIC_ATTACK_DAMAGE ADD_NUMBER 4 MAINHAND"
+    damage: 0
+    custom-model-data: 1001
+    amount: 1
+    slots: [4]
+    glow: true
+    enchantments: [sharpness, 5]
+    flags:
+      - HIDE_ALL
+    color: "#FF5555"
+    trim-pattern: SILVER
+    trim-material: DIAMOND
+    potion-effects: [SPEED, 1, 200]
+    update-interval: 0
+    lore:
+      - "&7Price: &a$5000"
+
+    # gates
+    view-requirements:
+      - "%player_level% >= 10"
+    click-requirements:
+      - "%vault_eco_balance% >= 5000"
+    deny-actions:
+      - "[message] &cYou can't afford this yet."
+      - "[sound] ENTITY_VILLAGER_NO"
+
+    # generic click grammar
+    click-actions:
+      - "[console] eco take %player% 5000"
+      - "[message] &aPurchased the Legendary Blade!"
+      - "[sound] ENTITY_PLAYER_LEVELUP"
+      - "[close]"
+
+    # per-click matrix: specific-over-generic, field by field (15 optional keys)
+    right-click-actions: []
+    right-click-requirements: []
+    right-click-deny-actions: []
+    left-click-actions: []
+    left-click-requirements: []
+    left-click-deny-actions: []
+    shift-right-click-actions:
+      - "[message] &7Preview: a blade forged in starlight."
+    shift-right-click-requirements: []
+    shift-right-click-deny-actions: []
+    shift-left-click-actions: []
+    shift-left-click-requirements: []
+    shift-left-click-deny-actions: []
+    middle-click-actions: []
+    middle-click-requirements: []
+    middle-click-deny-actions: []
+
+  filler:
+    display-name: " "
+    material: GRAY_STAINED_GLASS_PANE
+    key: f                          # renders in every layout cell holding "f"
+
+  your-head:
+    display-name: "&eYour head, %player_name%"
+    material: PLAYER_HEAD
+    skull-owner: "%player_name%"    # resolves PER VIEWER - each player sees their own head
+    slots: [49]
+
+  previous-page:
+    display-name: "[rgb]&lPrevious Page"
+    material: ARROW
+    slots: [45]
+    click-actions:
+      - "[previous-page]"
+      - "[sound] UI_BUTTON_CLICK"
+    nav-disabled:                   # shown instead, on the first page
+      display-name: "&7No previous page"
+      material: GRAY_STAINED_GLASS_PANE
+      lore:
+        - "&8You are on the first page"
+
+  next-page:
+    display-name: "[center][rgb]Next Page"
+    material: ARROW
+    slots: [53]
+    click-actions:
+      - "[next-page]"
+      - "[sound] UI_BUTTON_CLICK"
+    nav-disabled:                   # shown instead, on the last page
+      display-name: "&7No next page"
+      material: GRAY_STAINED_GLASS_PANE
+      lore:
+        - "&8You are on the last page"
+
+close-actions:
+  - "[message] &7See you soon!"
+  - "[sound] UI_BUTTON_CLICK"
+
+# templates: identical fields to items, minus "slots" - the plugin places them via Java
+templates:
+  offer-template:
+    display-name: "&f%item%"
+    material: STONE
+    amount: 1
+    lore:
+      - "&7Price: &a$%price%"
+```
+
+{% hint style="info" %}
+`%player_level%`, `%vault_eco_balance%` and `%player_name%` above are ordinary PlaceholderAPI tokens - requirements, actions and appearance strings all resolve placeholders the same way. See [Configuration](yml.md) for exactly which mechanism resolves which kind of field.
+{% endhint %}
+
 ## Related pages
 
 - [Items](items.md) - physical items share the action and requirement engines and the same YAML appearance schema.

@@ -99,6 +99,14 @@ String serverMsg = cfg.getString("status", "n/a");            // %server_online%
 PAPI runs on the main thread only. If you read a config value from an async task, any `%token%` in it stays literal. Read placeholder-bearing values on the main thread, or resolve them later with the [PAPI module](../README.md).
 {% endhint %}
 
+### This applies everywhere, not just `config.yml`
+
+Placeholder resolution is a property of `SnYml` itself, not of any particular file. Every managed file - the main config, `managed()`/`seedOnly()`/`data()` files, `items.yml`, every `guis/*.yml`, every `lang/messages_*.yml` - is read through the same `getString`/`getStringList` getters, so a `%placeholder%` works identically no matter which file or which module owns it. A menu's `title`, an item's `display-name` or a `lore` line, a lang message: all resolve local placeholders and PAPI the same way, because under the hood they are all just calls to this module.
+
+{% hint style="info" %}
+Appearance fields in menus and items go a step further: `GuiItemDef` and `ItemDef` keep their `SnYml` section and re-read it on every render, so `display-name`, `lore` and every other string resolve PER VIEWER, live, through this same pipeline (locals, PAPI, then `[small]`/`[rgb]`/`[center]`/MiniMessage - see [Text rendering](text.md)). Action lines (`click-actions`, `right-click-actions`, ...) and requirement expressions (`click-requirements`, `interact-requirements`, ...) are the one exception: they are parsed ONCE from the raw section, bypassing this resolution, and their own `%placeholder%` tokens are resolved later by the action/requirement engines at the moment they run - see [Actions and Requirements](actions-and-requirements.md). Either way, the practical result is the same: you can put a placeholder in any string field of any Sn YAML file and it works.
+{% endhint %}
+
 ## Reload hooks
 
 Register a callback to re-cache derived state whenever the file is reloaded:

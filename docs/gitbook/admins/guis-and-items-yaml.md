@@ -19,7 +19,7 @@ Each file describes one menu top to bottom. What you can customize includes:
 
 ### The menu itself
 
-- `title` - the text shown at the top of the inventory. Supports colors and formatting.
+- `title` - the text shown at the top of the inventory. Supports colors and formatting - see [Text Formatting and Colors](text-formatting.md).
 - `rows` - how many rows the chest menu has (1 to 6), or an `inventory-type` for other container shapes.
 - `layout` - an ASCII map of the menu, where each character represents a slot, letting you place items by drawing the menu instead of counting slot numbers.
 - `open-sound` and `close-sound` - sounds played when the menu opens and closes.
@@ -28,7 +28,7 @@ Each file describes one menu top to bottom. What you can customize includes:
 
 ### Each item in the menu
 
-- `display-name` - the item's shown name, with full color and formatting support.
+- `display-name` - the item's shown name, with full color and formatting support (see [Text Formatting and Colors](text-formatting.md)).
 - `material` - what the item is (including player heads).
 - `lore` - the description lines under the name.
 - `enchantments` and `glow` - real enchantments, or just the enchanted shimmer without any effect.

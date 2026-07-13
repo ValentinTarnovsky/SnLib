@@ -65,9 +65,13 @@ There is one deliberate exception. The plugin's own config file (`config.yml`) i
 
 ## Placeholders inside config values
 
-Anywhere an Sn plugin reads a text value from config, you can put placeholders inside the string and they will be resolved when the value is used:
+Anywhere an Sn plugin reads a text value, you can put placeholders inside the string and they will be resolved when the value is used:
 
 - SnLib's own local placeholders, provided by the plugin.
 - [PlaceholderAPI](permissions-and-updates.md) placeholders (the `%...%` style), when PlaceholderAPI is installed on your server.
 
-This lets you write things like player names, counts, balances, or server stats directly into messages and titles in your config, without any code changes. If PlaceholderAPI is not installed, its placeholders are simply left as-is rather than causing an error.
+This lets you write things like player names, counts, balances, or server stats directly into messages and titles, without any code changes. If PlaceholderAPI is not installed, its placeholders are simply left as-is rather than causing an error.
+
+{% hint style="info" %}
+This is not limited to `config.yml`. It works the same way in every YAML file an Sn plugin reads: any other config file, [language files](language-files.md), item files, and menu files. A menu `title`, an item's `display-name` or a `lore` line, a lang message, a click requirement like `%vault_eco_balance% >= 100` - all of them accept placeholders, because they are all read through the same underlying system. See [Menus and Items in YAML](guis-and-items-yaml.md) and [Text Formatting and Colors](text-formatting.md) for where else this applies.
+{% endhint %}
