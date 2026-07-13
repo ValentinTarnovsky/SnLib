@@ -1,0 +1,8 @@
+{
+  "id": "snlib",
+  "name": "SnLib",
+  "version": "${project.version}",
+  "description": "Common base for Sn Velocity plugins (config, text, scheduler, commands).",
+  "main": "com.sn.lib.velocity.SnLibVelocity",
+  "authors": ["ValentinTarnovsky"]
+}

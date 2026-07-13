@@ -60,9 +60,10 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- SnBridge proxy side: the SAME jar is also a Velocity plugin (velocity-plugin.json).
-             Only com.sn.lib.velocity.* and bridge.wire (neutral) touch it; on Paper those
-             classes are never loaded and vice versa (lazy per-platform class loading). -->
+        <!-- The SAME jar is also a Velocity plugin (velocity-plugin.json): a small base
+             (config/text/scheduler/commands) for consumer proxy plugins. On Velocity only
+             com.sn.lib.velocity.* and the neutral text pipeline load; the Bukkit-bound
+             classes never do (lazy per-platform class loading). -->
         <dependency>
             <groupId>com.velocitypowered</groupId>
             <artifactId>velocity-api</artifactId>
@@ -155,6 +156,14 @@
             <version>3.1.0</version>
         </dependency>
 
+        <!-- Shaded and relocated to com.sn.lib.libs.snakeyaml: the Velocity base needs YAML
+             config and Velocity (unlike Bukkit/Paper) does not provide org.yaml.snakeyaml -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>2.3</version>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -223,6 +232,10 @@
                                         <exclude>org.sqlite.**</exclude>
                                         <exclude>com.mysql.**</exclude>
                                     </excludes>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.yaml.snakeyaml</pattern>
+                                    <shadedPattern>com.sn.lib.libs.snakeyaml</shadedPattern>
                                 </relocation>
                             </relocations>
                             <transformers>
