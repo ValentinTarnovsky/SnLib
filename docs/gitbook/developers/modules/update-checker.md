@@ -42,6 +42,21 @@ sn.updates().watch("owner/repo");
 
 `checkNow` runs a single check off the main thread and arms nothing. `watch` arms a recurring timer, and re-watching the same repo **replaces** (and cancels) the previous timer for that repo. In both cases an invalid `owner/repo` format WARNs and does nothing; the accepted format is a single `owner/repo` matching `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`.
 
+## Shared releases repo (one public repo for many plugins)
+
+Both `updates(...)` and `watch`/`checkNow` also accept a **tag prefix**. Without it, the repo is assumed dedicated to this one plugin and is polled against `releases/latest`. With it, the repo is treated as **shared by several plugins**: the checker instead lists the repo's releases and keeps only the tags starting with your prefix, then picks the highest matching version.
+
+```java
+.updates("owner/Sn-Releases", "myplugin-")   // only tags like myplugin-v1.4.0 are considered
+```
+
+```java
+sn.updates().checkNow("owner/Sn-Releases", "myplugin-");
+sn.updates().watch("owner/Sn-Releases", "myplugin-");
+```
+
+This exists so a whole family of plugins can publish to **one** public repo instead of maintaining a dedicated public releases repo per plugin. The convention is to tag each release `<pluginId>-vX.Y.Z` (for example `myplugin-v1.4.0`) on the shared repo, so the prefix (`myplugin-`) unambiguously picks out this plugin's releases among everyone else's tags. Passing `null` (or using the single-argument overloads) keeps the old dedicated-repo behavior.
+
 ## Timing
 
 - First check: **60 seconds** after enable (1200 ticks).
@@ -91,6 +106,12 @@ A non-200 response, a network error, or a response missing `tag_name` triggers *
 
 ```
 [MyPlugin] update check of 'owner/repo' failed: HTTP 404
+```
+
+In shared-repo mode, a repo with no release tag matching your prefix WARNs the same way once and stays silent:
+
+```
+[MyPlugin] update check of 'owner/Sn-Releases' failed: no release tag matching prefix 'myplugin-'
 ```
 
 ## Private repositories

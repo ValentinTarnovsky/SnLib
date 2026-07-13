@@ -25,6 +25,7 @@ public final class SnSpec {
     private final boolean db;
     private final boolean debugCommand;
     private final @Nullable String updatesRepo;
+    private final @Nullable String updatesTagPrefix;
 
     private SnSpec(Builder builder) {
         this.configName = builder.configName;
@@ -34,6 +35,7 @@ public final class SnSpec {
         this.db = builder.db;
         this.debugCommand = builder.debugCommand;
         this.updatesRepo = builder.updatesRepo;
+        this.updatesTagPrefix = builder.updatesTagPrefix;
     }
 
     /** Creates a new spec builder. */
@@ -77,6 +79,14 @@ public final class SnSpec {
     }
 
     /**
+     * Tag prefix for a shared multi-plugin releases repo, or null when the watched repo
+     * hosts only this plugin's releases (the {@code releases/latest} endpoint applies).
+     */
+    public @Nullable String updatesTagPrefix() {
+        return updatesTagPrefix;
+    }
+
+    /**
      * Builder for {@link SnSpec}. Every method is opt-in; omitted modules stay disabled.
      */
     public static final class Builder {
@@ -88,6 +98,7 @@ public final class SnSpec {
         private boolean db;
         private boolean debugCommand;
         private @Nullable String updatesRepo;
+        private @Nullable String updatesTagPrefix;
 
         private Builder() {
         }
@@ -129,11 +140,26 @@ public final class SnSpec {
         }
 
         /**
-         * Declares the notify-only update check against a GitHub repo, format
-         * {@code owner/repo}.
+         * Declares the notify-only update check against a GitHub repo dedicated to this
+         * plugin's releases, format {@code owner/repo}; polls {@code releases/latest}.
          */
         public Builder updates(String ownerRepo) {
             this.updatesRepo = ownerRepo;
+            this.updatesTagPrefix = null;
+            return this;
+        }
+
+        /**
+         * Declares the notify-only update check against a shared multi-plugin releases
+         * repo: {@code ownerRepo} hosts tags for several plugins, and only tags starting
+         * with {@code tagPrefix} (for example {@code "snclans-"} matching tags like
+         * {@code snclans-v1.4.0}) are considered for this plugin. The highest matching
+         * version wins; the prefix is stripped before comparison, then a leading
+         * {@code v}/{@code V} is stripped the same way {@link #updates(String)} does.
+         */
+        public Builder updates(String ownerRepo, String tagPrefix) {
+            this.updatesRepo = ownerRepo;
+            this.updatesTagPrefix = tagPrefix;
             return this;
         }
 

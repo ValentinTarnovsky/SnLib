@@ -557,7 +557,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.3.1`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.4.0`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`
@@ -565,7 +565,8 @@ rolling the jar to production.
 - Public API frozen under semver: additive-only japicmp ACTIVE with an
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
-  every release that adds public Paper API (2 since the 1.1.0 release, unchanged
-  through 1.3.1). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
+  every release that adds public Paper API (2 since the 1.1.0 release through
+  1.3.1; 3 since the 1.4.0 release, which added the shared multi-plugin
+  releases-repo mode to UpdateChecker). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
   Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
   outside the japicmp gate while it settles.

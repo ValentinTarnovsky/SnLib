@@ -91,7 +91,7 @@ public final class Sn {
         this.updates = new UpdateChecker(this, yml == null ? null : yml.config());
         String updatesRepo = spec.updates();
         if (updatesRepo != null) {
-            updates.watch(updatesRepo);
+            updates.watch(updatesRepo, spec.updatesTagPrefix());
         }
         this.items = new ItemRegistry(this);
         String itemsFile = spec.items();
