@@ -9,9 +9,9 @@ development style and zero repeated dependencies.
 
 - `SnLib.jar` is DUAL-PLATFORM: the exact same jar is a Paper plugin
   (`plugin.yml`) and a Velocity plugin (`velocity-plugin.json`, entry
-  `SnLibVelocity`). Install it in `plugins/` of every Paper backend as usual,
-  and ALSO in `plugins/` of the Velocity proxy for consumers that use
-  SnBridge (see below); a Paper-only consumer never needs the proxy side.
+  `SnLibVelocity`). Install it in `plugins/` of every Paper backend, and ALSO
+  in the Velocity proxy for consumers that build Velocity plugins on the base
+  (see "Velocity base" below); a Paper-only consumer never needs the proxy side.
 - `SnLib.jar` is installed ONCE per server (with `load: STARTUP`).
 - Each consumer declares `depend: [SnLib]` in its `plugin.yml` and compiles
   against `com.sn:snlib` with `provided` scope. Nothing from SnLib is shaded
@@ -393,36 +393,35 @@ sn.selections().giveWand(player, spec);   // or createWand(spec)
   loaded with `SelectionSpec.fromConfig(...)` and composed with `.toBuilder()
   .onSelect(...)`; the module works with zero YML.
 
-## SnBridge: cross-server messaging (v1.2, experimental)
+## Velocity base (v1.3): config, text, scheduler, commands
 
 The SAME `SnLib.jar` is ALSO a Velocity plugin (`velocity-plugin.json`, entry
 `SnLibVelocity`): drop it in the proxy's `plugins/` exactly as on every Paper
-backend, and it hosts SnBridge, typed proxy<->backend messaging over plugin
-messaging (HMAC-authenticated, chunked, with a HELLO handshake).
+backend. On Velocity it is a SMALL base for homogeneity across your Paper and
+Velocity plugins - config, text, scheduler and commands, with NO cross-server
+messaging. Only `com.sn.lib.velocity.*` and the platform-neutral text pipeline
+load there; the Bukkit-bound classes never do (lazy per-platform class loading).
 
 ```java
-// Paper backend consumer
-SnBridgeChannel ch = sn.bridge().channel("myns", /*msgset*/ 1);
-ch.register(MyMessage.TYPE);
-ch.on(MyMessage.TYPE, (player, msg) -> ...);
-
-// Velocity proxy consumer (velocity-plugin.json: "dependencies": [{"id":"snlib"}])
-SnProxyChannel bridge = SnProxy.channel(this, "myns", /*msgset*/ 1);
-bridge.to("gens").send(MyMessage.TYPE, new MyMessage(...))
-    .thenAccept(d -> { if (!d.ok()) log.warn("gens: " + d); });
-
-// Tier 2: generic verbs SnLib itself runs on the backend, no Paper jar needed
-SnProxy.verbs().on("gens").console("crates key give " + name + " vote 1");
+// Velocity consumer (velocity-plugin.json: "dependencies": [{"id": "snlib"}])
+@Plugin(id = "myplugin", dependencies = {@Dependency(id = "snlib")})
+public final class MyPlugin {
+    @Inject MyPlugin(ProxyServer proxy, Logger log, @DataDirectory Path dir) {
+        Snv snv = Snv.create(this, proxy, log, dir);   // loads + merges config.yml
+        proxy.sendMessage(snv.color(snv.config().getString("motd", "&aHi")));
+        snv.command("mycmd", new MyCommand(snv), "mc");
+        snv.scheduler().repeat(this::tick, Duration.ofSeconds(1));
+    }
+}
 ```
 
-- **Experimental**: `com.sn.lib.bridge.*` and `com.sn.lib.velocity.*` are
-  `@SnExperimental`, outside the japicmp gate and outside `SnApi.LEVEL` until a
-  real migration stress-tests the API and it freezes. Not scheduled yet.
-- Diagnostics: `/snlib bridge status` on the backend, `/snlibv status` on the
-  proxy.
-- Full reference: `docs/SNLIB-DOCS.md` section 19. Design: `docs/SNBRIDGE-SPEC.md`.
-  Operator runbook: `docs/SNBRIDGE-RUNBOOK.md`. Golden config:
-  `docs/bridge-example.yml`.
+- `Snv`: per-plugin context (proxy, logger, data dir, `config()`, `scheduler()`,
+  `command(...)`, `color(...)`) - the small counterpart of the Paper `Sn`.
+- `SnvConfig`: managed YAML config over bundled snakeyaml (defaults merge +
+  dot-path getters), the same managed-config idea as the Paper side.
+- `SnvScheduler`: thin wrapper over the Velocity scheduler.
+- Shared text: `snv.color()` delegates to the same `SnText` pipeline as Paper, so
+  `&` / `[rgb]` / MiniMessage render identically on both platforms.
 
 ## Golden spec field matrix
 
@@ -434,7 +433,6 @@ spec, it ALREADY works without plugin code.
 | `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
 | `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, amount, glow, lore, enchantments, flags, color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
 | `docs/selection-example.yml` (v1.1) | item (full SnItem appearance schema), permission, particle (type/color/size), step, interval-ticks, render-distance, visibility (OWNER_ONLY/WORLD), particle-budget, max-render-volume, max-volume, timeout-ticks, silent |
-| `docs/bridge-example.yml` (v1.2, experimental) | hmac-secret, default-ttl-seconds, queue-cap, max-message-bytes, max-pending-messages, console-allowlist (anchored patterns), console-rate-limit-per-second |
 
 The headers of `GuiDef.java`, `GuiItemDef.java` and `ItemDef.java` carry the
 field-by-field checklist with the exact parse point.
@@ -482,11 +480,9 @@ bootstrap.
 
 `/snlib version` (lib + API-level + MC), `/snlib plugins` (hooked consumers),
 `/snlib integrations` (active SoftDependencies), `/snlib iteminfo` (PDC dump
-of the item in hand), `/snlib bridge status` (SnBridge diagnostics: handshakes,
-queues and drop counters, per namespace), `/snlib reload [plugin]` (without
-args only the lib's own surface; with a plugin it delegates to that plugin's
-ReloadManager). Permissions `snlib.admin.*` (default op). On the Velocity
-side: `/snlibv status` (per-backend SnBridge table).
+of the item in hand), `/snlib reload [plugin]` (without args only the lib's own
+surface; with a plugin it delegates to that plugin's ReloadManager).
+Permissions `snlib.admin.*` (default op).
 
 ## Smoke QA v1.0.0 (gate executed)
 
@@ -536,15 +532,14 @@ as the v1.0.0 gate, both with a Java 21 JVM (Temurin 21.0.8):
   Paper with Java 21 (`java -jar paper.jar nogui`), run
   `snlib version` in console and review the full log.
 
-## Smoke QA v1.2.0 (pending, live-server gate)
+## Smoke QA v1.3.0 (pending, live-server gate)
 
-`mvn clean package` is green (323 unit/integration tests, shade, japicmp) but a
-live-server smoke gate for 1.2.0 - the same physical startup check the
-v1.0.0/v1.1.0 gates ran, PLUS a Velocity proxy startup and an end-to-end
-SnBridge round trip (Paper backend <-> Velocity proxy) - has not been executed
-yet. Two dedicated test plugins for exactly this (`SnLibTestPaper`,
-`SnLibTestVelocity`) exist to drive it; run it before depending on SnBridge
-against a live network.
+v1.3.0 removes the experimental SnBridge and adds the small Velocity base
+(config/text/scheduler/commands). `mvn clean verify` is green (211 unit tests,
+shade, japicmp). The live-server smoke - the same physical startup check the
+v1.0.0/v1.1.0 gates ran, now on Paper AND a Velocity proxy (SnLib.jar loading on
+both, `Snv.create` reading a config) - has not been executed yet; run it before
+rolling the jar to production.
 
 ## Adoption path
 
@@ -557,19 +552,15 @@ against a live network.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.2.1`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.3.0`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
-  `docs/item-example.yml` (physical items), `docs/selection-example.yml`
-  (selection wand, v1.1) and `docs/bridge-example.yml` (SnBridge config
-  block: hmac-secret, queue caps, console-allowlist, v1.2 experimental).
-- SnBridge design and operations: `docs/SNBRIDGE-SPEC.md` (design spec) and
-  `docs/SNBRIDGE-RUNBOOK.md` (operator runbook: deploy order, HMAC rotation,
-  troubleshooting checklist).
+  `docs/item-example.yml` (physical items) and `docs/selection-example.yml`
+  (selection wand, v1.1).
 - Public API frozen under semver: additive-only japicmp ACTIVE with an
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
-  every release that adds public API (2 since the 1.1.0 release, unchanged in
-  1.2.0 and 1.2.1). SnBridge (`com.sn.lib.bridge.*`, `com.sn.lib.velocity.*`) is
-  `@SnExperimental` and stays OUTSIDE both the japicmp gate and `SnApi.LEVEL`
-  until a real migration stress-tests it and it freezes - not scheduled yet.
+  every release that adds public Paper API (2 since the 1.1.0 release, unchanged
+  through 1.3.0). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
+  Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
+  outside the japicmp gate while it settles.
