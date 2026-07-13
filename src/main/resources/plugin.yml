@@ -22,6 +22,7 @@ permissions:
       snlib.admin.integrations: true
       snlib.admin.iteminfo: true
       snlib.admin.reload: true
+      snlib.admin.update: true
   snlib.admin.version:
     description: Allows /snlib version.
     default: op
@@ -36,4 +37,7 @@ permissions:
     default: op
   snlib.admin.reload:
     description: Allows /snlib reload.
+    default: op
+  snlib.admin.update:
+    description: Receives the join notice when a new SnLib version is available.
     default: op

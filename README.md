@@ -21,8 +21,10 @@ development style and zero repeated dependencies.
 - Hard rule: updating SnLib.jar requires a server restart. `/snlib reload`
   NEVER reloads classes; never hot-reload the lib (classloader shared with
   ~57 consumers).
-- Distribution ONLY via local `.m2`: `mvn install -f <path>/SnLib/pom.xml`
-  publishes `com.sn:snlib`. JitPack NOT supported (the repo is private).
+- Distribution via local `.m2`: `mvn install -f <path>/SnLib/pom.xml`
+  publishes `com.sn:snlib`. The repo is now public on GitHub
+  (`ValentinTarnovsky/SnLib`); JitPack is not configured yet, so the local
+  `.m2` install remains the only resolution path for now.
 
 ## Entrypoint: mandatory SnPlugin + requiredApiLevel()
 
@@ -552,7 +554,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.3.0`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.3.1`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`
@@ -561,6 +563,6 @@ rolling the jar to production.
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
   every release that adds public Paper API (2 since the 1.1.0 release, unchanged
-  through 1.3.0). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
+  through 1.3.1). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
   Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
   outside the japicmp gate while it settles.

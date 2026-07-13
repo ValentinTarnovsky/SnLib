@@ -113,6 +113,7 @@ public final class SnLibPlugin extends JavaPlugin {
     }
 
     private static SnSpec buildSelfSpec() {
-        return SnSpec.builder().config("config.yml").debugCommand().build();
+        return SnSpec.builder().config("config.yml").debugCommand()
+                .updates("ValentinTarnovsky/SnLib").build();
     }
 }

@@ -86,7 +86,7 @@ Exact bootstrap order (`onEnable`):
 1. `instance = this` (enables `get()` for the consumer handshake).
 2. `logDetectedVersion()` - forces initialization of the `SnVersion` class (which WARNs exactly once on unknown forward versions and never hard-fails) and logs "Detected server: X.Y[.Z]" with the suffix " (Folia)" when applicable.
 3. `ListenerHub.registerAll(this)` - registers the library's shared listeners.
-4. `Sn ctx = SnLib.init(this, buildSelfSpec())` - creates the self context (`selfCtx`) with spec `SnSpec.builder().config("config.yml").debugCommand().build()` (config + debug command only; no lang/guis/items/db).
+4. `Sn ctx = SnLib.init(this, buildSelfSpec())` - creates the self context (`selfCtx`) with spec `SnSpec.builder().config("config.yml").debugCommand().updates("ValentinTarnovsky/SnLib").build()` (config + debug command + self update-check only; no lang/guis/items/db). Since the repo is public, `UpdateChecker` reaches `releases/latest` with no token and watches SnLib against its own GitHub releases exactly like any consumer would watch itself.
 5. `SnLibCommand.register(this, ctx)` - registers the administrative `/snlib` command.
 6. If `ctx.yml().config().getBoolean("bstats", true)` is on, creates `new Metrics(this, 32541)`.
 7. `ctx.scheduler().sync(this::purgeOrphanHolograms)` - startup scan for orphan holograms, deferred to the first tick: SnLib enables at STARTUP before any world loads and before any consumer registers its holograms; by the first tick both things have already happened and every marked TextDisplay without a live registration is a leftover of a previous run (`HologramChunkListener.purgeLoadedWorlds()`; if it purged > 0 it logs "Purged N orphan holograms from previous startups").
@@ -235,7 +235,7 @@ Bukkit descriptor of the bootstrap plugin. Exact values:
 - `description: Common library core for Sn plugins (standalone hard-depend).`
 - `softdepend: [PlaceholderAPI, Vault]` - optional integrations; both degrade gracefully when absent.
 - `snlib` command: "SnLib administration command.", usage `/snlib <version|plugins|integrations|iteminfo|reload>`.
-- Permissions (all `default: op`): `snlib.admin` (parent; grants all admin subcommands, with children `snlib.admin.version`, `snlib.admin.plugins`, `snlib.admin.integrations`, `snlib.admin.iteminfo`, `snlib.admin.reload`, all true) plus the five individual child permissions, one per subcommand.
+- Permissions (all `default: op`): `snlib.admin` (parent; grants all admin subcommands plus the self update-check join notice, with children `snlib.admin.version`, `snlib.admin.plugins`, `snlib.admin.integrations`, `snlib.admin.iteminfo`, `snlib.admin.reload`, `snlib.admin.update`, all true) plus the six individual child permissions, one per subcommand (`snlib.admin.update` is not a subcommand: it gates the `UpdateChecker` join notice, declared here so it defaults to op like every consumer is told to do for itself).
 
 ### config.yml
 `src/main/resources/config.yml`

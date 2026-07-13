@@ -6,8 +6,8 @@
   HOW com.sn:snlib IS RESOLVED
   1. Publish SnLib to the local Maven repository (.m2):
        mvn install -f <path>/SnLib/pom.xml
-  2. JitPack is NOT supported: the SnLib repo is private and JitPack does not
-     build private repos. The ONLY resolution path is the local .m2.
+  2. The SnLib repo is public on GitHub (ValentinTarnovsky/SnLib). JitPack is
+     not configured yet, so the local .m2 install remains the resolution path.
   3. At runtime NOTHING of SnLib is shaded into the consumer: the server loads
      SnLib.jar as a standalone plugin in plugins/ and the consumer declares
      depend: [SnLib] in its plugin.yml. That is why the scope is provided and
@@ -81,7 +81,7 @@
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
-            <version>1.3.0</version>
+            <version>1.3.1</version>
             <scope>provided</scope>
         </dependency>
 
