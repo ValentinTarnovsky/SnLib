@@ -5,6 +5,9 @@ Common library for the Sn plugins, packaged as a STANDALONE PLUGIN. A single
 PAPI, lang, debug and the rest of the modules to every consumer, with a single
 development style and zero repeated dependencies.
 
+**Full documentation:** [sndevelopment.gitbook.io/sndevelopment-docs](https://sndevelopment.gitbook.io/sndevelopment-docs/)
+(Server Admins guide + full Developer API reference, kept in sync with `main` via GitBook Git Sync).
+
 ## Standalone hard-depend model
 
 - `SnLib.jar` is DUAL-PLATFORM: the exact same jar is a Paper plugin
