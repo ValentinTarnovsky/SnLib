@@ -164,7 +164,7 @@ public final class RootCommand extends Command implements Registrable {
                         Arrays.copyOfRange(subArgs, index, subArgs.length));
             }
             try {
-                values.put(entry.getKey(), entry.getValue().parse(token));
+                values.put(entry.getKey(), entry.getValue().parse(sender, token));
             } catch (Arg.ArgParseException e) {
                 send(sender, e.langKey(), e.phs());
                 return true;
@@ -220,14 +220,17 @@ public final class RootCommand extends Command implements Registrable {
             if (sub.args.isEmpty()) {
                 return List.of();
             }
-            Arg<?> last = argAt(sub, sub.args.size() - 1);
-            if (!isGreedy(last)) {
+            Map.Entry<String, Arg<?>> last = entryAt(sub, sub.args.size() - 1);
+            if (!isGreedy(last.getValue())) {
                 return List.of();
             }
-            List<String> greedySuggestions = last.suggest(sender, args[args.length - 1]);
+            List<String> greedySuggestions = last.getValue()
+                    .suggest(sender, args[args.length - 1], last.getKey());
             return greedySuggestions == null ? List.of() : greedySuggestions;
         }
-        List<String> suggestions = argAt(sub, argIndex).suggest(sender, args[args.length - 1]);
+        Map.Entry<String, Arg<?>> entry = entryAt(sub, argIndex);
+        List<String> suggestions = entry.getValue()
+                .suggest(sender, args[args.length - 1], entry.getKey());
         return suggestions == null ? List.of() : suggestions;
     }
 
@@ -322,11 +325,11 @@ public final class RootCommand extends Command implements Registrable {
         return out.toString();
     }
 
-    private static Arg<?> argAt(Sub sub, int index) {
+    private static Map.Entry<String, Arg<?>> entryAt(Sub sub, int index) {
         int i = 0;
-        for (Arg<?> arg : sub.args.values()) {
+        for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
             if (i == index) {
-                return arg;
+                return entry;
             }
             i++;
         }

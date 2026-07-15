@@ -61,6 +61,15 @@ shop:
 player, PAPI resolves per-viewer. Single-line messages get the optional top-level `prefix`
 value prepended; list values are sent line by line, unprefixed.
 
+{% hint style="warning" %}
+SnLib prepends the configured `prefix` to single-line messages for you, so a message value
+should never contain the prefix placeholder itself (the `prefix` key written in `{ }`
+placeholder form). That token is not substituted - it would render literally, on top of the
+prefix SnLib already added. On each load the module scans the active language file and, if
+any value carries the token, logs a single WARN naming how many keys are affected; the
+warning is emitted once per load, never per key. Remove the token from those values.
+{% endhint %}
+
 `broadcast` sends to the whole server, resolving PAPI against the server:
 
 ```java

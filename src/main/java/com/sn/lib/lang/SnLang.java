@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -68,6 +69,8 @@ public final class SnLang {
     private static final String SNLIB_RESOURCE = "snlib-messages.yml";
     /** Re-send period of a held action bar; the vanilla bar fades after roughly 2-3s. */
     private static final long ACTIONBAR_REFRESH_TICKS = 40L;
+    /** The prefix placeholder SnLib prepends automatically; embedding it in a value renders it literally. */
+    static final String LITERAL_PREFIX_TOKEN = "{prefix}";
 
     private final Sn ctx;
     private final @Nullable SnYml config;
@@ -331,6 +334,7 @@ public final class SnLang {
         }
         cachePrefix();
         buildCaches();
+        warnLiteralPrefixToken();
     }
 
     /**
@@ -545,6 +549,54 @@ public final class SnLang {
             return List.of(cfg.getString(key, ""));
         }
         return null;
+    }
+
+    /**
+     * Defense-in-depth WARN: SnLib prepends the configured {@code prefix} to single-line
+     * messages automatically, so a value that also embeds the {@link #LITERAL_PREFIX_TOKEN}
+     * token would render it verbatim. Scans the active language file once per load and, when
+     * any value carries the token, logs a single summary WARN naming how many keys are
+     * affected. One warning per load, never per key.
+     */
+    private void warnLiteralPrefixToken() {
+        Map<String, List<String>> valuesByKey = new LinkedHashMap<>();
+        for (String key : leafKeys(active)) {
+            List<String> values = readLines(active, key);
+            if (values != null) {
+                valuesByKey.put(key, values);
+            }
+        }
+        int affected = countKeysWithLiteralPrefixToken(valuesByKey);
+        if (affected > 0) {
+            ctx.plugin().getLogger().warning(affected + " message key(s) in " + LANG_DIR
+                    + "/messages_" + activeCode + ".yml embed the literal " + LITERAL_PREFIX_TOKEN
+                    + " token; SnLib prepends the configured prefix automatically, so the token"
+                    + " renders literally - remove it from those values");
+        }
+    }
+
+    /** Counts how many keys carry the literal prefix token; a multi-line value counts once. */
+    static int countKeysWithLiteralPrefixToken(Map<String, List<String>> valuesByKey) {
+        int affected = 0;
+        for (List<String> values : valuesByKey.values()) {
+            if (carriesLiteralPrefixToken(values)) {
+                affected++;
+            }
+        }
+        return affected;
+    }
+
+    /** True when any line of the value contains the literal prefix token. */
+    static boolean carriesLiteralPrefixToken(List<String> values) {
+        if (values == null) {
+            return false;
+        }
+        for (String value : values) {
+            if (value != null && value.contains(LITERAL_PREFIX_TOKEN)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Static means renderable once: no {@code %token%} and no <code>{token}</code>. */

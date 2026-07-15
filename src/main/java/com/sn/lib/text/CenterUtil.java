@@ -6,9 +6,10 @@ package com.sn.lib.text;
  *
  * <p>Pure string transform: it measures the visible pixels of a legacy-colored string
  * (skipping {@code &X}, section-sign codes and {@code &#RRGGBB} hex while measuring,
- * with bold width tracked via {@code &l}/{@code &r}) and prepends the spaces needed to
- * center it. It can only measure legacy strings, never Components, which is why the
- * pipeline applies it as the last step of the legacy phase.</p>
+ * with bold width opened by {@code &l} and cleared by any COLOR code ({@code &0}-{@code &f},
+ * {@code &#RRGGBB}) or {@code &r}, matching the vanilla reset the render applies) and
+ * prepends the spaces needed to center it. It can only measure legacy strings, never
+ * Components, which is why the pipeline applies it as the last step of the legacy phase.</p>
  */
 public final class CenterUtil {
 
@@ -51,6 +52,8 @@ public final class CenterUtil {
             if ((c == '&' || c == SECTION) && i + 1 < s.length()) {
                 char next = s.charAt(i + 1);
                 if (c == '&' && next == '#' && isHex(s, i + 2)) {
+                    // A legacy hex COLOR resets vanilla formatting: bold stops here too.
+                    bold = false;
                     i += 7;
                     continue;
                 }
@@ -58,7 +61,9 @@ public final class CenterUtil {
                 if (isCodeChar(code)) {
                     if (code == 'l') {
                         bold = true;
-                    } else if (code == 'r') {
+                    } else if (clearsBold(code)) {
+                        // A COLOR code (&0-&f) or &r resets vanilla formatting, matching the
+                        // legacy-to-MiniMessage render where a color negates active decorations.
                         bold = false;
                     }
                     i++;
@@ -68,6 +73,11 @@ public final class CenterUtil {
             px += width(c, bold);
         }
         return px;
+    }
+
+    /** A COLOR code ({@code &0}-{@code &f}) or {@code &r} clears bold under vanilla semantics. */
+    private static boolean clearsBold(char code) {
+        return (code >= '0' && code <= '9') || (code >= 'a' && code <= 'f') || code == 'r';
     }
 
     /** Advance in pixels: table width plus the 1px glyph gap; bold adds 1px except for spaces. */

@@ -94,6 +94,16 @@ lore:
 
 A literal `<` that cannot start a valid tag is escaped automatically, so stray angle brackets in user text do not break rendering.
 
+## Legacy color codes reset decorations
+
+A legacy COLOR code (`&0`-`&f` or `&#RRGGBB`) resets the decorations opened by earlier legacy format codes on the same line, exactly like vanilla Minecraft and Adventure's `LegacyComponentSerializer.legacyAmpersand()`. So `&l&cText` renders red and NOT bold: the `&c` color clears the `&l` bold that came before it. To get bold red, write the color first (`&c&lText`). `&r` clears every active decoration and color.
+
+Internally the legacy-to-MiniMessage conversion emits the negation right after the color, so `&l&c` becomes `<bold><red><!bold>`. Only decorations opened by legacy format codes (`&k`-`&o`) are tracked, so an author-written MiniMessage tag keeps pure MiniMessage semantics, where a color tag alone never closes a decoration (`<bold><red>` stays bold). Centering measures the same way: a legacy color inside a `[center]` line drops the bold before the width is counted, so the alignment stays accurate.
+
+{% hint style="info" %}
+This is a 1.5.0 behavior fix. The legacy-string path (`colorLegacy`) always reset on the client through section codes; before 1.5.0 the `Component` path (`color`, and therefore every message, item name, lore and menu title) did not, so bold could bleed across a later legacy color. All render paths now share the same vanilla reset.
+{% endhint %}
+
 ## Public entry points
 
 | Method | What it does |

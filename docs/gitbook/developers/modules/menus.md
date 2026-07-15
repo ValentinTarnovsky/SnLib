@@ -8,7 +8,7 @@ You reach the module through `sn.guis()` once your `SnSpec` declares `guis()`.
 @Override protected SnSpec buildSpec() {
     return SnSpec.builder()
             .config("config.yml")   // required: guis need the yml module
-            .guis()                 // loads the guis/ folder
+            .guis()                 // seeds and loads the guis/ folder
             .build();
 }
 ```
@@ -26,6 +26,16 @@ shop.open(player);
 
 {% hint style="info" %}
 The whole GUI module is main-thread only, like all inventory work in Paper. Open menus and bind content from the main thread.
+{% endhint %}
+
+## Bundling menus in your jar
+
+Ship your default menus as `guis/*.yml` resources inside your jar. On load (onEnable and on every reload) SnLib seeds them into the data folder's `guis/` folder with the SAME managed semantics as configs: a missing file is written from the jar, an existing file is structurally merged (new keys added, user edits kept), and the whole seed is gated by the config's `update-configs` switch. Only top-level `guis/<name>.yml` resources are seeded; nested resources (`guis/sub/x.yml`) and non-`.yml` entries are ignored. The resources are read from the CONSUMER jar, so a menu you bundle is never confused with one bundled by SnLib itself.
+
+The menu id is still the file name without the extension, so a bundled `guis/shop.yml` seeds to `plugins/YourPlugin/guis/shop.yml` and loads as `"shop"`.
+
+{% hint style="warning" %}
+If your spec declares `guis()` but the `guis/` folder ends up empty (nothing bundled in the jar and nothing dropped in by hand), no menu loads and SnLib logs a WARN naming the empty folder. Bundle your menus as `guis/*.yml` in the jar so they seed, or place the files in the folder.
 {% endhint %}
 
 ## A realistic example

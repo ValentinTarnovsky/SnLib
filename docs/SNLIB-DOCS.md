@@ -3,8 +3,13 @@
 > Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11
 > for the 1.1.0 release, on 2026-07-12 for the 1.2.x releases, and on 2026-07-13 for the 1.3.0
 > release (removed the experimental SnBridge; added a small Velocity base - config, text,
-> scheduler, commands - in section 19). Coverage: every class under `src/main/java/com/sn/lib`,
-> resources, build and tests (211 tests, all green).
+> scheduler, commands - in section 19), and on 2026-07-15 for the 1.5.0 behavior changes:
+> legacy COLOR codes reset decorations in the Component render path too (section 03),
+> bundled `guis/*.yml` are seeded into the data folder (section 12), config-driven command
+> aliases plus arg-name tab hints and sender-aware / suggest-only args (section 13), and a
+> one-time WARN when a lang value embeds the literal prefix placeholder token (section 05).
+> Coverage: every class under `src/main/java/com/sn/lib`, resources, build and tests (211
+> tests, all green; 1.5.0 adds text, gui, command and lang tests on top).
 
 **Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins, shipped as a
 DUAL-PLATFORM jar: the SAME `SnLib-1.3.0.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
@@ -343,7 +348,7 @@ Final utility class (private constructor) that orchestrates the pipeline. It kee
 #### Internal logic (private methods)
 
 - `consumeCenterMark(String line)` - If the line starts with `[center]` (already normalized by `applyPrefixTags`), strips the tag and delegates to `CenterUtil.center`.
-- `legacyToMini(String s)` - Legacy-to-MiniMessage conversion: `&#RRGGBB` becomes `<#RRGGBB>`, `&X` becomes its named tag per `MINI_TAGS`, and a literal `<` that cannot start a tag is escaped as `\<`.
+- `legacyToMini(String s)` - Legacy-to-MiniMessage conversion: `&#RRGGBB` becomes `<#RRGGBB>`, `&X` becomes its named tag per `MINI_TAGS`, and a literal `<` that cannot start a tag is escaped as `\<`. A legacy COLOR code (`&0`-`&f`, `&#RRGGBB`) resets the decorations opened by earlier legacy format codes: it tracks the decorations opened by `&k`-`&o` in a `LinkedHashSet` and, right after emitting a color tag, negates every still-active one (`negateLegacyDecorations` emits `<!name>` per tracked decoration and clears the set), so `&l&c` becomes `<bold><red><!bold>`. `&r` emits `<reset>` and clears the set. Only legacy-opened decorations enter the set, so author-written MiniMessage tags keep pure MiniMessage semantics (a MiniMessage color tag never triggers the reset). This matches vanilla and Adventure's `LegacyComponentSerializer.legacyAmpersand()`; before 1.5.0 the Component path did not reset, so bold bled across later legacy colors.
 - `toSectionCodes(String s)` - Counterpart for `colorLegacy`: `&#RRGGBB` becomes `§x` followed by `§` + each hex digit lowercased, and `&X` (valid code) becomes lowercase `§x`. Everything else passes unchanged.
 - `canStartTag(String s, int next)` - MiniMessage tag-start heuristic: the character after `<` must be `/` (closing tag), `#` (hex color), `!` (negated decoration), `_` or an ASCII letter (a-z, A-Z). Otherwise the `<` gets escaped.
 - `isCodeChar(char c)` - Validates a legacy code character: `0-9`, `a-f`, `k-o`, `r` or `x`.
@@ -354,6 +359,7 @@ Final utility class (private constructor) that orchestrates the pipeline. It kee
 
 - The pipeline order is FIXED per class Javadoc: locals -> PAPI -> `[small]` -> `[rgb]` -> legacy color conversion -> `[center]`. "`[center]` last" means at the end of the LEGACY PHASE, never after the render to `Component`: `CenterUtil` only knows how to measure legacy strings, which is why centering applies to the legacy-colored string (with the gradient's `&#RRGGBB` already interpolated) right before `legacyToMini` + deserialization. `[small]` runs BEFORE both: the gradient colors the final glyphs and centering measures the final glyphs.
 - Legacy and MiniMessage mix within the same string: `&X` / `&#RRGGBB` codes are translated to MiniMessage tags and the WHOLE string goes through MiniMessage at the end, so both formats render together. In `colorLegacy` it is the other way around: MiniMessage tags stay untouched inside the legacy string.
+- 1.5.0 behavior fix: a legacy COLOR code resets the decorations opened by earlier legacy format codes in the Component path as well, matching vanilla. The `colorLegacy` (section-code) path already reset naturally on the client; the `color` Component path now does the same via `negateLegacyDecorations`, so `&l&c` is red non-bold and `&c&l` is bold red. Only legacy-opened decorations are tracked, so a MiniMessage color tag written by the author does not close an active MiniMessage decoration.
 - `<` escaping: it is only escaped (`\<`) when the next character CANNOT start a tag per `canStartTag`. A `<` followed by a letter, `/`, `#`, `!` or `_` is let through and MiniMessage will try to parse it as a tag.
 - `applyLocals` cuts the search for the closing delimiter at the first `%`/`}` it finds; `%%` or `{}` (empty token, `end == i + 1`) are not treated as a token and stay literal.
 - The `[rgb]` tag targets titles and short lines: it emits one hex code per visible character (very verbose). SnLang caches statically resolved lines to pay that cost only once.
@@ -447,7 +453,7 @@ Final utility class (private constructor). Chat centering against the 154px half
 
 #### Internal logic
 
-- `measure(String s)` - Sums the pixel width of the visible characters. Skips `&#RRGGBB` (advances 8 chars) and `&X` / `§X` codes; tracks bold state: `&l`/`§l` turns it on and `&r`/`§r` turns it off (other color codes do NOT turn it off during measurement).
+- `measure(String s)` - Sums the pixel width of the visible characters. Skips `&#RRGGBB` (advances 8 chars) and `&X` / `§X` codes; tracks bold state: `&l`/`§l` opens it and it is cleared by any COLOR code (`&0`-`&f`, `&#RRGGBB`) or `&r` (`clearsBold`), matching the vanilla reset the Component render now applies. Before 1.5.0 only `&r` cleared bold during measurement, which could over-measure a line where a later color had already dropped the bold.
 - `width(char c, boolean bold)` - Pixel advance: table width plus 1px glyph gap; bold adds 1px extra except for spaces.
 - `baseWidth(char c)` - Vanilla DefaultFontInfo width table (see table below). In the `default` branch, BEFORE the printable ASCII range check, small caps glyphs (detected via `SmallCapsUtil.isSmallGlyph`, package-private access within `com.sn.lib.text`) return base 5 like uppercase letters, except U+026A (the small i, narrow) which returns base 3 like the uppercase 'I'; without this branch they would fall into the fallback of 4 and a `[center][small]` line would come out shifted right.
 - `isCodeChar(char c)` - Validates a legacy code character (`0-9`, `a-f`, `k-o`, `r`, `x`).
@@ -613,7 +619,7 @@ Prune (`collectRemovals`): mirror of the merge - each DISK child absent from the
 6. Write: `backupBeforeMerge` COPIES the current file to `old-<base>-<yyyyMMdd-HHmmss>.yml` next to it (exact timestamp with `BACKUP_STAMP`), and `pruneOldBackups` deletes the oldest keeping only the last `BACKUPS_KEPT = 3`; the match is EXACT by regex `old-<base>-\d{8}-\d{6}\.yml` (the code comment explains why: a loose prefix would mix in the backups of another file whose name extends the base, e.g. `config` vs `config-extra`). An old backup that cannot be deleted never blocks the merge. Finally the resulting lines are written UTF-8.
 7. Errors: `IOException` -> SEVERE "[update-configs] Failed updating <file>: <msg>"; `RuntimeException` (parsing) -> SEVERE "[update-configs] Parse error merging <resource> into <file>: <msg>". Never propagates.
 
-`updateFromLines` follows the same flow with three differences: the reference is in-memory lines (no step 1), it returns early with `false` if there are no insertions (no prune), and it returns a boolean indicating whether the disk changed.
+`updateFromLines` follows the same flow with three differences: the reference is in-memory lines (no step 1), it returns early with `false` if there are no insertions (no prune), and it returns a boolean indicating whether the disk changed. Two overloads: `updateFromLines(JavaPlugin, ...)` and `updateFromLines(Logger, ...)`. The `Logger` variant (1.5.0) exists for callers that hold a reference in memory but no `JavaPlugin` handle - the GUI seeder reads each `guis/*.yml` reference straight from the consumer jar and merges it through this same path; the `JavaPlugin` overload just delegates to it with `plugin.getLogger()`.
 
 #### Notes and gotchas
 - No `config-version`: the comparison is structural against the resource on every startup; adding a key to the jar resource is enough for it to reach every server.
@@ -694,7 +700,8 @@ Constants: it exposes no public constants or enums. Internally it uses the priva
 
 Private methods, in load-flow order:
 
-- `private void load()` - Orchestrates the load: clears `warnedKeys`, seeds the English, merges the snlib keys, parses the fallback, decides the desired code (if it is `en`, active = fallback; otherwise it loads the translation), caches the prefix and rebuilds the caches.
+- `private void load()` - Orchestrates the load: clears `warnedKeys`, seeds the English, merges the snlib keys, parses the fallback, decides the desired code (if it is `en`, active = fallback; otherwise it loads the translation), caches the prefix, rebuilds the caches and finally runs `warnLiteralPrefixToken`.
+- `private void warnLiteralPrefixToken()` (1.5.0) - Defense-in-depth: SnLib prepends the configured `prefix` to single-line messages automatically, so a value that also embeds the literal prefix placeholder token (`LITERAL_PREFIX_TOKEN`, the `prefix` key in `{ }` placeholder form) would render it verbatim. Scans every leaf value of the active language file once per load and, when one or more keys carry the token, logs ONE summary WARN naming how many keys are affected (`N message key(s) in lang/messages_<code>.yml embed the literal ... token; ... remove it from those values`). One warning per load, never per key. Pure helpers `countKeysWithLiteralPrefixToken(Map)` and `carriesLiteralPrefixToken(List)` (a multi-line value counts once) are package-private and unit-tested.
 - `private void seedEnglish(File dir, File enFile)` - Seeds `lang/messages_en.yml` from the consumer's jar via `YamlUpdater.update(plugin, CONSUMER_RESOURCE, enFile, false)` (always-merge, gated by `update-configs`). If the consumer's jar does NOT include the resource and the file does not exist, it creates a minimal two-comment-line file and emits a WARN ("The X jar does not include lang/messages_en.yml; a minimal file was created").
 - `private void mergeSnlibKeys(File enFile)` - Merges SnLib.jar's `snlib-messages.yml` resource into the on-disk `messages_en.yml` via `YamlUpdater.merge(resource, disk)`. Always on and EXEMPT from the `update-configs` gate: the `snlib.*` keys are the library's own message contract. If the disk does not parse as YAML (checked with `YamlUpdater.isParseable` over the preprocessed text) it skips the merge with a WARN; if the merge changes nothing, it does not rewrite the file. A resource missing from SnLib.jar produces a WARN and no merge.
 - `private void loadTranslation(File dir, File enFile, String code)` - Loads a non-English translation: if `messages_<code>.yml` does not exist, WARN and fallback to English (activeCode returns to `en`); if it exists, it merges against the on-disk English, parses, and if it ended up empty or corrupt it also falls back to English with a WARN.
@@ -2300,7 +2307,7 @@ Pure helper (final, private constructor, zero Bukkit, testable in plain JUnit li
 ### GuiManager
 `src/main/java/com/sn/lib/gui/GuiManager.java`
 
-GUI module of a consumer context, reached via `sn.guis()`. `load()` creates the `guis/` folder and loads ONE GUI per file (the id is the name without extension). Open sessions register per owner in a `TenantRegistry`, so a consumer's disable closes exactly that consumer's GUIs (non-interference); quit cleanup runs through the shared quit listener. Main-thread only, like the whole module.
+GUI module of a consumer context, reached via `sn.guis()`. `load()` seeds the consumer jar's bundled `guis/*.yml` into the data folder, creates the `guis/` folder if still missing, and loads ONE GUI per file (the id is the name without extension). Open sessions register per owner in a `TenantRegistry`, so a consumer's disable closes exactly that consumer's GUIs (non-interference); quit cleanup runs through the shared quit listener. Main-thread only, like the whole module.
 
 Constants and statics:
 - `public static final String ITEM_TAG = "snlib_gui_item"` - Name of the PDC key stamped on every rendered GUI stack (payload `"<guiId>:<slot>"`), namespaced by owning plugin via TagIo; the anti-theft protection listener resolves marked stacks through it.
@@ -2308,7 +2315,8 @@ Constants and statics:
 
 Methods:
 - `public GuiManager(Sn ctx)` - Creates the module for the given context and hooks its quit cleanup via `QuitCleanupListener.register(plugin, this::closeSessionsOf)`.
-- `public void load()` - Creates `guis/` if missing and (re)parses one GUI per `.yml` file (alphabetical order by name). Requires the yml module: without it, WARN "guis() declared without config(): the guis/ folder cannot load and sn.guis() stays empty" and returns. If the folder cannot be created: WARN "Could not create the folder <path>". Synchronous I/O by design: it runs only in onEnable and the reload flow. File mounts cache in a `ConcurrentHashMap` (`mounts`), so the reload can re-read from disk.
+- `public void load()` - Seeds the bundled `guis/*.yml` (via `seedBundledGuis`), creates `guis/` if still missing and (re)parses one GUI per `.yml` file (alphabetical order by name). Requires the yml module: without it, WARN "guis() declared without config(): the guis/ folder cannot load and sn.guis() stays empty" and returns. If the folder cannot be created: WARN "Could not create the folder <path>". If `guis()` is declared but nothing loaded because the folder is empty, WARN "guis() is declared but no menu was loaded from <path>: the guis/ folder is empty. Bundle the menus as guis/*.yml in the jar so they seed, or drop the files into the folder." (1.5.0). Synchronous I/O by design: it runs only in onEnable and the reload flow (so seeding also runs on every reload - missing files reseed, existing files re-merge). File mounts cache in a `ConcurrentHashMap` (`mounts`), so the reload can re-read from disk.
+- `private void seedBundledGuis(YmlManager files)` (1.5.0) - Resolves the consumer jar via `GuiSeeder.consumerJar(plugin)` and delegates to `GuiSeeder.seed`, passing the config file as the `update-configs` gate. A jar that cannot be located WARNs and leaves the folder to whatever is on disk.
 - `public @Nullable Gui get(String id)` - GUI loaded under `id` (file name without extension, `trim()`ed), or null.
 - `public void registerAction(String tag, ActionHandler handler)` - Registers a custom click action tag for this context; sugar over `sn.actions().register`.
 - `public void reload()` - Reloads the module: natively closes every open GUI of this context (sessions are per-viewer, so nobody keeps a stale inventory), re-reads each mounted file from disk, re-parses the definitions and picks up new files (via `load()`).
@@ -2317,6 +2325,16 @@ Methods:
 - `public void closeAll(Plugin owner)` - Closes all sessions registered by `owner`; those of any other plugin stay intact (non-interference).
 - `void warnOnce(String key, String message)` (package-private) - Logs a GUI misuse warning once per key for this context (the `bindPaged` gating).
 - `private void closeSessionsOf(UUID viewer)` - Quit/kick cleanup: closes this context's sessions of the departing viewer.
+
+### GuiSeeder (package-private, 1.5.0)
+`src/main/java/com/sn/lib/gui/GuiSeeder.java`
+
+Seeds the bundled `guis/*.yml` of a consumer jar into its data folder before `GuiManager` lists the folder. Bukkit cannot enumerate a resource directory through `getResource`, so the seeder enumerates the CONSUMER plugin's own jar (resolved from the code source of the plugin's main class, NEVER SnLib's jar) and, for every top-level entry directly under `guis/` ending in `.yml`, applies the managed semantics reused from `YamlUpdater.updateFromLines(Logger, ...)`: a missing file is seeded, an existing file is always-merged through the same updater and gated by `update-configs`. Nested entries (`guis/sub/x.yml`) and non-yml entries are ignored. Takes a jar `File` + `Logger` (not a live `JavaPlugin`), so the whole pipeline is unit-testable against a temp jar. Synchronous I/O by design: it runs only from `GuiManager.load()`.
+
+- `static List<String> guiResourcePaths(Iterable<String>)` - Pure filter: sorted, distinct top-level `guis/<name>.yml` paths; separators normalized to `/`, the `guis/` prefix and `.yml` suffix matched case-insensitively, entry name kept verbatim (case preserved) so it round-trips to the jar for reading and to the disk path for writing.
+- `static List<String> guiResourcePaths(File jar)` - Enumerates a jar and returns its top-level `guis/*.yml` paths.
+- `static List<String> seed(File jar, File dataFolder, @Nullable File gateFile, Logger logger)` - Seeds/merges every bundled `guis/*.yml` into `dataFolder/guis/`, returning the resource paths found (empty when the jar bundles no menu). Never throws: an unreadable jar yields an empty list and one WARN; a `null` gate file merges unconditionally.
+- `static @Nullable File consumerJar(JavaPlugin plugin)` - Resolves the consumer jar from the code source of its main class; `null` when the location cannot be resolved (WARNed by the caller).
 
 ### Gui
 `src/main/java/com/sn/lib/gui/Gui.java`
@@ -2457,20 +2475,26 @@ Command module of the consumer context, reached via `sn.commands()`. It provides
 
 Command module of a consumer context. Every root built here injects a `reload` subcommand (permission `<plugin>.admin.reload`, delegates to `Sn.reloadAll()` and confirms with `snlib.reload-done`) and a generated `help`; both are replaceable by declaring subcommands with those names and removable via `withoutDefaults()`. If the spec declared `debugCommand()`, a `debug` subcommand (permission `<plugin>.admin.debug`) is additionally injected that toggles the runtime debug service; that one is gated by the spec, not by the defaults opt-out.
 
+Constant: `public static final String CONFIG_ALIASES_KEY = "command.aliases"` (1.5.0) - conventional config key read by `RootBuilder.aliasesFromConfig()`.
+
 - `public SnCommands(Sn ctx, @Nullable SnLang lang, boolean debugCommand)` - constructor; instantiated by the context. `lang` may be null (the shared default `snlib.*` templates render); `debugCommand` says whether the spec declared the debug command.
 - `public RootBuilder root(String name)` - starts a root tree with that name; validates non-null and non-empty (`IllegalArgumentException` "Empty command name").
 - `public void unregisterAll()` - unregisters all of the owning plugin's roots and refreshes the client trees; invoked by the context teardown.
-- `public void reregisterAll()` - re-registers all of the owning plugin's roots; it is the re-registration step of the context's reload flow.
+- `public void reregisterAll()` - re-registers all of the owning plugin's roots; it is the re-registration step of the context's reload flow. Each root re-sources its dynamic aliases (the config binding re-reads `command.aliases` from the just-reloaded config).
+- `private @Nullable Collection<String> configAliases(String key)` (1.5.0) - root alias list read from the config, or null when it cannot act as the authority (config module absent, or the key not set). A set key returns its list as-is (an empty list is authoritative and clears the aliases). Backs `aliasesFromConfig`.
 
 #### SnCommands.RootBuilder (public inner class)
 Builder of a root tree.
 
-- `public RootBuilder aliases(String... aliases)` - adds aliases to the root (trim + lowercase `Locale.ROOT`).
+- `public RootBuilder aliases(String... aliases)` - adds STATIC aliases to the root (trim + lowercase `Locale.ROOT`). When a supplier or the config binding is also set, these act as the FALLBACK used only while the authoritative source has no opinion.
+- `public RootBuilder aliases(Supplier<Collection<String>> supplier)` (1.5.0) - supplies the aliases dynamically, re-evaluated on every register pass (so a reload re-sources them). A non-null result is AUTHORITATIVE and an empty list clears the aliases; a null result falls back to the static / plugin.yml aliases. Aliases that disappear between passes are unregistered.
+- `public RootBuilder aliasesFromConfig()` (1.5.0) - sources the aliases from the plugin config list at the conventional key `command.aliases` (`SnCommands.CONFIG_ALIASES_KEY`). The config is AUTHORITATIVE when the key is set (even to an empty list); when the key is absent, or the config module was not declared, the static / plugin.yml aliases apply. Internally binds a supplier that re-reads the just-reloaded config each pass.
+- `public RootBuilder aliasesFromConfig(String key)` (1.5.0) - same against a custom config key.
 - `public RootBuilder permission(String permission)` - root permission, inherited by every subcommand without its own. Without a permission the root is public.
 - `public RootBuilder description(String description)` - root description (null normalizes to "").
 - `public SubCommandBuilder sub(String name)` - starts a subcommand; closed with `SubCommandBuilder.and()`. Validates a non-empty name.
 - `public RootBuilder withoutDefaults()` - omits the `reload` and `help` defaults. The consumer MUST then provide its own reload and help: sn-core declares them mandatory in every root.
-- `public RootCommand register()` - builds the tree, injects the applicable defaults and registers it against Bukkit; returns the `RootCommand`.
+- `public RootCommand register()` - builds the tree, injects the applicable defaults, binds the alias supplier to the built root (`BukkitCommandRegistry.bindAliasSupplier`, 1.5.0) and registers it against Bukkit; returns the `RootCommand`.
 
 **Notes and gotchas**
 - The root name normalizes with trim + lowercase in the builder constructor.
@@ -2499,13 +2523,13 @@ Public methods:
 4. The sub's effective permission (its own or the root's inherited one); without it -> `snlib.no-permission`.
 5. If `subArgs.length < requiredArgs` -> `snlib.usage` with `{usage}` (custom or generated usage).
 6. `when(index, predicate)` conditions: every condition whose index falls within the provided tokens evaluates over the raw token; on failure -> `snlib.usage`. A condition over an absent optional is skipped (the `at < subArgs.length` check).
-7. Typed parsing in declaration order: for each declared `Arg`, while tokens remain, it parses and stores in a `LinkedHashMap`. If the LAST declared arg is greedy, the token is the space-joined remainder. An `Arg.ArgParseException` sends its `langKey()` with its `phs()` and stops.
+7. Typed parsing in declaration order: for each declared `Arg`, while tokens remain, it parses via the sender-aware `parse(sender, token)` (1.5.0; the default delegates to `parse(token)`) and stores in a `LinkedHashMap`. If the LAST declared arg is greedy, the token is the space-joined remainder. An `Arg.ArgParseException` sends its `langKey()` with its `phs()` and stops.
 8. No declared executor -> `snlib.usage`. The executor runs wrapped in a `Throwable` try/catch: a failure logs `SEVERE` with "Subcommand '/<root> <sub>' failed" and the stack trace, without propagating to Bukkit's dispatcher.
 
 **Internal logic (tabComplete)**
 - Without the root permission it returns an empty list (the sender sees NOTHING of the tree).
 - With `args.length <= 1`: names of visible subcommands whose effective permission the sender has, filtered by prefix and sorted.
-- For arguments: the sub's permission gate again; `argIndex = args.length - 2`; if the index exceeds the declared args, only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial)`. A `suggest` returning null normalizes to an empty list.
+- For arguments: the sub's permission gate again; `argIndex = args.length - 2`; if the index exceeds the declared args, only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial, argName)` (1.5.0), passing the declared argument name so a free-form arg can suggest its `<argName>` hint (the internal `entryAt` returns the name/arg entry, replacing the old `argAt`). A `suggest` returning null normalizes to an empty list.
 
 **Internal logic (generated help)**
 Header `snlib.help.header` (placeholder `{plugin}`, the plugin name), one `snlib.help.entry` per visible and permitted subcommand (placeholders `{usage}`, `{description}` and `{permission}`, the latter empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
@@ -2554,13 +2578,17 @@ Constant:
 Factory methods (all `static`):
 - `public static SnArg<Player> onlinePlayer()` - online player by exact name (`Bukkit.getPlayerExact`); rejects with `snlib.player-not-found` (`{value}`) and suggests up to 100 online names.
 - `public static SnArg<UUID> offlinePlayerUuid()` - player UUID resolved STRICTLY without blocking: first an exact online match, then the local offline-players cache (`Bukkit.getOfflinePlayerIfCached`). A name absent from both rejects with `snlib.player-not-found`. `Bukkit.getOfflinePlayer(String)` is never used here because it can do a BLOCKING profile lookup on the main thread; remote resolution belongs to the consumer via the async scheduler. Suggests online names.
-- `public static SnArg<String> oneOf(Supplier<Collection<String>> options)` - one value from a dynamic option set, matched case-insensitively and returned in its canonical form (the collection's, not the typed one); rejects with `snlib.invalid-value` and suggests up to 100 of the current options (skips nulls).
+- `public static SnArg<String> oneOf(Supplier<Collection<String>> options)` - one value from a dynamic option set, matched case-insensitively and returned in its canonical form (the collection's, not the typed one); rejects with `snlib.invalid-value` and suggests up to 100 of the current options (skips nulls). Delegates to the sender-aware overload with a function that ignores the sender.
+- `public static SnArg<String> oneOf(Function<CommandSender, Collection<String>> options)` (1.5.0) - sender-aware `oneOf`: the option set is computed per invoking sender, so BOTH the suggestions and the parse-time validation are scoped to that sender (via the `parse(CommandSender, raw)` path). The parse fallback without a sender queries the function with `null`.
+- `public static SnArg<String> suggesting(Supplier<Collection<String>> options)` (1.5.0) - free-form single token whose only role is to SUGGEST a dynamic set: `parse` returns the input as-is (no restriction), so the handler keeps its own not-found handling. Suggests up to 100 of the current options. Also a sender-aware `suggesting(Function<CommandSender, Collection<String>>)` overload.
 - `public static SnArg<Integer> intRange(int min, int max)` - integer in `[min, max]` (`Integer.parseInt` over the trimmed token); a non-number rejects with `snlib.invalid-number` and out-of-range with `snlib.out-of-range` (`{value}`, `{min}`, `{max}`). Suggests both bounds as examples.
 - `public static SnArg<Double> doubleRange(double min, double max)` - double in `[min, max]`; accepts a decimal comma (replaces `,` with `.` before parsing); non-number -> `snlib.invalid-number`; `NaN` or out of range -> `snlib.out-of-range`. Suggests both bounds.
 - `public static SnArg<Long> duration()` - compact duration like `"1d 2h 30m 15s"` parsed to milliseconds via `TimeUtil.parseMillis(String)`; zero or unparseable rejects with `snlib.invalid-value`. Example `30m`; options `30s`, `5m`, `1h`, `1d`.
 - `public static SnArg<Boolean> bool()` - boolean accepting `true/yes/on` and `false/no/off` (case-insensitive); anything else rejects with `snlib.invalid-value`. Suggests `true` and `false`.
-- `public static SnArg<String> string()` - a free single token, returned as-is. Example `text`.
-- `public static SnArg<String> greedy()` - free text consuming all remaining tokens as a single space-joined value. Only makes sense as the LAST declared argument. Example `text`.
+- `public static SnArg<String> string()` - a free single token, returned as-is. Un-hinted: its lone suggestion is the angle-bracket hint `<argName>` derived from the declared argument name (1.5.0; the old literal `text` example is gone).
+- `public static SnArg<String> string(String hint)` (1.5.0) - free single token with an explicit suggestion hint, shown in angle brackets (`<hint>`); a value already bracketed is kept verbatim.
+- `public static SnArg<String> greedy()` - free text consuming all remaining tokens as a single space-joined value. Only makes sense as the LAST declared argument. Un-hinted: its lone suggestion is the angle-bracket hint `<argName>` derived from the declared name (1.5.0).
+- `public static SnArg<String> greedy(String hint)` (1.5.0) - greedy free text with an explicit angle-bracket suggestion hint.
 
 #### Args.SnArg\<T\> (public abstract class)
 An arg produced by the factory: default example suggestions plus the `suggestCurrent` decorator.
@@ -2569,12 +2597,15 @@ An arg produced by the factory: default example suggestions plus the `suggestCur
 - `public final SnArg<T> suggestCurrent(Supplier<String> current)` - prepends the (supplied) real current value to the suggestions, before the examples and base options. Returns `this` (fluent).
 - `public final boolean greedy()` - whether this arg consumes all remaining tokens as one value.
 - `protected List<String> options(CommandSender sender)` - base options for the sender; empty when only the examples apply (the hook factories override with dynamic lists).
-- `public final List<String> suggest(CommandSender sender, String partial)` - final implementation of the `Arg` contract: builds the list in current-value -> examples -> base-options order, with case-insensitive dedup; an empty partial does not filter the base options, a non-empty one filters them with `StringUtil.copyPartialMatches` and sorts.
+- `public final List<String> suggest(CommandSender sender, String partial)` - delegates to the 3-arg variant with a null arg name.
+- `public final List<String> suggest(CommandSender sender, String partial, @Nullable String argName)` (1.5.0) - final implementation of the `Arg` contract: builds the list in current-value -> hint -> examples -> base-options order, with case-insensitive dedup; an empty partial does not filter the base options, a non-empty one filters them with `StringUtil.copyPartialMatches` and sorts. The `hintToken(argName)` step only contributes for a free-form arg in hint mode: the angle-bracket hint is the explicit `hint` when set, otherwise the declared `argName`, otherwise `value`; `bracket(...)` wraps it in `<>` unless already bracketed. The hint only survives the prefix filter while the partial is empty or itself starts with `<`, so a real typed value drops the hint.
+
+The package-private fields `hintMode` and `hint` are set by the free-form `string()` / `greedy()` factories of the enclosing `Args`; every other factory leaves them off, so only free-form args ever suggest a hint.
 
 **Notes and gotchas**
 - The `suggestCurrent` supplier runs inside a `Throwable` try/catch: a failing supplier simply contributes no current value (it never breaks the tab).
-- The 100 cap applies to the list-backed base options (online names, `oneOf`); the current value and examples do not count against the cap.
-- The current value and examples filter by case-insensitive prefix (`StringUtil.startsWithIgnoreCase`) just like the options, so the list never contains entries the client would discard.
+- The 100 cap applies to the list-backed base options (online names, `oneOf`, `suggesting`); the current value, hint and examples do not count against the cap.
+- The current value, hint and examples filter by case-insensitive prefix (`StringUtil.startsWithIgnoreCase`) just like the options, so the list never contains entries the client would discard.
 
 ### Arg
 `src/main/java/com/sn/lib/command/Arg.java`
@@ -2582,7 +2613,9 @@ An arg produced by the factory: default example suggestions plus the `suggestCur
 Typed command argument interface: it parses a raw token to `T` and provides its tab suggestions. Implementations come from the `Args` factory or the consumer.
 
 - `T parse(String raw) throws ArgParseException` - parses the raw token to the typed value; throws `ArgParseException` when the token is invalid (it carries the lang key and local placeholders the command flow sends back to the sender).
+- `default T parse(CommandSender sender, String raw) throws ArgParseException` (1.5.0) - parses with the invoking sender in scope, for args whose valid set is per-sender (the sender-aware `oneOf`); the default delegates to `parse(raw)`. The command flow ALWAYS calls this variant, so an implementation that ignores the sender needs only `parse(raw)`.
 - `List<String> suggest(CommandSender sender, String partial)` - tab suggestions for the partial token, resolved for that sender.
+- `default List<String> suggest(CommandSender sender, String partial, String argName)` (1.5.0) - suggestions with the declared argument name in scope, so an un-hinted free-form arg can derive an `<argName>` hint from it; the default delegates to `suggest(sender, partial)`. The command flow ALWAYS calls this variant, passing the declared arg name.
 
 #### Arg.ArgParseException (public nested class, extends `Exception`)
 Rejection of a raw token, expressed as a lang key plus its local placeholders.
@@ -2623,23 +2656,34 @@ Generic chat text paginator over an immutable item list; it backs the generated 
 ### BukkitCommandRegistry (internal)
 `src/main/java/com/sn/lib/command/internal/BukkitCommandRegistry.java`
 
-Bridge between the `RootCommand` trees and Bukkit's command system, preferring the public API through two paths: (a) a command declared in the owner's plugin.yml receives its executor and tab completer via `plugin.getCommand(name)` (the `PluginCommandAdapter` adapter); (b) undeclared roots and dynamic aliases go through Paper's public `Bukkit.getCommandMap()`, each with a WARN. After EVERY register and unregister, online players receive `updateCommands()` so their client trees never show ghosts. Registered roots track in a `TenantRegistry<RootCommand>` (justified server-wide static) keyed by owning plugin: the tenant sweep detaches each command and removes the owner's whole key when the consumer disables, even if the owner never called the teardown.
+Bridge between the `RootCommand` trees and Bukkit's command system, preferring the public API through two paths: (a) a command declared in the owner's plugin.yml receives its executor and tab completer via `plugin.getCommand(name)` (the `PluginCommandAdapter` adapter); (b) undeclared roots go through Paper's public `Bukkit.getCommandMap()`, with a WARN. In BOTH paths the dynamic aliases (builder varargs, an alias supplier, or the config-driven binding) are RECONCILED against the CommandMap's known commands (1.5.0). After EVERY register and unregister, online players receive `updateCommands()` so their client trees never show ghosts. Registered roots track in a `TenantRegistry<RootCommand>` (justified server-wide static) keyed by owning plugin: the tenant sweep detaches each command and removes the owner's whole key when the consumer disables. Dynamic aliases are re-sourced on every register pass (the reload flow re-registers the same root instance): the alias supplier is re-evaluated, aliases that appeared are added with `putIfAbsent` plus a WARN, and aliases that disappeared are removed. The supplier is stored in a `ConcurrentHashMap<RootCommand, AliasState>` keyed by root identity, so the `RootCommand` core stays immutable.
 
-- `public static void register(JavaPlugin owner, RootCommand command)` - registers the root for its owner. Reload-safe: a root already registered by the same owner under the same name detaches and replaces first. The plugin.yml path if the command is declared; otherwise a WARN ("Command '/x' not declared in Y's plugin.yml; dynamic registration via CommandMap") and CommandMap registration with prefix = the owner's lowercased name. Closes with `updateCommands()`.
+- `public static void bindAliasSupplier(RootCommand command, @Nullable Supplier<Collection<String>> supplier)` (1.5.0) - binds the dynamic-alias supplier of a root before it is registered; a null supplier means the builder / plugin.yml aliases are the sole source. Called by the command builder at build time so the supplier travels with the root into every register pass.
+- `public static void register(JavaPlugin owner, RootCommand command)` - registers the root for its owner. Reload-safe: a root already registered by the same owner under the same name detaches and replaces first; re-registering the SAME instance keeps it in place and only reconciles its dynamic aliases. The plugin.yml path if the command is declared; otherwise a WARN ("Command '/x' not declared in Y's plugin.yml; dynamic registration via CommandMap") and CommandMap registration with prefix = the owner's lowercased name. Then `reconcileAliases`, then `updateCommands()`.
 - `public static void unregister(JavaPlugin owner, RootCommand command)` - unregisters an owner's root and refreshes the client trees.
 - `public static void unregisterAll(JavaPlugin owner)` - unregisters all of the owner's roots removing the owner's WHOLE KEY; the sweep callback detaches each command and refreshes the client trees.
-- `public static void reregisterAll(JavaPlugin owner)` - re-registers each of the owner's roots in place (iterates a copy); it is the re-registration step of the reload flow. Every register pass refreshes the online players' client trees.
+- `public static void reregisterAll(JavaPlugin owner)` - re-registers each of the owner's roots in place (iterates a copy); it is the re-registration step of the reload flow. Every register pass re-sources the dynamic aliases and refreshes the online players' client trees.
 
 **Internal logic**
 - `sweep(RootCommand)` - the `TenantRegistry` callback: `detach` + `updateCommands`; it also runs when the tenant sweeper removes a disabled owner's key.
-- `registerDynamicAliases(...)` - code-built aliases not part of the plugin.yml declaration receive `getKnownCommands()` entries pointing at the root tree (with `putIfAbsent`, both `alias` and `owner:alias`), with a WARN ("Aliases [...] of '/x' not declared in Y's plugin.yml; dynamic registration via CommandMap").
-- `detach(RootCommand)` - unhooks the command from whichever path registered it: removes by identity the knownCommands entries pointing at it, calls `command.unregister(map)`, and if the declared `PluginCommand`'s executor is a `PluginCommandAdapter` of THIS root, clears the executor and tab completer.
+- `reconcileAliases(owner, command, declared)` (1.5.0, replaces `registerDynamicAliases`) - the desired set is the alias supplier's value when it has one (authoritative, config-driven), otherwise the builder / plugin.yml aliases; the root name and the plugin.yml declared aliases are always excluded (via `AliasReconciler.resolve`). It diffs the previous pass's `active` set against the desired one (`AliasReconciler.diff`): removed aliases are dropped from `getKnownCommands()` (both `alias` and `owner:alias`), added aliases are inserted with `putIfAbsent`. An alias whose `putIfAbsent` returns another command's entry is a COLLISION, kept out with a separate WARN ("Aliases [...] collide with existing commands; kept the existing ones"); the rest WARN as before ("Aliases [...] not declared in Y's plugin.yml; dynamic registration via CommandMap").
+- `evaluate(owner, command, supplier)` (1.5.0) - runs the alias supplier defensively inside a `Throwable` catch; a null supplier or a failure returns null (falls back to the static aliases with a WARN on failure).
+- `detach(RootCommand)` - unhooks the command from whichever path registered it: removes by identity the knownCommands entries pointing at it, calls `command.unregister(map)`, and if the declared `PluginCommand`'s executor is a `PluginCommandAdapter` of THIS root, clears the executor and tab completer. Also drops the root's `AliasState`.
 - `updateCommands()` - `player.updateCommands()` for every online player (main thread).
+- `AliasState` (private static final class) - per-root dynamic-alias state: the `supplier` and the `volatile List<String> active` currently-registered alias keys.
 - `PluginCommandAdapter` (private record, `CommandExecutor` + `TabCompleter`) - delegates `onCommand` to `root.execute` and `onTabComplete` to `root.tabComplete`; it is the plugin.yml path's executor.
 
 **Notes and gotchas**
-- `putIfAbsent` on dynamic aliases means an alias already taken by another command is NOT overwritten: the alias simply is not operative for this root.
-- The replacement check in `register` compares by identity (`existing != command`) in addition to the name, so `reregisterAll` can re-register the same instance without detaching itself.
+- `putIfAbsent` on dynamic aliases means an alias already taken by another command is NOT overwritten: the alias is left with the existing command and reported as a collision, not operative for this root.
+- The replacement check in `register` compares by identity (`existing != command`) in addition to the name, so `reregisterAll` can re-register the same instance without detaching itself, keeping its alias state for the diff.
+
+#### AliasReconciler (internal, 1.5.0)
+`src/main/java/com/sn/lib/command/internal/AliasReconciler.java`
+
+Pure alias reconciliation helpers, free of Bukkit types so the decision layer is unit-testable without a running server. Source policy: a non-null `supplied` collection is AUTHORITATIVE (an empty list means "no aliases"); a null `supplied` means the source has no opinion and the `fallback` (builder / plugin.yml aliases) applies. Every resolved alias is trimmed, lowercased (`Locale.ROOT`), de-duplicated in encounter order, and stripped of the root name and of the plugin.yml declared aliases (owned by Bukkit, not by this dynamic layer).
+
+- `static List<String> resolve(@Nullable Collection<String> supplied, Collection<String> fallback, String rootName, Collection<String> declaredAliases)` - the desired dynamic alias base keys.
+- `static Diff diff(Collection<String> active, Collection<String> desired)` - `added` (in desired, not active) and `removed` (in active, not desired) base keys, compared case-insensitively; returned as the `Diff(List added, List removed)` record.
 
 ### SnLibCommand (internal)
 `src/main/java/com/sn/lib/command/internal/SnLibCommand.java`
@@ -2671,7 +2715,8 @@ There are no TODO/FIXME markers in the module's files. Limitations documented in
 - `Args.offlinePlayerUuid()` does not resolve names outside the local cache: remote profile resolution belongs to the consumer via the async scheduler (deliberate decision to avoid blocking the main thread).
 - `withoutDefaults()` transfers the obligation to the consumer: sn-core declares `reload` and `help` mandatory in every root, the library does not re-validate it.
 - A reload never reloads classes: updating SnLib.jar requires a server restart (`/snlib reload`'s explicit contract).
-- Dynamic aliases via `putIfAbsent`: if another command already owns the alias in the CommandMap, the alias is not operative for the root (it is not overwritten, only the dynamic registration WARN remains).
+- Dynamic aliases via `putIfAbsent`: if another command already owns the alias in the CommandMap, the alias is not operative for the root (it is not overwritten; it is reported as a collision WARN).
+- Config-driven aliases (1.5.0): `aliasesFromConfig()` reads the list at `command.aliases`; when the key is set it is authoritative (an empty list clears the aliases), re-sourced on every reload. `aliases(Supplier)` is the code-level equivalent. `aliases(String...)` / plugin.yml aliases are the fallback. `aliasesFromConfig()` needs the config module; without it, or with the key absent, the fallback applies.
 ---
 
 ## 14. Database and Economy

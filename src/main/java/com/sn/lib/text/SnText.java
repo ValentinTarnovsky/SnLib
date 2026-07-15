@@ -2,8 +2,10 @@ package com.sn.lib.text;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import net.kyori.adventure.text.Component;
@@ -23,7 +25,11 @@ import com.sn.lib.Ph;
  *
  * <p>Legacy {@code &X} / {@code &#RRGGBB} codes are converted to MiniMessage tags and the
  * whole string goes through MiniMessage at the end, so legacy and MiniMessage input render
- * together. A literal {@code <} that cannot start a tag is escaped as {@code \<}.</p>
+ * together. A literal {@code <} that cannot start a tag is escaped as {@code \<}. A legacy
+ * COLOR code ({@code &0}-{@code &f}, {@code &#RRGGBB}) resets the decorations opened by
+ * earlier legacy format codes, matching vanilla and Adventure's
+ * {@code LegacyComponentSerializer.legacyAmpersand()}; author-written MiniMessage tags keep
+ * pure MiniMessage semantics (a MiniMessage color tag never triggers the reset).</p>
  *
  * <p>{@code [rgb]} targets titles and short lines: it emits one hex code per visible
  * character. SnLang caches statically resolved lines so that cost is paid once.</p>
@@ -234,21 +240,42 @@ public final class SnText {
     /**
      * Legacy to MiniMessage: {@code &#RRGGBB} becomes {@code <#RRGGBB>}, {@code &X} becomes
      * its named tag, and a {@code <} that cannot start a tag is escaped.
+     *
+     * <p>A legacy COLOR code ({@code &0}-{@code &f}, {@code &#RRGGBB}) resets the decorations
+     * opened by earlier legacy format codes ({@code &k}-{@code &o}): the color tag is emitted
+     * and every still-active legacy decoration is negated right after it (e.g. {@code &l&c}
+     * becomes {@code <bold><red><!bold>}). MiniMessage color tags do not close decorations on
+     * their own, so without this the bold from a legacy {@code &l} would bleed across later
+     * legacy colors. Only decorations opened by legacy codes enter the tracking set, so
+     * author-written MiniMessage tags keep pure MiniMessage semantics. {@code &r} maps to
+     * {@code <reset>} and drops the whole set.</p>
      */
     private static String legacyToMini(String s) {
         StringBuilder out = new StringBuilder(s.length() + 16);
+        Set<String> legacyDecorations = new LinkedHashSet<>();
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (c == '&' && i + 1 < s.length()) {
                 char next = s.charAt(i + 1);
                 if (next == '#' && isHex(s, i + 2)) {
                     out.append("<#").append(s, i + 2, i + 8).append('>');
+                    negateLegacyDecorations(out, legacyDecorations);
                     i += 7;
                     continue;
                 }
-                String tag = MINI_TAGS.get(Character.toLowerCase(next));
+                char code = Character.toLowerCase(next);
+                String tag = MINI_TAGS.get(code);
                 if (tag != null) {
-                    out.append('<').append(tag).append('>');
+                    if (code == 'r') {
+                        out.append('<').append(tag).append('>');
+                        legacyDecorations.clear();
+                    } else if (isLegacyFormatCode(code)) {
+                        out.append('<').append(tag).append('>');
+                        legacyDecorations.add(tag);
+                    } else {
+                        out.append('<').append(tag).append('>');
+                        negateLegacyDecorations(out, legacyDecorations);
+                    }
                     i++;
                     continue;
                 }
@@ -259,6 +286,20 @@ public final class SnText {
             out.append(c);
         }
         return out.toString();
+    }
+
+    /**
+     * Emits a MiniMessage negation tag ({@code <!name>}) for every decoration opened by a
+     * legacy format code and clears the set, so a following legacy color starts unformatted.
+     */
+    private static void negateLegacyDecorations(StringBuilder out, Set<String> decorations) {
+        if (decorations.isEmpty()) {
+            return;
+        }
+        for (String decoration : decorations) {
+            out.append("<!").append(decoration).append('>');
+        }
+        decorations.clear();
     }
 
     private static String toSectionCodes(String s) {
@@ -300,6 +341,11 @@ public final class SnText {
     private static boolean isCodeChar(char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'k' && c <= 'o')
                 || c == 'r' || c == 'x';
+    }
+
+    /** Legacy decoration codes {@code &k}-{@code &o}: obfuscated, bold, strike, underline, italic. */
+    private static boolean isLegacyFormatCode(char c) {
+        return c >= 'k' && c <= 'o';
     }
 
     private static boolean isBungeeHex(String s, int from) {

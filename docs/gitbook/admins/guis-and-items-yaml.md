@@ -15,6 +15,12 @@ plugins/SomePlugin/guis/shop.yml
 plugins/SomePlugin/guis/settings.yml
 ```
 
+The plugin ships its default menus inside its jar and copies them into this folder for you the first time it runs, so the files are there to edit out of the box. They are [managed just like config files](configuration-files.md): when a plugin update adds a new field to a menu, the new key is merged into your file automatically and your edits are preserved, all under the same `update-configs` master switch that controls `config.yml`.
+
+{% hint style="info" %}
+If a plugin declares that it has menus but the `guis/` folder is empty and nothing loads, it logs a warning pointing at the folder. Normally you never see this, because the plugin's own menus are seeded automatically; it only shows up if the files were deleted or the plugin shipped without any bundled menu.
+{% endhint %}
+
 Each file describes one menu top to bottom. What you can customize includes:
 
 ### The menu itself

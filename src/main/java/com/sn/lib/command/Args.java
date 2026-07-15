@@ -5,7 +5,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
@@ -28,6 +30,15 @@ import com.sn.lib.util.TimeUtil;
  * {@code StringUtil.copyPartialMatches} and sorts them. The vanilla client filters
  * suggestions by the typed prefix, so a non-matching example never reaches the
  * screen.</p>
+ *
+ * <p>Free-form {@link #string()} / {@link #greedy()} args carry no fixed example; their
+ * lone suggestion is an angle-bracket HINT derived from the declared argument name (for
+ * example {@code <target>}), or from the explicit hint of {@link #string(String)} /
+ * {@link #greedy(String)}. Hint convention: the value is wrapped in {@code <>} unless it
+ * already is, so both {@code string("amount")} and {@code string("<amount>")} suggest
+ * {@code <amount>}. A hint is only offered while the partial is empty (or itself starts
+ * with {@code <}); once the sender types a real value the free-form arg suggests nothing
+ * and accepts whatever is typed.</p>
  */
 public final class Args {
 
@@ -94,12 +105,33 @@ public final class Args {
      * of the current options.
      */
     public static SnArg<String> oneOf(Supplier<Collection<String>> options) {
+        Objects.requireNonNull(options, "options");
+        return oneOf(sender -> options.get());
+    }
+
+    /**
+     * Sender-aware {@link #oneOf(Supplier)}: the option set is computed per invoking sender
+     * (for example the caller's clan members), so both the suggestions and the parse-time
+     * validation are scoped to that sender. Matched case-insensitively and returned in its
+     * canonical form; rejects with {@code snlib.invalid-value} and suggests up to 100
+     * options. The parse fallback without a sender queries the function with {@code null}.
+     */
+    public static SnArg<String> oneOf(Function<CommandSender, Collection<String>> options) {
+        Objects.requireNonNull(options, "options");
         return new SnArg<String>(List.of(), false) {
             @Override
             public String parse(String raw) throws ArgParseException {
-                for (String option : options.get()) {
-                    if (option != null && option.equalsIgnoreCase(raw)) {
-                        return option;
+                return parse(null, raw);
+            }
+
+            @Override
+            public String parse(CommandSender sender, String raw) throws ArgParseException {
+                Collection<String> current = options.apply(sender);
+                if (current != null) {
+                    for (String option : current) {
+                        if (option != null && option.equalsIgnoreCase(raw)) {
+                            return option;
+                        }
                     }
                 }
                 throw new ArgParseException("snlib.invalid-value", Ph.of("value", raw));
@@ -107,16 +139,37 @@ public final class Args {
 
             @Override
             protected List<String> options(CommandSender sender) {
-                List<String> out = new ArrayList<>();
-                for (String option : options.get()) {
-                    if (out.size() >= SUGGESTION_CAP) {
-                        break;
-                    }
-                    if (option != null) {
-                        out.add(option);
-                    }
-                }
-                return out;
+                return capped(options.apply(sender));
+            }
+        };
+    }
+
+    /**
+     * Free-form single token whose only role is to SUGGEST a dynamic set: it parses any
+     * input as-is (no restriction), so the handler keeps its own not-found handling. Use it
+     * when the valid set is dynamic and the handler already resolves and validates the token
+     * itself. Suggests up to 100 of the current options.
+     */
+    public static SnArg<String> suggesting(Supplier<Collection<String>> options) {
+        Objects.requireNonNull(options, "options");
+        return suggesting(sender -> options.get());
+    }
+
+    /**
+     * Sender-aware {@link #suggesting(Supplier)}: the suggested set is computed per invoking
+     * sender while the token is still accepted as-is at parse.
+     */
+    public static SnArg<String> suggesting(Function<CommandSender, Collection<String>> options) {
+        Objects.requireNonNull(options, "options");
+        return new SnArg<String>(List.of(), false) {
+            @Override
+            public String parse(String raw) {
+                return raw;
+            }
+
+            @Override
+            protected List<String> options(CommandSender sender) {
+                return capped(options.apply(sender));
             }
         };
     }
@@ -219,27 +272,68 @@ public final class Args {
         };
     }
 
-    /** Free-form single token, returned as-is. */
+    /**
+     * Free-form single token, returned as-is. Un-hinted: its lone suggestion is the
+     * angle-bracket hint {@code <argName>} derived from the declared argument name.
+     */
     public static SnArg<String> string() {
-        return new SnArg<String>(List.of("text"), false) {
-            @Override
-            public String parse(String raw) {
-                return raw;
-            }
-        };
+        return stringArg(false, null);
+    }
+
+    /**
+     * Free-form single token with an explicit suggestion hint, returned as-is. The hint is
+     * shown in angle brackets ({@code <hint>}); a value that is already bracketed is kept
+     * verbatim.
+     */
+    public static SnArg<String> string(String hint) {
+        return stringArg(false, hint);
     }
 
     /**
      * Free text consuming every remaining token as one space-joined value. Only
-     * meaningful as the LAST declared argument of a subcommand.
+     * meaningful as the LAST declared argument of a subcommand. Un-hinted: its lone
+     * suggestion is the angle-bracket hint {@code <argName>} derived from the declared name.
      */
     public static SnArg<String> greedy() {
-        return new SnArg<String>(List.of("text"), true) {
+        return stringArg(true, null);
+    }
+
+    /**
+     * Greedy free text with an explicit suggestion hint. The hint is shown in angle
+     * brackets ({@code <hint>}); a value that is already bracketed is kept verbatim.
+     */
+    public static SnArg<String> greedy(String hint) {
+        return stringArg(true, hint);
+    }
+
+    /** Builds a free-form string arg carrying the angle-bracket hint affordance. */
+    private static SnArg<String> stringArg(boolean greedy, @Nullable String hint) {
+        SnArg<String> arg = new SnArg<String>(List.of(), greedy) {
             @Override
             public String parse(String raw) {
                 return raw;
             }
         };
+        arg.hintMode = true;
+        arg.hint = hint;
+        return arg;
+    }
+
+    /** Non-null options of the collection capped at {@link #SUGGESTION_CAP}, order kept. */
+    private static List<String> capped(Collection<String> options) {
+        List<String> out = new ArrayList<>();
+        if (options == null) {
+            return out;
+        }
+        for (String option : options) {
+            if (out.size() >= SUGGESTION_CAP) {
+                break;
+            }
+            if (option != null) {
+                out.add(option);
+            }
+        }
+        return out;
     }
 
     /** Online player names capped at {@link #SUGGESTION_CAP}. */
@@ -266,6 +360,9 @@ public final class Args {
         private final List<String> examples;
         private final boolean greedy;
         private @Nullable Supplier<String> current;
+        // Set by the free-form string()/greedy() factories of the enclosing Args class.
+        boolean hintMode;
+        @Nullable String hint;
 
         protected SnArg(List<String> examples, boolean greedy) {
             this.examples = List.copyOf(examples);
@@ -293,11 +390,22 @@ public final class Args {
 
         @Override
         public final List<String> suggest(CommandSender sender, String partial) {
+            return suggest(sender, partial, null);
+        }
+
+        @Override
+        public final List<String> suggest(CommandSender sender, String partial,
+                @Nullable String argName) {
             String prefix = partial == null ? "" : partial;
             List<String> out = new ArrayList<>();
             String actual = currentValue();
             if (actual != null && !actual.isEmpty() && prefixMatches(actual, prefix)) {
                 out.add(actual);
+            }
+            String hintToken = hintToken(argName);
+            if (hintToken != null && prefixMatches(hintToken, prefix)
+                    && !containsIgnoreCase(out, hintToken)) {
+                out.add(hintToken);
             }
             for (String example : examples) {
                 if (prefixMatches(example, prefix) && !containsIgnoreCase(out, example)) {
@@ -315,6 +423,30 @@ public final class Args {
                 }
             }
             return out;
+        }
+
+        /**
+         * Angle-bracket hint of a free-form arg: the explicit hint when set, otherwise the
+         * declared argument name; null when this arg is not in hint mode.
+         */
+        private @Nullable String hintToken(@Nullable String argName) {
+            if (!hintMode) {
+                return null;
+            }
+            String base = hint != null && !hint.isBlank()
+                    ? hint
+                    : (argName != null && !argName.isBlank() ? argName : "value");
+            return bracket(base);
+        }
+
+        /** Wraps the value in angle brackets unless it is already bracketed. */
+        private static String bracket(String value) {
+            String trimmed = value.trim();
+            if (trimmed.length() >= 2 && trimmed.charAt(0) == '<'
+                    && trimmed.charAt(trimmed.length() - 1) == '>') {
+                return trimmed;
+            }
+            return "<" + trimmed + ">";
         }
 
         /** Current value from the decorator supplier; a failing supplier yields none. */

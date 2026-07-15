@@ -22,8 +22,29 @@ public interface Arg<T> {
      */
     T parse(String raw) throws ArgParseException;
 
+    /**
+     * Parses the raw token with the invoking sender in scope, for args whose valid set is
+     * per-sender. The default delegates to {@link #parse(String)}, so an implementation that
+     * ignores the sender needs only that method; the command flow always calls this variant.
+     *
+     * @throws ArgParseException when the token is invalid for the sender
+     */
+    default T parse(CommandSender sender, String raw) throws ArgParseException {
+        return parse(raw);
+    }
+
     /** Tab suggestions for the partial token, resolved for the given sender. */
     List<String> suggest(CommandSender sender, String partial);
+
+    /**
+     * Tab suggestions with the declared argument name in scope, so an un-hinted arg can
+     * derive an angle-bracket hint from it. The default delegates to
+     * {@link #suggest(CommandSender, String)}, so existing implementations keep working; the
+     * command flow always calls this variant.
+     */
+    default List<String> suggest(CommandSender sender, String partial, String argName) {
+        return suggest(sender, partial);
+    }
 
     /** Rejection of a raw token, expressed as a lang key plus its local placeholders. */
     class ArgParseException extends Exception {

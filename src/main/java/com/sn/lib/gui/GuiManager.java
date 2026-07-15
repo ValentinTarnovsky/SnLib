@@ -66,9 +66,11 @@ public final class GuiManager {
     }
 
     /**
-     * Creates {@code guis/} if missing and (re)parses one GUI per {@code .yml} file in
-     * it. Requires the yml module; without it the folder cannot be mounted and a WARN is
-     * logged. Synchronous I/O by design: runs only in onEnable and in the reload flow.
+     * Seeds the consumer jar's bundled {@code guis/*.yml} into the data folder, creates
+     * {@code guis/} if still missing and (re)parses one GUI per {@code .yml} file in it.
+     * Requires the yml module; without it the folder cannot be mounted and a WARN is
+     * logged. A declared but empty folder WARNs instead of loading nothing silently.
+     * Synchronous I/O by design: runs only in onEnable and in the reload flow.
      */
     public void load() {
         YmlManager files;
@@ -79,7 +81,11 @@ public final class GuiManager {
                     + "cannot be loaded and sn.guis() stays empty");
             return;
         }
-        File dir = new File(plugin.getDataFolder(), "guis");
+        File dir = new File(plugin.getDataFolder(), GuiSeeder.GUIS_DIR);
+        // Seed the bundled guis BEFORE listing: the consumer never gets control before this
+        // runs, so an unseeded folder would otherwise load nothing. Managed semantics, so
+        // this also runs on every reload (missing files reseed, existing files re-merge).
+        seedBundledGuis(files);
         if (!dir.exists() && !dir.mkdirs()) {
             plugin.getLogger().warning("Could not create folder " + dir.getPath());
             return;
@@ -88,17 +94,36 @@ public final class GuiManager {
                 (parent, name) -> name.toLowerCase(Locale.ROOT).endsWith(".yml"));
         synchronized (guis) {
             guis.clear();
-            if (found == null || found.length == 0) {
-                return;
+            if (found != null && found.length > 0) {
+                Arrays.sort(found, Comparator.comparing(File::getName));
+                for (File file : found) {
+                    String name = file.getName();
+                    String id = name.substring(0, name.length() - ".yml".length());
+                    SnYml yml = mounts.computeIfAbsent("guis/" + name, files::load);
+                    guis.put(id, new Gui(ctx, GuiDef.parse(ctx, id, yml)));
+                }
             }
-            Arrays.sort(found, Comparator.comparing(File::getName));
-            for (File file : found) {
-                String name = file.getName();
-                String id = name.substring(0, name.length() - ".yml".length());
-                SnYml yml = mounts.computeIfAbsent("guis/" + name, files::load);
-                guis.put(id, new Gui(ctx, GuiDef.parse(ctx, id, yml)));
+            if (guis.isEmpty()) {
+                plugin.getLogger().warning("guis() is declared but no menu was loaded from "
+                        + dir.getPath() + ": the guis/ folder is empty. Bundle the menus as "
+                        + "guis/*.yml in the jar so they seed, or drop the files into the folder.");
             }
         }
+    }
+
+    /**
+     * Seeds/merges the consumer jar's bundled {@code guis/*.yml} through the managed
+     * updater, gated by the config's {@code update-configs}. A jar that cannot be located
+     * WARNs and leaves the folder to whatever is already on disk.
+     */
+    private void seedBundledGuis(YmlManager files) {
+        File jar = GuiSeeder.consumerJar(plugin);
+        if (jar == null) {
+            plugin.getLogger().warning("Could not locate the jar of " + plugin.getName()
+                    + "; the bundled guis/*.yml were not seeded into the guis/ folder");
+            return;
+        }
+        GuiSeeder.seed(jar, plugin.getDataFolder(), files.config().file(), plugin.getLogger());
     }
 
     /** GUI loaded under {@code id} (file name without extension), or null. */

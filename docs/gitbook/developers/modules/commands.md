@@ -80,6 +80,45 @@ A player with `arena.use` but not `arena.admin` sees only `join` in tab completi
 You can also hide a subcommand regardless of permission with `visible(false)` (useful for
 internal or deprecated aliases that should still run but never advertise themselves).
 
+## Aliases
+
+A root can take its aliases from three sources, in priority order:
+
+- **A config binding** with `aliasesFromConfig()` reads a string list from the conventional
+  config key `command.aliases`. When that key is set (even to an empty list) it is
+  **authoritative**: it fully decides the aliases, and it is re-sourced on every reload, so
+  an admin can add or remove aliases by editing the config and reloading. Use
+  `aliasesFromConfig(key)` to read a custom key. The binding needs the config module; when
+  the module is not declared, or the key is absent, it contributes nothing and the fallback
+  applies.
+- **A dynamic supplier** with `aliases(Supplier<Collection<String>>)` computes the aliases in
+  code, re-evaluated on every register pass. A non-null result is authoritative (an empty
+  list clears the aliases); a null result falls back.
+- **Static aliases** with `aliases(String...)`, plus any aliases declared in your
+  `plugin.yml`. These are the **fallback**, used only while no authoritative source has an
+  opinion.
+
+```java
+sn.commands().root("warp")
+        .aliasesFromConfig()        // reads command.aliases; authoritative when set
+        .aliases("w", "warps")      // fallback used only when command.aliases is absent
+        .permission("warp.use")
+        // ... subs ...
+        .register();
+```
+
+```yaml
+# config.yml
+command:
+  aliases: [w, warps, wp]
+```
+
+Aliases are reconciled against the server command map on every register pass: aliases that
+appeared since the last pass are added (with a warning when they are not declared in your
+`plugin.yml`), aliases that disappeared are removed, and an alias already owned by another
+command is left in place with a warning. A reload that changed `command.aliases` therefore
+takes effect immediately without leaving ghost aliases behind.
+
 ## Arguments
 
 Declare positional arguments in order with `arg(name, Args.xxx())`. Declaration order is
@@ -122,22 +161,67 @@ what to suggest in tab completion.
 | `Args.onlinePlayer()` | `Player` (exact online name) | `snlib.player-not-found` | up to 100 online names |
 | `Args.offlinePlayerUuid()` | `UUID` (online, then local offline cache; never a blocking lookup) | `snlib.player-not-found` | online names |
 | `Args.oneOf(Supplier<Collection<String>>)` | `String` (canonical option, case-insensitive) | `snlib.invalid-value` | up to 100 current options |
+| `Args.oneOf(Function<CommandSender, Collection<String>>)` | `String` (canonical option, scoped to the sender) | `snlib.invalid-value` | up to 100 sender-scoped options |
 | `Args.intRange(min, max)` | `Integer` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
 | `Args.doubleRange(min, max)` | `Double` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
 | `Args.duration()` | `Long` millis (e.g. `1d 2h 30m`) | `snlib.invalid-value` | `30s`, `5m`, `1h`, `1d` |
 | `Args.bool()` | `Boolean` (`true/yes/on`, `false/no/off`) | `snlib.invalid-value` | `true`, `false` |
-| `Args.string()` | `String` (one token, as-is) | never | `text` |
-| `Args.greedy()` | `String` (every remaining token, space-joined) | never | `text` |
+| `Args.string()` | `String` (one token, as-is) | never | the arg-name hint `<argName>` |
+| `Args.string(hint)` | `String` (one token, as-is) | never | the explicit hint `<hint>` |
+| `Args.greedy()` | `String` (every remaining token, space-joined) | never | the arg-name hint `<argName>` |
+| `Args.greedy(hint)` | `String` (every remaining token, space-joined) | never | the explicit hint `<hint>` |
+| `Args.suggesting(options)` | `String` (one token, as-is; you validate) | never | up to 100 current options |
 
 `Args.greedy()` only makes sense as the **last** argument of a subcommand: it consumes all
 remaining tokens into a single space-joined value, so `/mail send Steve hello there world`
 gives `hello there world` as one argument.
+
+Both `oneOf` and `suggesting` also have a sender-aware overload that takes a
+`Function<CommandSender, Collection<String>>`, so the option set (and, for `oneOf`, the
+parse-time validation) is computed per invoking sender - the caller's own clan members, the
+warps they may use, and so on.
 
 {% hint style="info" %}
 `Args.offlinePlayerUuid()` deliberately never calls `Bukkit.getOfflinePlayer(String)`,
 which can perform a blocking profile lookup on the main thread. It resolves only against
 online players and the local offline cache. For remote name resolution, do the lookup
 yourself off-thread (see the utilities module's `PlayerLookup`).
+{% endhint %}
+
+### Which one to reach for
+
+| Your argument is... | Use | Why |
+|---|---|---|
+| an online player | `Args.onlinePlayer()` | completes online names and rejects unknowns |
+| one of a known set | `Args.oneOf(...)` | completes and validates against the set (sender-aware overload available) |
+| a number in a range | `Args.intRange(min, max)` / `Args.doubleRange(min, max)` | parses and range-checks, and suggests the bounds |
+| free-form text | `Args.string()` / `Args.greedy()` (add a hint) | no fixed set; suggests an `<argName>` hint |
+| a dynamic set you validate yourself | `Args.suggesting(...)` | suggests the set but accepts any token as-is |
+
+### Free-form arguments and hints
+
+`Args.string()` and `Args.greedy()` carry no fixed set of values, so there is nothing
+concrete to suggest. Instead of a placeholder like the old literal `text`, their lone
+suggestion is an **angle-bracket hint** that tells the player what to type. By default the
+hint is the declared argument name, so `.arg("target", Args.string())` suggests `<target>`.
+
+Give an explicit hint with `Args.string(hint)` / `Args.greedy(hint)`. The value is wrapped
+in angle brackets unless you already bracketed it yourself, so `Args.string("amount")` and
+`Args.string("<amount>")` both suggest `<amount>`:
+
+```java
+.arg("reason", Args.greedy("<ban reason>"))   // suggests "<ban reason>"
+```
+
+The hint is only offered while the token is still empty (or the player is typing a `<`);
+once they type a real value the free-form argument suggests nothing and accepts whatever
+they typed. Because a hint is never a valid value, it is a cue in the completion list, not
+something the player is meant to select.
+
+{% hint style="info" %}
+Before 1.5.0 an un-hinted `string()` / `greedy()` suggested the literal word `text`, which
+looked like a real value. That default is gone: un-hinted free-form arguments now suggest
+`<argName>`, and you can override it with the hint overloads above.
 {% endhint %}
 
 ### Showing the current value in tab completion

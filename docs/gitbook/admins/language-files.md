@@ -34,6 +34,10 @@ That warning is emitted once per missing key, not repeated every time the messag
 This means you can translate a plugin incrementally. Translate the keys you care about first; anything you have not gotten to yet keeps working in English until you fill it in.
 {% endhint %}
 
+## Do not repeat the prefix
+
+Most plugins define a `prefix` at the top of the language file and add it in front of every one-line message automatically. Because it is added for you, you should never write the prefix placeholder inside a message value - the plugin's prefix token written in placeholder form. It is not replaced there, so it would just show up literally on top of the prefix the plugin already put in front. If any message value contains that token, the plugin logs a single warning at startup telling you how many messages need cleaning up. Remove the token from those lines and keep the prefix in the `prefix` key only.
+
 ## Shared core messages in every language
 
 There is a set of common messages that are not specific to any one plugin - things like "you do not have permission to use this command", the correct-usage line shown when a command is typed wrong, and the messages for invalid or out-of-range arguments. These are the `snlib.*` keys.

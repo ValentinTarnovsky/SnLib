@@ -36,6 +36,10 @@ Formatting codes stack with a color and with each other:
 message: "&a&lWelcome &7to the &6&lserver&r&7!"
 ```
 
+{% hint style="info" %}
+Just like in vanilla Minecraft, a COLOR code clears any active formatting. `&l&cHello` is red and NOT bold, because the `&c` color resets the `&l` bold that came before it. To keep the formatting, write the color first: `&c&lHello` is bold red. `&r` clears both color and formatting. This behaves the same everywhere text is rendered - messages, item names, lore, and menu titles.
+{% endhint %}
+
 ## Hex colors
 
 Beyond the 16 legacy colors, any exact RGB color is available with `&#RRGGBB`:

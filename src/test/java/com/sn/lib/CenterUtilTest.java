@@ -74,6 +74,18 @@ class CenterUtilTest {
     }
 
     @Test
+    void legacyColorCodeStopsBoldMeasurement() {
+        // A COLOR code resets vanilla formatting, matching the render where a legacy color
+        // negates active decorations; measuring must clear bold there too so widths align.
+        String boldThenColor = CenterUtil.center("&lab&ccdefgh");
+        String boldAll = CenterUtil.center("&labcdefgh");
+        assertTrue(leadingSpaces(boldThenColor) >= leadingSpaces(boldAll));
+        // A named color and a hex color clear bold identically.
+        String hexColor = CenterUtil.center("&lab&#ff0000cdefgh");
+        assertEquals(leadingSpaces(boldThenColor), leadingSpaces(hexColor));
+    }
+
+    @Test
     void smallCapsLineMeasuresLikeUppercase() {
         // Small caps glyphs measure base 5 like uppercase; U+026A measures like 'I' (base 3).
         assertEquals(leadingSpaces(CenterUtil.center("HELLO")),

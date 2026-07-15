@@ -1,15 +1,19 @@
 package com.sn.lib.command;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Sn;
 import com.sn.lib.command.internal.BukkitCommandRegistry;
 import com.sn.lib.lang.SnLang;
+import com.sn.lib.yml.SnYml;
+import com.sn.lib.yml.YmlManager;
 
 /**
  * Command module of a consumer context, reached through {@code sn.commands()}.
@@ -29,6 +33,9 @@ import com.sn.lib.lang.SnLang;
  * command trees, leaving no ghost commands.</p>
  */
 public final class SnCommands {
+
+    /** Conventional config key of the root alias list read by {@link RootBuilder#aliasesFromConfig()}. */
+    public static final String CONFIG_ALIASES_KEY = "command.aliases";
 
     private final Sn ctx;
     private final @Nullable SnLang lang;
@@ -67,10 +74,38 @@ public final class SnCommands {
 
     /**
      * Re-registers every root of the owning plugin and refreshes the client command
-     * trees; the re-register step of the context reload flow.
+     * trees; the re-register step of the context reload flow. Each root re-sources its
+     * dynamic aliases (the config binding re-reads {@link #CONFIG_ALIASES_KEY} from the
+     * just-reloaded config).
      */
     public void reregisterAll() {
         BukkitCommandRegistry.reregisterAll(ctx.plugin());
+    }
+
+    /** Config module of the owning plugin, or null when the config module was not declared. */
+    private @Nullable YmlManager ymlOrNull() {
+        try {
+            return ctx.yml();
+        } catch (UnsupportedOperationException undeclared) {
+            return null;
+        }
+    }
+
+    /**
+     * Root alias list read from the config, or null when it cannot act as the authority:
+     * the config module is absent, or the key is not set. A set key returns its list as-is
+     * (an empty list is authoritative and clears the aliases).
+     */
+    private @Nullable Collection<String> configAliases(String key) {
+        YmlManager manager = ymlOrNull();
+        if (manager == null) {
+            return null;
+        }
+        SnYml config = manager.config();
+        if (!config.isSet(key)) {
+            return null;
+        }
+        return config.getStringList(key, List.of());
     }
 
     /** Builder of one root command tree. */
@@ -83,16 +118,50 @@ public final class SnCommands {
         private @Nullable String permission;
         private String description = "";
         private boolean withoutDefaults;
+        private @Nullable Supplier<Collection<String>> aliasSupplier;
 
         RootBuilder(String name) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
         }
 
-        /** Adds aliases for the root command. */
+        /**
+         * Adds static aliases for the root command. When an alias supplier or the config
+         * binding is also set, these act as the FALLBACK used only while the authoritative
+         * source has no opinion.
+         */
         public RootBuilder aliases(String... aliases) {
             for (String alias : aliases) {
                 this.aliases.add(alias.trim().toLowerCase(Locale.ROOT));
             }
+            return this;
+        }
+
+        /**
+         * Supplies the root aliases dynamically, re-evaluated on every register pass (so a
+         * reload re-sources them): a non-null result is authoritative and an empty list
+         * clears the aliases, while a null result falls back to the static
+         * {@link #aliases(String...)} / plugin.yml aliases. Aliases that disappear between
+         * passes are unregistered.
+         */
+        public RootBuilder aliases(Supplier<Collection<String>> supplier) {
+            this.aliasSupplier = Objects.requireNonNull(supplier, "supplier");
+            return this;
+        }
+
+        /**
+         * Sources the root aliases from the plugin config list at the conventional key
+         * {@link #CONFIG_ALIASES_KEY}. The config is AUTHORITATIVE when the key is set (even
+         * to an empty list); when the key is absent, or the config module was not declared,
+         * the static {@link #aliases(String...)} / plugin.yml aliases apply.
+         */
+        public RootBuilder aliasesFromConfig() {
+            return aliasesFromConfig(CONFIG_ALIASES_KEY);
+        }
+
+        /** {@link #aliasesFromConfig()} against a custom config key. */
+        public RootBuilder aliasesFromConfig(String key) {
+            Objects.requireNonNull(key, "key");
+            this.aliasSupplier = () -> configAliases(key);
             return this;
         }
 
@@ -140,6 +209,7 @@ public final class SnCommands {
             }
             RootCommand command = new RootCommand(ctx, lang, name, aliases, description,
                     permission, built, !withoutDefaults, debugCommand);
+            BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier);
             command.register();
             return command;
         }

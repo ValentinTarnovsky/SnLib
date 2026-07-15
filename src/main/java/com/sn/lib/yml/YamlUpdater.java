@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
+import java.util.logging.Logger;
 
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -171,6 +172,20 @@ public final class YamlUpdater {
      */
     public static boolean updateFromLines(JavaPlugin plugin, List<String> referenceLines,
                                           File diskFile, @Nullable File gateFile) {
+        return updateFromLines(plugin.getLogger(), referenceLines, diskFile, gateFile);
+    }
+
+    /**
+     * Logger-based variant of {@link #updateFromLines(JavaPlugin, List, File, File)} for
+     * callers that hold a reference in memory but no {@link JavaPlugin} handle (the gui
+     * seeder reads its reference straight from the consumer jar). Same semantics: seed
+     * when absent, backup-N plus reseed when corrupt, pre-merge backup keep-last-3 and the
+     * {@code update-configs} gate read from {@code gateFile} ({@code null} skips the gate).
+     *
+     * @return true when the disk file changed (seeded, reseeded or merged)
+     */
+    public static boolean updateFromLines(Logger logger, List<String> referenceLines,
+                                          File diskFile, @Nullable File gateFile) {
         try {
             if (!diskFile.exists()) {
                 seed(diskFile, referenceLines);
@@ -180,7 +195,7 @@ public final class YamlUpdater {
             if (!isParseable(YamlPreprocessor.preprocess(rawText).cleanText())) {
                 File backup = backupCorrupt(diskFile);
                 seed(diskFile, referenceLines);
-                plugin.getLogger().warning("[update-configs] " + diskFile.getName()
+                logger.warning("[update-configs] " + diskFile.getName()
                         + " does not parse as YAML: backed up to " + backup.getName()
                         + " and regenerated from the reference");
                 return true;
@@ -192,7 +207,7 @@ public final class YamlUpdater {
                 return false;
             }
             if (gateFile != null && !readUpdateConfigsGate(gateFile)) {
-                plugin.getLogger().warning("[update-configs] update-configs is false: "
+                logger.warning("[update-configs] update-configs is false: "
                         + insertions.size() + " keys missing in " + diskFile.getName());
                 return false;
             }
@@ -205,11 +220,11 @@ public final class YamlUpdater {
             Files.write(diskFile.toPath(), result, StandardCharsets.UTF_8);
             return true;
         } catch (IOException ex) {
-            plugin.getLogger().severe("[update-configs] Failed updating "
+            logger.severe("[update-configs] Failed updating "
                     + diskFile.getName() + ": " + ex.getMessage());
             return false;
         } catch (RuntimeException ex) {
-            plugin.getLogger().severe("[update-configs] Parse error merging reference into "
+            logger.severe("[update-configs] Parse error merging reference into "
                     + diskFile.getName() + ": " + ex.getMessage());
             return false;
         }
