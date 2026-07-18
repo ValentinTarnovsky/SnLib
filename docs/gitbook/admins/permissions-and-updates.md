@@ -46,9 +46,9 @@ The plugin checks its own GitHub repository shortly after it enables (about 60 s
    ```
    Version 1.4.0 available, installed 1.3.0.
    ```
-2. It sends a one-time chat notice to any admin who holds the `<plugin>.admin.update` permission - both admins already online at detection time and admins who join later - telling them the new version and giving them the link:
+2. It sends a one-time chat notice to any admin who holds the `<plugin>.admin.update` permission - both admins already online at detection time and admins who join later - telling them the new version:
    ```
-   SomePlugin has a new version: 1.4.0 (installed 1.3.0) https://github.com/owner/repo/releases
+   SomePlugin has a new version: 1.4.0 (installed 1.3.0)
    ```
 
 The `<plugin>.admin.update` permission defaults to `op` when the plugin declares it, so operators get the chat notice automatically. If a plugin does not declare that permission, only players who have been explicitly granted it receive the notice.

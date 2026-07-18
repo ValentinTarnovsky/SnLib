@@ -79,13 +79,13 @@ The response `tag_name` is read, a leading `v`/`V` is stripped only when a digit
 [MyPlugin] Version 1.4.0 available, installed 1.3.2.
 ```
 
-The console line carries no URL; the release link is delivered through the admin chat notice below.
+Neither the console line nor the admin chat notice carries the release URL; both report the versions only.
 
 If the latest release is not newer, any prior finding for that repo is cleared.
 
 ## What admins see
 
-When a NEW finding lands, admins **already online** holding the permission `<plugin>.admin.update` receive an immediate chat notice, and while the finding exists, players who **join** with that permission receive the same notice (sent a short moment after join). The notice names the new and installed versions plus the release URL.
+When a NEW finding lands, admins **already online** holding the permission `<plugin>.admin.update` receive an immediate chat notice, and while the finding exists, players who **join** with that permission receive the same notice (sent a short moment after join). The notice names the new and installed versions.
 
 To make this permission default to op, declare it in **your own** `plugin.yml`:
 

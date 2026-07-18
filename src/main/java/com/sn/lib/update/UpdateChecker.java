@@ -35,9 +35,10 @@ import com.sn.lib.yml.SnYml;
  *
  * <p>Hard rules of the module: it is STRICTLY notify-only - it never downloads any
  * artifact, never touches the running jar and never performs any kind of auto-swap; the
- * only outputs are a console INFO on detection (version only, no URL) and a chat notice
- * to players holding {@code <plugin>.admin.update} - those already online when a NEW
- * finding lands and those joining later. It is fully opt-in: a consumer that never
+ * only outputs are a console INFO on detection and a chat notice to players holding
+ * {@code <plugin>.admin.update} - those already online when a NEW finding lands and
+ * those joining later. Neither output carries the release URL, only the versions.
+ * It is fully opt-in: a consumer that never
  * declares {@code SnSpec.builder().updates("owner/repo")} nor calls {@link #watch} or
  * {@link #checkNow} generates zero traffic and zero state.</p>
  *
@@ -279,10 +280,13 @@ public final class UpdateChecker {
         });
     }
 
-    /** Chat line of one finding; shared by the online notice and the join notice. */
+    /**
+     * Chat line of one finding; shared by the online notice and the join notice. No URL:
+     * neither output of the module carries the release link, only the versions.
+     */
     private static Component notice(String pluginName, Finding f) {
         return SnText.color("&e" + pluginName + " &7has a new version: &a" + f.latest()
-                + " &7(installed &c" + f.current() + "&7) &f" + f.url());
+                + " &7(installed &c" + f.current() + "&7)");
     }
 
     /** One WARN per repo per enable; later failures of the repo stay silent. */

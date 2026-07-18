@@ -39,5 +39,5 @@ permissions:
     description: Allows /snlib reload.
     default: op
   snlib.admin.update:
-    description: Receives the join notice when a new SnLib version is available.
+    description: Receive update notifications of SnLib
     default: op
