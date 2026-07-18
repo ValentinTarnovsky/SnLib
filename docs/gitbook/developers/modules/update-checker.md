@@ -76,14 +76,16 @@ GET https://api.github.com/repos/<owner>/<repo>/releases/latest
 The response `tag_name` is read, a leading `v`/`V` is stripped only when a digit follows (so `v1.4.0` becomes `1.4.0`, while a tag like `vanilla` stays intact), and the result is compared against the installed plugin version with `SemverComparator`. This means a tag like `v1.4.0` is correctly compared against an installed `1.3.2`. When the latest is strictly greater, it is recorded as a finding and an INFO line is logged **once** per new version:
 
 ```
-[MyPlugin] Version 1.4.0 available, installed 1.3.2: https://github.com/owner/repo/releases/tag/v1.4.0
+[MyPlugin] Version 1.4.0 available, installed 1.3.2.
 ```
+
+The console line carries no URL; the release link is delivered through the admin chat notice below.
 
 If the latest release is not newer, any prior finding for that repo is cleared.
 
 ## What admins see
 
-When a finding exists, players who **join** and hold the permission `<plugin>.admin.update` receive a chat notice (sent a short moment after join) naming the new and installed versions plus the release URL.
+When a NEW finding lands, admins **already online** holding the permission `<plugin>.admin.update` receive an immediate chat notice, and while the finding exists, players who **join** with that permission receive the same notice (sent a short moment after join). The notice names the new and installed versions plus the release URL.
 
 To make this permission default to op, declare it in **your own** `plugin.yml`:
 

@@ -42,16 +42,16 @@ Any Sn plugin can opt into checking its own GitHub releases for a newer version.
 
 The plugin checks its own GitHub repository shortly after it enables (about 60 seconds in) and then every 6 hours while the server runs. When it finds that a release newer than the installed version exists, it does two things and only two things:
 
-1. It logs a single INFO line in the console, something like:
+1. It logs a single INFO line in the console (version only, no link), something like:
    ```
-   Version 1.4.0 available, installed 1.3.0: https://github.com/owner/repo/releases
+   Version 1.4.0 available, installed 1.3.0.
    ```
-2. On join, it sends a one-time chat notice to any admin who holds the `<plugin>.admin.update` permission, telling them the new version and giving them the link:
+2. It sends a one-time chat notice to any admin who holds the `<plugin>.admin.update` permission - both admins already online at detection time and admins who join later - telling them the new version and giving them the link:
    ```
    SomePlugin has a new version: 1.4.0 (installed 1.3.0) https://github.com/owner/repo/releases
    ```
 
-The `<plugin>.admin.update` permission defaults to `op` when the plugin declares it, so operators get the join notice automatically. If a plugin does not declare that permission, only players who have been explicitly granted it receive the notice.
+The `<plugin>.admin.update` permission defaults to `op` when the plugin declares it, so operators get the chat notice automatically. If a plugin does not declare that permission, only players who have been explicitly granted it receive the notice.
 
 The notice is one-time per detection - you are not nagged every six hours. If the check cannot reach GitHub (network down, or a 403/404 response), the plugin logs a single warning for that repository and then stays quiet rather than spamming the log.
 

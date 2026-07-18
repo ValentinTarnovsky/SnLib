@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -33,8 +35,9 @@ import com.sn.lib.yml.SnYml;
  *
  * <p>Hard rules of the module: it is STRICTLY notify-only - it never downloads any
  * artifact, never touches the running jar and never performs any kind of auto-swap; the
- * only outputs are a console INFO on detection and a chat notice to joining players
- * holding {@code <plugin>.admin.update}. It is fully opt-in: a consumer that never
+ * only outputs are a console INFO on detection (version only, no URL) and a chat notice
+ * to players holding {@code <plugin>.admin.update} - those already online when a NEW
+ * finding lands and those joining later. It is fully opt-in: a consumer that never
  * declares {@code SnSpec.builder().updates("owner/repo")} nor calls {@link #watch} or
  * {@link #checkNow} generates zero traffic and zero state.</p>
  *
@@ -253,11 +256,33 @@ public final class UpdateChecker {
             Finding previous = state.findings.put(repo, finding);
             if (previous == null || !previous.latest().equals(latest)) {
                 ctx.plugin().getLogger().info("Version " + latest + " available, installed "
-                        + current + ": " + finding.url());
+                        + current + ".");
+                notifyOnline(finding);
             }
         } else {
             state.findings.remove(repo);
         }
+    }
+
+    /**
+     * Chat notice of a NEW finding to admins already online at detection time (joining
+     * players are covered by the shared join listener). The check runs off-main, so the
+     * delivery hops to the main thread.
+     */
+    private void notifyOnline(Finding finding) {
+        ctx.scheduler().sync(() -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.hasPermission(state.permission)) {
+                    player.sendMessage(notice(ctx.plugin().getName(), finding));
+                }
+            }
+        });
+    }
+
+    /** Chat line of one finding; shared by the online notice and the join notice. */
+    private static Component notice(String pluginName, Finding f) {
+        return SnText.color("&e" + pluginName + " &7has a new version: &a" + f.latest()
+                + " &7(installed &c" + f.current() + "&7) &f" + f.url());
     }
 
     /** One WARN per repo per enable; later failures of the repo stay silent. */
@@ -424,9 +449,7 @@ public final class UpdateChecker {
                             return;
                         }
                         for (Finding f : state.findings.values()) {
-                            player.sendMessage(SnText.color("&e" + owner.getName()
-                                    + " &7has a new version: &a" + f.latest()
-                                    + " &7(installed &c" + f.current() + "&7) &f" + f.url()));
+                            player.sendMessage(notice(owner.getName(), f));
                         }
                     });
                 }
