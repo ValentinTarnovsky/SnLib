@@ -19,7 +19,7 @@
 
     name: MyPlugin
     main: com.sn.myplugin.MyPlugin
-    version: '1.0.0'
+    version: '${project.version}'   (requires the plugin.yml-only resource filtering below)
     api-version: '1.20'
     depend: [SnLib]
     commands:
@@ -31,8 +31,12 @@
         default: op
         children:
           myplugin.admin.reload: true
+          myplugin.admin.update: true
       myplugin.admin.reload:
         description: Allows /myplugin reload
+        default: op
+      myplugin.admin.update:
+        description: Receive update notifications of MyPlugin
         default: op
 
   CONSUMER MAIN CLASS (the only init path: extend SnPlugin)
@@ -81,7 +85,7 @@
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
-            <version>1.4.0</version>
+            <version>1.7.1</version>
             <scope>provided</scope>
         </dependency>
 
@@ -94,6 +98,26 @@
     </dependencies>
 
     <build>
+        <finalName>${project.artifactId}-${project.version}</finalName>
+        <!-- Filter ONLY plugin.yml so ${project.version} resolves to the real version.
+             All other resources (config.yml, lang, guis) are copied verbatim, so any
+             ${...} tokens they might carry are never touched. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>plugin.yml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>plugin.yml</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
