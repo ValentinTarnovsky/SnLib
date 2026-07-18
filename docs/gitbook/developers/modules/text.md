@@ -104,20 +104,65 @@ Internally the legacy-to-MiniMessage conversion emits the negation right after t
 This is a 1.5.0 behavior fix. The legacy-string path (`colorLegacy`) always reset on the client through section codes; before 1.5.0 the `Component` path (`color`, and therefore every message, item name, lore and menu title) did not, so bold could bleed across a later legacy color. All render paths now share the same vanilla reset.
 {% endhint %}
 
+## Section-sign safety
+
+`color(String)` normalizes section-sign (`§`) codes back to the `&` form as its very FIRST step, before any other stage runs. A simple `§X` code becomes `&X` and the `§x§R§R§G§G§B§B` bungee-hex form becomes `&#RRGGBB`, so a `§`-carrying string renders exactly like its `&` equivalent. A `§`-free string (the common case) is passed through untouched, by identity, with no allocation.
+
+This matters because MiniMessage 4.25 **hard-rejects a raw section sign** in its input: a single stray `§` would throw and crash the whole render. Most `§` content arrives from PlaceholderAPI - many expansions return already-colored, section-sign text - so a value like `%some_papi_placeholder%` that resolves to `§aOnline` would otherwise blow up the message, item name or menu title it landed in. The normalization makes that impossible: PAPI output can no longer crash a render. The same conversion is exposed directly as `SnText.normalizePapiOutput(String)` for code that resolves PAPI itself before handing the string on.
+
+## Player-supplied styled text: `cosmetic` and `StylePolicy`
+
+Never render untrusted player input through `color`/`mini`: full MiniMessage includes interactive and metadata tags - `click`, `hover`, `insertion`, `font`, `keybind`, `translatable`, `selector` - and letting a player fire those from a chat rename, a sign, an anvil or a book is a vector for abuse (fake run-command links, spoofed hovers). SnLib gives you two pieces to render player text safely.
+
+### `SnText.cosmetic(String)` - the safe render
+
+`cosmetic` runs the exact same pipeline as `color` (section safety, prefix tags, legacy conversion) but honors only the **cosmetic MiniMessage subset**: colors, decorations, `gradient`, `rainbow` and `reset`. Every other tag is left unresolved and renders as inert literal text, so it can never fire. Use it as the render step for any styled text that originated from a player.
+
+### `StylePolicy` - the gate
+
+`StylePolicy` (in `com.sn.lib.text`) decides *which* styling forms a piece of input is even allowed to carry, and what to do when it carries a disallowed one. Capabilities are fine-grained: `LEGACY_COLOR` (`&0`-`&f`), `HEX` (`&#RRGGBB`), `BOLD`/`ITALIC`/`UNDERLINE`/`STRIKETHROUGH`/`OBFUSCATED`, `MINIMESSAGE` (cosmetic tags as a whole) and `GRADIENT` (the `[rgb]` prefix tag and the `<gradient>`/`<rainbow>` tags).
+
+```java
+StylePolicy policy = StylePolicy.builder()
+        .allow(StylePolicy.Capability.LEGACY_COLOR, StylePolicy.Capability.BOLD)
+        .onDisallowed(StylePolicy.OnDisallowed.STRIP)
+        .build();
+
+String vetted = policy.apply(rawNickname);        // enforce the policy
+player.sendMessage(SnText.cosmetic(vetted));      // then render with the cosmetic subset
+```
+
+- `accepts(input)` / `violations(input)` inspect what an input uses; `violations` returns the disallowed capabilities in declaration order, empty when the input is acceptable.
+- `apply(input)` enforces the policy per `OnDisallowed`: `REJECT` (the default) drops all styling to plain visible text, `STRIP` removes only the disallowed styling and keeps the rest. An acceptable input is returned unchanged; null in, null out.
+- Build one with `StylePolicy.builder()` (starts enabled, allowing nothing, rejecting), or read one from config with `StylePolicy.fromConfig(section, path)` (keys `enabled`, `allow-legacy-colors`, `allow-hex`, `allow-bold`, ... `allow-minimessage`, `allow-gradient`, `on-disallowed`). A disabled or allow-nothing policy is plain-text-only: every form of styling is a violation.
+
+{% hint style="danger" %}
+The safety rule is absolute: a **non-cosmetic** MiniMessage tag (click, hover, and the rest) is a `MINIMESSAGE` violation ALWAYS, even when the `MINIMESSAGE` capability is allowed. `allow-minimessage` only ever unlocks the cosmetic subset. Pair `StylePolicy` with `SnText.cosmetic(...)`, never `SnText.color(...)` / `SnText.mini(...)`, for player input - the policy vets and the cosmetic render is the second line of defense that resolves only that same subset.
+{% endhint %}
+
 ## Public entry points
 
 | Method | What it does |
 |--------|--------------|
-| `SnText.color(String)` | Full render: prefix tags, then legacy conversion, then MiniMessage, to a `Component`. Null input renders as the empty component. |
+| `SnText.color(String)` | Full render: section safety, prefix tags, then legacy conversion, then MiniMessage, to a `Component`. Null input renders as the empty component. |
+| `SnText.cosmetic(String)` | Same pipeline as `color`, but only the cosmetic MiniMessage subset (colors, decorations, gradient, rainbow, reset) resolves; every other tag renders as inert literal text. The safe render for player-supplied styled text vetted through `StylePolicy`. |
 | `SnText.mini(String)` | MiniMessage-only render. No prefix tags, no legacy conversion. |
 | `SnText.colorLegacy(String)` | Same legacy phase as `color`, but the output stays a legacy string with section-sign codes (`&#RRGGBB` becomes the bungee hex sequence). For APIs that still require legacy strings. |
+| `SnText.section(String)` | FULL render (legacy, hex, MiniMessage and gradients all resolved to a `Component` first, so a gradient becomes one hex code per glyph) serialized back to section-sign codes. For PAPI and legacy string sinks that cannot take a `Component`. Null in, null out. |
+| `SnText.plain(String)` | Visible text only: every form of styling is removed and the fully rendered glyphs are returned. Null in, null out. |
+| `SnText.visibleLength(String)` | Codepoint count of `plain(s)`; null and empty count as zero. |
+| `SnText.normalizePapiOutput(String)` | Converts section-sign output (a PAPI value) back to the `&` form the pipeline understands; the same conversion `color` runs as its first step. Returns the input by identity when it holds no `§`. |
 | `SnText.colorList(List<String>)` | Applies `color` to every line; a null list yields an empty list. |
 | `SnText.smallCaps(String)` | Programmatic small-caps transform without the `[small]` tag. |
 
 ```java
 Component full   = SnText.color("[rgb]&lTitle");
+Component safe   = SnText.cosmetic(vettedPlayerInput);
 Component pure   = SnText.mini("<gradient:#f00:#00f>MiniMessage</gradient>");
 String    legacy = SnText.colorLegacy("&aStill a legacy string");
+String    codes  = SnText.section("<gradient:#f00:#00f>for a PAPI sink</gradient>");
+String    plain  = SnText.plain("&aHello &lthere");   // "Hello there"
+int       width  = SnText.visibleLength("[rgb]&lTitle");
 List<Component> lore = SnText.colorList(config.getStringList("lore", List.of()));
 ```
 

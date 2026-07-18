@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
@@ -39,6 +40,8 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.Nullable;
 
+import com.destroystokyo.paper.profile.PlayerProfile;
+
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 
@@ -48,6 +51,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import com.sn.lib.Ph;
 import com.sn.lib.compat.SnCompat;
 import com.sn.lib.compat.SnVersion;
+import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.text.SnText;
 import com.sn.lib.util.HeadUtil;
 import com.sn.lib.yml.SnYml;
@@ -115,6 +119,7 @@ public final class SnItem {
     private Boolean unbreakable;
     private Integer maxStackSize;
     private String equipmentSlot;
+    private @Nullable Consumer<String> skinRefresh;
 
     /** One declared attribute modifier line; static definition values, no placeholders. */
     private record AttributeLine(String attribute, String operation, double amount,
@@ -316,16 +321,32 @@ public final class SnItem {
     }
 
     /**
-     * Head owner by player name or UUID; requires PLAYER_HEAD. A UUID resolves via
-     * {@code Bukkit.getOfflinePlayer(UUID)} (non-blocking) and a name only via
-     * {@code Bukkit.getOfflinePlayerIfCached} (never the blocking string lookup); an
-     * uncached name leaves the default head with one WARN. Takes precedence over
-     * {@link #headBase64} when both are set. Null or blank is a no-op.
+     * Head owner by player name or UUID; requires PLAYER_HEAD. The synchronous resolution
+     * stays non-blocking: a UUID via {@code Bukkit.getOfflinePlayer(UUID)} and a name via
+     * {@code Bukkit.getOfflinePlayerIfCached} (never the blocking string lookup). When the
+     * server has no cached textured profile the head shows the default now and an
+     * OFF-THREAD fetch upgrades it: the GUI module re-renders the slot when it lands
+     * (see {@link #skinRefresh}), a direct build shows the texture on its next build once
+     * the shared cache warms, and only a genuinely unresolvable owner still WARNs (once).
+     * Takes precedence over {@link #headBase64} when both are set. Null or blank is a no-op.
      */
     public SnItem skullOwner(String nameOrUuid) {
         if (nameOrUuid != null && !nameOrUuid.isBlank()) {
             this.skullOwner = nameOrUuid.trim();
         }
+        return this;
+    }
+
+    /**
+     * Registers a callback fired at {@link #build()} when this item's {@code skull-owner}
+     * has no cached textured profile yet: it receives the raw owner and is expected to
+     * schedule the off-thread resolution and, for a live GUI, re-render the affected slot
+     * once the texture lands. The GUI module wires this automatically; a direct builder may
+     * leave it unset, in which case the head shows the best available texture now and
+     * upgrades on the next build once the shared cache warms. Null clears it.
+     */
+    public SnItem skinRefresh(@Nullable Consumer<String> onDeferred) {
+        this.skinRefresh = onDeferred;
         return this;
     }
 
@@ -961,20 +982,41 @@ public final class SnItem {
         }
     }
 
+    /**
+     * Applies the skull owner in three tiers, all non-blocking on the main thread. First a
+     * hit in the shared async cache is applied outright (this is how every consumer, GUI or
+     * a direct build, ends up textured once the cache is warm). Otherwise the owner is
+     * resolved without blocking and applied as the best-effort look now; when that profile
+     * still lacks textures an off-thread fetch is scheduled - through the wired
+     * {@link #skinRefresh} hook for a live GUI (which re-renders the slot on completion), or
+     * through SnLib's own scheduler for a direct build (warming the cache for the next
+     * build). The genuinely-unresolvable WARN is deferred to the fetch, so an uncached name
+     * no longer warns just for being uncached.
+     */
     private void applySkullOwner(ItemMeta meta) {
         if (!(meta instanceof SkullMeta skull)) {
             warnOnce("skull-owner-meta:" + material, "skull-owner requires PLAYER_HEAD; "
                     + "current material " + material + "; ignored");
             return;
         }
-        OfflinePlayer resolved = resolveSkullOwner(skullOwner);
-        if (resolved == null) {
-            warnOnce("skull-owner:" + skullOwner, "skull-owner '" + skullOwner
-                    + "' is neither a UUID nor a name cached on this server; "
-                    + "keeping the default head");
+        PlayerProfile cached = SkinResolver.cachedProfile(skullOwner);
+        if (cached != null) {
+            HeadUtil.applyProfile(skull, cached);
             return;
         }
-        HeadUtil.applyOwner(skull, resolved);
+        OfflinePlayer resolved = resolveSkullOwner(skullOwner);
+        if (resolved != null) {
+            HeadUtil.applyOwner(skull, resolved);
+            PlayerProfile current = resolved.getPlayerProfile();
+            if (current != null && current.hasTextures()) {
+                return;
+            }
+        }
+        if (skinRefresh != null) {
+            skinRefresh.accept(skullOwner);
+        } else {
+            SkinResolver.requestSelf(skullOwner);
+        }
     }
 
     /**

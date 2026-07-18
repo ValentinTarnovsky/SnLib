@@ -175,6 +175,7 @@ The complete builder surface is:
 | `.guis()` | The menus module (the `guis/` folder, one GUI per file). |
 | `.items("items.yml")` | The items module backed by a YML file. |
 | `.db()` | The database module. |
+| `.teleports()` | The warmup teleport module (`sn.teleports()`). |
 | `.debugCommand()` | The runtime `debug` subcommand on the plugin's own command roots. |
 | `.updates("owner/repo")` | The notify-only update check against a GitHub repository. |
 

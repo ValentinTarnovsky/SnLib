@@ -36,7 +36,7 @@ SnItem look = SnItem.builder(Material.DIAMOND_SWORD)
 
 ### Newer SnItem additions
 
-- **`skullOwner(String)`** - a player head by UUID or by cached name, never a blocking lookup. A UUID resolves via the non-blocking `getOfflinePlayer(UUID)`; a name resolves only through the profile cache. An uncached name leaves the default head with one warning. Requires `PLAYER_HEAD`.
+- **`skullOwner(String)`** - a player head by UUID or by cached name, never a blocking lookup. A UUID resolves via the non-blocking `getOfflinePlayer(UUID)`; a name resolves through the profile cache. When the server has no cached textured profile the head shows the default now and an OFF-THREAD `PlayerProfile.update()` fetch upgrades it: inside a live GUI the affected slot re-renders when the texture lands, and a direct build shows it on its next build once the shared cache warms. Results are cached (a positive TTL, and a short negative TTL so a genuinely unresolvable owner is not hammered), and only that genuinely-unresolvable owner still warns once. Requires `PLAYER_HEAD`.
 - **`attribute(id, operation, amount, slotGroup)`** - attribute modifiers with lenient id resolution (the bidirectional `GENERIC_ARMOR` / `ARMOR` alias of the 1.21.2+ rename is handled). On 1.21+ it uses the modern `NamespacedKey` + `EquipmentSlotGroup` constructor; on 1.20.4 it falls back to the deprecated UUID constructor with a deterministic name-derived UUID.
 - **`damage(int)`** - initial VANILLA durability already spent, clamped to `[0, max durability]` at build. This is separate from the custom-durability system described below.
 

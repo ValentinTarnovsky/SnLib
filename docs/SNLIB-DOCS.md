@@ -45,6 +45,7 @@ goal.
 - [17. UpdateChecker (v1.1)](#17-updatechecker-v11)
 - [18. Region: cuboid selection (v1.1)](#18-region-cuboid-selection-v11)
 - [19. Velocity base: config, text, scheduler, commands (v1.3)](#19-velocity-base-config-text-scheduler-commands-v13)
+- [20. Warmup teleports (v1.6)](#20-warmup-teleports-v16)
 
 ---
 ## 01. Architecture and lifecycle
@@ -83,7 +84,7 @@ Constants: `private static final int BSTATS_SERVICE_ID = 32541` (SnLib's real se
 - `public int apiLevel()` - API level of the installed SnLib.jar: returns `SnApi.LEVEL` as it was inlined into THIS jar at compile time, compared against the consumer's `requiredApiLevel()`.
 - `public @Nullable Sn selfContext()` - the library's own context, or `null` while it is disabled.
 - `public void onEnable()` - bootstrap: see "Internal logic".
-- `public void onDisable()` - `TenantSweeper.cascadeAll()` (shuts down every live context in reverse registration order), `metrics.shutdown()` if bStats was active (and nulls it), `HeadUtil.clearCache()`, `PlayerLookup.clearCache()`, nulls `selfCtx` and `instance`.
+- `public void onDisable()` - `TenantSweeper.cascadeAll()` (shuts down every live context in reverse registration order), `metrics.shutdown()` if bStats was active (and nulls it), `HeadUtil.clearCache()`, `SkinResolver.clearCache()` (1.6, the shared async skin cache), `PlayerLookup.clearCache()`, nulls `selfCtx` and `instance`.
 
 #### Internal logic
 
@@ -124,7 +125,7 @@ The presence of `SnLibPlugin.get()` in step 2 is guaranteed by the consumer's `d
 ### Sn
 `src/main/java/com/sn/lib/Sn.java`
 
-Per-plugin SnLib context: the handle through which a consumer reaches every module it declared in its `SnSpec`. `final` class; package-private constructor `Sn(JavaPlugin plugin, SnSpec spec)` that wires ALL modules at construction (declared ones end up mounted; undeclared ones stay `null` only for the 4 gated modules). Part of the frozen entrypoint surface: its accessor set only grows within a major version. Field `volatile boolean shuttingDown` (package-private): the teardown sets it before anything else and it flips `SnYml.save()` to synchronous writes.
+Per-plugin SnLib context: the handle through which a consumer reaches every module it declared in its `SnSpec`. `final` class; package-private constructor `Sn(JavaPlugin plugin, SnSpec spec)` that wires ALL modules at construction (declared ones end up mounted; undeclared ones stay `null` only for the 5 gated modules). Part of the frozen entrypoint surface: its accessor set only grows within a major version. Field `volatile boolean shuttingDown` (package-private): the teardown sets it before anything else and it flips `SnYml.save()` to synchronous writes.
 
 Accessors ALWAYS available (they never throw, whether modules were declared or not):
 
@@ -153,6 +154,7 @@ Accessors WITH a spec GATE (they throw `UnsupportedOperationException` naming th
 - `public SnLang lang()` - language module: `lang/messages_<code>.yml` with the shared `snlib.*` keys always merged and per-key English fallback. Gate: "lang module not declared: missing SnSpec.builder().lang()".
 - `public GuiManager guis()` - GUI module: `guis/` folder with one GUI per file, one session and inventory per viewer, and opt-in pagination per menu. Gate: "guis module not declared: missing SnSpec.builder().guis()".
 - `public SnDb db()` - database module: dual SQLite/MySQL over a Hikari pool with every query and update off the main thread. Gate: "db module not declared: missing SnSpec.builder().db()".
+- `public Teleports teleports()` (1.6) - warmup teleport module: one pending teleport per player (dedup), a warmup message, cancel on move and damage, an optional cooldown category shared with `cooldowns()` and a Folia-safe completion. Gate: "teleports module not declared: missing SnSpec.builder().teleports()". See section 20.
 
 Other methods:
 
@@ -162,7 +164,7 @@ Other methods:
 
 #### Internal logic: construction order
 
-The constructor wires in this order: scheduler, papi, yml (null if `spec.config() == null`), debug (receives the config or null), actions, lang (only if `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (with an immediate `updates.watch(repo)` if the spec declared `updates("owner/repo")`), items. If the spec declares items with a file and there IS yml, it does `items.loadAll(yml.managed(itemsFile))`; if it declares items WITHOUT config, it WARNs: `items("...") declared without config(): the file is not mounted and sn.items() stays programmatic only`. Then selections (always available; after items and before guis, it depends on no other module), guis (only if `spec.guis()`, with an immediate `guis.load()`), db (only if `spec.db()`, with `DbConfig.load(plugin, yml.config().getSection("database"))` or a null section without yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) and reload.
+The constructor wires in this order: scheduler, papi, yml (null if `spec.config() == null`), debug (receives the config or null), actions, lang (only if `spec.lang()`), cooldowns, economy, bossbars, holograms, cron, leaderboards, discord, updates (with an immediate `updates.watch(repo)` if the spec declared `updates("owner/repo")`), items. If the spec declares items with a file and there IS yml, it does `items.loadAll(yml.managed(itemsFile))`; if it declares items WITHOUT config, it WARNs: `items("...") declared without config(): the file is not mounted and sn.items() stays programmatic only`. Then selections (always available; after items and before teleports/guis, it depends on no other module), teleports (1.6, only if `spec.teleports()`: `new Teleports(this)`, else null), guis (only if `spec.guis()`, with an immediate `guis.load()`), db (only if `spec.db()`, with `DbConfig.load(plugin, yml.config().getSection("database"))` or a null section without yml), commands (`new SnCommands(this, lang, spec.debugCommand())`) and reload.
 
 #### Internal logic: the 13 steps of shutdown()
 
@@ -172,7 +174,7 @@ If `shuttingDown` was already true, it returns without doing anything (idempoten
 1. `guis.closeAll()` (if guis declared) - closes this owner's open GUIs; each per-viewer session cancels its timers, untracks its holder and forces the close on its viewer.
 2. `commands.unregisterAll()` - unregisters this owner's command roots and refreshes the clients' command trees.
 3. `yml.flushAll()` (if yml declared) - drains the coalesced async yml writes BEFORE cancelling the scheduler that would run them.
-4. `items.cancelTasks()`, `selections.shutdown()` and `scheduler.cancelAll()` - only now cuts the selection renderers (clearing sessions and specs, without onCancel) and cancels every remaining task of the owning plugin.
+4. `items.cancelTasks()`, `selections.shutdown()`, `teleports.shutdown()` (1.6, if teleports declared) and `scheduler.cancelAll()` - only now cuts the selection renderers (clearing sessions and specs, without onCancel), cancels every pending warmup teleport and clears the teleport map, and cancels every remaining task of the owning plugin.
 5. `EquipmentBackup.restoreAll(plugin)` - locked items: returns the displaced real equipment; the write-through store persists synchronously thanks to the `shuttingDown` flag.
 6. `db.flushPlayerCaches()` (if db declared) - player caches: saves every dirty entry and joins the writes...
 7. `db.shutdown()` (if db declared) - ...and then closes the pool (joins pending work, `shutdownNow` after a timeout).
@@ -200,6 +202,7 @@ Immutable declaration of the SnLib modules a consumer plugin uses. Part of the f
 - `public boolean guis()` - whether the guis module (`guis/` folder) was declared.
 - `public @Nullable String items()` - name of the items file, or `null` if the items module was not declared with a YML source.
 - `public boolean db()` - whether the database module was declared.
+- `public boolean teleports()` - whether the warmup teleport module was declared (v1.6).
 - `public boolean debugCommand()` - whether the runtime debug command was declared.
 - `public @Nullable String updates()` - GitHub repo `owner/repo` of the update check (v1.1), or `null` if not declared.
 
@@ -212,6 +215,7 @@ Immutable declaration of the SnLib modules a consumer plugin uses. Part of the f
 - `public Builder guis()` - declares the guis module.
 - `public Builder items(String fileName)` - declares the items module backed by a YML file (for example `"items.yml"`).
 - `public Builder db()` - declares the database module.
+- `public Builder teleports()` - declares the warmup teleport module (v1.6; `sn.teleports()`, section 20).
 - `public Builder debugCommand()` - declares the runtime debug command.
 - `public Builder updates(String ownerRepo)` - declares the notify-only update check against a GitHub repo, `owner/repo` format (v1.1; see section 17).
 - `public SnSpec build()` - builds the immutable spec.
@@ -328,17 +332,21 @@ TODOs and limitations:
 
 ## 03. Text pipeline
 
-The `com.sn.lib.text` package implements the text rendering pipeline shared by all SnLib modules. The order is FIXED and not configurable: locals -> PAPI -> [small] -> [rgb] -> legacy color conversion -> [center]. The locals and PAPI steps are resolved by the caller (SnYml getters) before invoking these methods; the four classes in this module cover the rest. `SnText` is the orchestrator (prefix tags, legacy-to-MiniMessage conversion, `<` escaping, final render to `Component`); `SmallCapsUtil` substitutes letters with small caps glyphs behind the `[small]` tag; `RgbGradientUtil` interpolates the 7-anchor gradient behind the `[rgb]` tag; `CenterUtil` centers the line by measuring pixels with the vanilla font table. All four classes are pure string transformations (no state, no Bukkit, no per-plugin ownership): they are thread-safe and usable from main or async interchangeably.
+The `com.sn.lib.text` package implements the text rendering pipeline shared by all SnLib modules. The order is FIXED and not configurable: locals -> PAPI -> [small] -> [rgb] -> legacy color conversion -> [center]. The locals and PAPI steps are resolved by the caller (SnYml getters) before invoking these methods; the four classes in this module cover the rest. `SnText` is the orchestrator (section-sign safety, prefix tags, legacy-to-MiniMessage conversion, `<` escaping, final render to `Component`); `SmallCapsUtil` substitutes letters with small caps glyphs behind the `[small]` tag; `RgbGradientUtil` interpolates the 7-anchor gradient behind the `[rgb]` tag; `CenterUtil` centers the line by measuring pixels with the vanilla font table. All four classes are pure string transformations (no state, no Bukkit, no per-plugin ownership): they are thread-safe and usable from main or async interchangeably. `StylePolicy` (1.6) is the reusable gate for player-supplied styled text, rendered through the cosmetic-subset `SnText.cosmetic`.
 
 ### SnText
 `src/main/java/com/sn/lib/text/SnText.java`
 
 Final utility class (private constructor) that orchestrates the pipeline. It keeps a static instance of `MiniMessage.miniMessage()` and the `MINI_TAGS` map that translates each legacy `&X` code to its named MiniMessage tag (`0`->`black`, `1`->`dark_blue`, `2`->`dark_green`, `3`->`dark_aqua`, `4`->`dark_red`, `5`->`dark_purple`, `6`->`gold`, `7`->`gray`, `8`->`dark_gray`, `9`->`blue`, `a`->`green`, `b`->`aqua`, `c`->`red`, `d`->`light_purple`, `e`->`yellow`, `f`->`white`, `k`->`obfuscated`, `l`->`bold`, `m`->`strikethrough`, `n`->`underlined`, `o`->`italic`, `r`->`reset`). Private constants: `CENTER_TAG = "[center]"`, `RGB_TAG = "[rgb]"`, `SMALL_TAG = "[small]"`, `SECTION = (char) 0xA7`. It exposes no public constants or enums.
 
-- `public static Component color(String s)` - Full render: consumes the THREE prefix tags `[small]`/`[rgb]`/`[center]`, converts legacy codes to MiniMessage tags and deserializes with MiniMessage. Null input yields `Component.empty()`.
+- `public static Component color(String s)` - Full render: normalizes section-sign codes to `&` (FIRST step, see below), consumes the THREE prefix tags `[small]`/`[rgb]`/`[center]`, converts legacy codes to MiniMessage tags and deserializes with MiniMessage. Null input yields `Component.empty()`. Section safety (1.6): MiniMessage 4.25 hard-rejects a raw `§` in its input, so a pre-rendered or PAPI-expanded value carrying `§` (a simple `§X` or the `§x§R§R§G§G§B§B` bungee-hex form) would otherwise crash the whole render; the leading `normalizeSectionSigns` pass rewrites it to the `&` form so it renders like its `&` equivalent, and a `§`-free input (common case) is passed through untouched by identity.
+- `public static Component cosmetic(String s)` (1.6) - Same pipeline as `color(String)` but honors only the COSMETIC MiniMessage subset (`StandardTags.color`, `decorations`, `gradient`, `rainbow`, `reset`; kept in the static `COSMETIC` MiniMessage instance). Interactive/metadata tags (click, hover, insertion, font, keybind, translatable, selector, ...) are left unresolved and render as inert literal text, so they never fire from player-supplied text. The safe render for player input vetted through `StylePolicy`. Null yields `Component.empty()`.
 - `public static Component mini(String s)` - MiniMessage-only render: no prefix tags and no legacy conversion. Null yields `Component.empty()`.
 - `public static String colorLegacy(String s)` - Same legacy phase as `color(String)` but the output stays a legacy string with section-sign codes (`&#RRGGBB` becomes the bungee hex sequence `§x§R§R§G§G§B§B`). For APIs that still require legacy strings; MiniMessage tags stay untouched. Null returns null.
-- `public static String normalizePapiOutput(String s)` - Converts PlaceholderAPI output back to the `&` form the pipeline understands: bungee hex sequences (`§x§R§R...`) become `&#RRGGBB` and `§X` codes become `&X`, so PAPI-colored values survive the conversion to MiniMessage. If the string is null or contains no section sign, it is returned as-is without allocating.
+- `public static String section(String s)` (1.6) - FULL render serialized to section-sign codes: legacy, hex, MiniMessage and gradients are all resolved to a `Component` first (via `color(s)`, so a `<gradient>` or `[rgb]` becomes one hex code per glyph) and then serialized through the static `LEGACY_SECTION` `LegacyComponentSerializer` with hex in the `§x§R§R...` bungee form. For PAPI and legacy string sinks that cannot take a `Component`. Distinct from `colorLegacy`, which never resolves MiniMessage. Null returns null.
+- `public static String plain(String s)` (1.6) - Visible text only: every form of styling (legacy `&`/`§`, hex, MiniMessage tags, gradients) is removed by rendering with `color(s)` and serializing through the static `PLAIN` `PlainTextComponentSerializer`. Null in, null out.
+- `public static int visibleLength(String s)` (1.6) - Codepoint count of `plain(s)` (`codePointCount`, not `length()`); null and empty count as zero.
+- `public static String normalizePapiOutput(String s)` - Converts PlaceholderAPI output back to the `&` form the pipeline understands: bungee hex sequences (`§x§R§R...`) become `&#RRGGBB` and `§X` codes become `&X`, so PAPI-colored values survive the conversion to MiniMessage. Delegates to the shared `normalizeSectionSigns` normalizer (the same first step `color` runs). If the string is null or contains no section sign, it is returned as-is without allocating.
 - `public static String applyLocals(String s, Ph... phs)` - Resolves local placeholders from `Ph` (key/value) pairs; builds a `HashMap` and delegates to the resolver overload. Returns the input untouched if the string is null/empty or there are no pairs.
 - `public static String applyLocals(String s, Function<String, String> resolver)` - Single-pass scanner over `%key%` and `{key}` tokens. If the resolver returns null the token stays untouched (so unresolved PAPI tokens survive intact); replacement values are NOT re-scanned (no recursive expansion).
 - `public static List<Component> colorList(List<String> lines)` - Applies `color(String)` to each line; a null or empty list returns a new empty `ArrayList`.
@@ -349,6 +357,7 @@ Final utility class (private constructor) that orchestrates the pipeline. It kee
 
 - `consumeCenterMark(String line)` - If the line starts with `[center]` (already normalized by `applyPrefixTags`), strips the tag and delegates to `CenterUtil.center`.
 - `legacyToMini(String s)` - Legacy-to-MiniMessage conversion: `&#RRGGBB` becomes `<#RRGGBB>`, `&X` becomes its named tag per `MINI_TAGS`, and a literal `<` that cannot start a tag is escaped as `\<`. A legacy COLOR code (`&0`-`&f`, `&#RRGGBB`) resets the decorations opened by earlier legacy format codes: it tracks the decorations opened by `&k`-`&o` in a `LinkedHashSet` and, right after emitting a color tag, negates every still-active one (`negateLegacyDecorations` emits `<!name>` per tracked decoration and clears the set), so `&l&c` becomes `<bold><red><!bold>`. `&r` emits `<reset>` and clears the set. Only legacy-opened decorations enter the set, so author-written MiniMessage tags keep pure MiniMessage semantics (a MiniMessage color tag never triggers the reset). This matches vanilla and Adventure's `LegacyComponentSerializer.legacyAmpersand()`; before 1.5.0 the Component path did not reset, so bold bled across later legacy colors.
+- `normalizeSectionSigns(String s)` (1.6) - Section-safety normalizer shared by `color`/`cosmetic`/`normalizePapiOutput`: rewrites `§x§R§R§G§G§B§B` bungee-hex sequences to `&#RRGGBB` (validated by `isBungeeHex`, advancing 14 chars) and simple `§X` codes (`isCodeChar`) to `&X`. A `§`-free string returns the SAME instance (no allocation), which is why a normal `&`-only string is unaffected.
 - `toSectionCodes(String s)` - Counterpart for `colorLegacy`: `&#RRGGBB` becomes `§x` followed by `§` + each hex digit lowercased, and `&X` (valid code) becomes lowercase `§x`. Everything else passes unchanged.
 - `canStartTag(String s, int next)` - MiniMessage tag-start heuristic: the character after `<` must be `/` (closing tag), `#` (hex color), `!` (negated decoration), `_` or an ASCII letter (a-z, A-Z). Otherwise the `<` gets escaped.
 - `isCodeChar(char c)` - Validates a legacy code character: `0-9`, `a-f`, `k-o`, `r` or `x`.
@@ -480,6 +489,27 @@ The small caps glyph widths (5 and 3) are reasonable approximations adjustable i
 - It can only measure LEGACY strings, never `Component`s: that is why the pipeline applies it as the last step of the legacy phase, before `legacyToMini` and MiniMessage deserialization. An unconverted MiniMessage tag inside the line would be measured as visible text.
 - `measure` accepts codes with both `&` and `§`, but the hex form is only skipped as `&#RRGGBB` (the bungee sequence `§x§R...` is still skipped because each `§X` pair is a valid code: `x` is in `isCodeChar`).
 - The compensation uses normal 4px spaces (3 from the table + 1 gap): centering has 4px granularity, it is an approximation, not pixel-perfect.
+
+### StylePolicy (v1.6)
+`src/main/java/com/sn/lib/text/StylePolicy.java`
+
+Reusable gate for player-supplied styled text: which styling forms an input may carry, and what to do when it carries a disallowed one. Immutable (built via `builder()` or `fromConfig(...)`), no Bukkit at evaluation time; the detection is a pure single-pass scanner covered by `StylePolicyTest`. Rendered text should go through `SnText.cosmetic`, never `SnText.color`/`mini`.
+
+- `public enum Capability` - the styling forms a policy can allow: `LEGACY_COLOR` (`&0`-`&f`), `HEX` (`&#RRGGBB`), `BOLD`/`ITALIC`/`UNDERLINE`/`STRIKETHROUGH`/`OBFUSCATED` (`&l &o &n &m &k`), `MINIMESSAGE` (cosmetic tags as a whole - a `<red>` or `<bold>` is MiniMessage usage, not legacy usage) and `GRADIENT` (the `[rgb]` prefix tag plus the `<gradient>`/`<rainbow>` tags).
+- `public enum OnDisallowed` - `REJECT` (drop all styling, keep plain visible text) or `STRIP` (remove only the disallowed styling, keep the allowed styling and the text).
+- `public static StylePolicy fromConfig(@Nullable ConfigurationSection section, String path)` - reads the `path` subsection. Keys: `enabled` (default true), `allow-legacy-colors`, `allow-hex`, `allow-bold`, `allow-italic`, `allow-underline`, `allow-strikethrough`, `allow-obfuscated`, `allow-minimessage`, `allow-gradient` (each default false, deny by default) and `on-disallowed` (`reject`/`strip`, default `reject`). A null section, a missing subsection or `enabled: false` yields a `disabled()` plain-text-only policy.
+- `public static StylePolicy disabled()` - plain-text-only policy: any styling is a violation.
+- `public static Builder builder()` - programmatic builder; starts enabled, allowing nothing, rejecting. Methods: `enabled(boolean)`, `allow(Capability...)`, `allowAll()`, `disallow(Capability...)`, `onDisallowed(OnDisallowed)`, `build()`.
+- `public boolean isEnabled()` / `public boolean isPlainOnly()` (no capability allowed) / `public boolean isAllowed(Capability)` / `public Set<Capability> allowed()` (immutable view) / `public OnDisallowed onDisallowed()`.
+- `public List<Capability> violations(String input)` - the disallowed capabilities the input actually uses, in `Capability` declaration order; empty when acceptable. SAFETY rule: a non-cosmetic MiniMessage tag (click, hover, font, ...) always contributes `MINIMESSAGE`, EVEN when `MINIMESSAGE` is allowed - `allow-minimessage` only ever unlocks the cosmetic subset.
+- `public boolean accepts(String input)` - whether `violations(input)` is empty.
+- `public String apply(String input)` - enforces the policy: an acceptable input is returned unchanged; otherwise `STRIP` -> `strip(input)`, `REJECT` -> `SnText.plain(input)`. Null in, null out.
+- `public String strip(String input)` - removes the disallowed styling while keeping the allowed styling and all visible text. Section codes are normalized to `&` first (`SnText.normalizePapiOutput`); non-cosmetic MiniMessage tags are always removed; `&r` and `<reset>` are always kept. The leading `[center]`/`[rgb]`/`[small]` prefix run is preserved, dropping `[rgb]` only when `GRADIENT` is disallowed.
+
+#### Internal logic (detection)
+- `analyze(String)` returns a `Usage` struct (per-form booleans, splitting `cosmeticMini` from `nonCosmeticMini` for the subset rule) by scanning the normalized input once, skipping `\<` escapes and consuming the leading prefix-tag run (`[rgb]` sets gradient usage).
+- `classifyTag(String inner)` classifies a MiniMessage tag by the name inside `<...>` (stripping a leading `/` and `!`, cutting at `:`): `reset` -> `RESET`; `gradient`/`rainbow` -> `GRADIENT`; a `#hex`, a `COLOR_NAMES` entry or a `DECORATION_NAMES` entry -> `COSMETIC`; anything else -> `NON_COSMETIC`.
+- `codeCapability(char)` maps a legacy code to its capability (`0-9`/`a-f` -> `LEGACY_COLOR`; `l/o/n/m/k` -> the decoration; `r` and unknowns -> null).
 
 ### TODOs and limitations
 
@@ -750,8 +780,11 @@ Resource packaged inside SnLib.jar with the shared `snlib.*` message keys. The a
 | `snlib.unknown-subcommand` | `{value}` | Sent when the given subcommand does not exist. |
 | `snlib.reload-done` | (none) | Sent to the sender after a successful reload. |
 | `snlib.help.header` | `{plugin}` | Header line printed before the generated help entries; `{plugin}` is the plugin name (v1.2.1). |
-| `snlib.help.entry` | `{usage}`, `{description}`, `{permission}` | One line per subcommand visible to the sender (`{description}` added in v1.2.1). |
+| `snlib.help.entry` | `{usage}`, `{description}`, `{permission}` | One line per reachable leaf visible to the sender, rendered with its full path (`{description}` added in v1.2.1; default changed to `&e{usage} &7{description}` with no `&8:` separator in v1.6). |
 | `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Printed after the entries only when the help spans multiple pages; `{command}` is the root command name. |
+| `snlib.teleport.warmup` | `{time}` | Sent when a warmup teleport starts; `{time}` is the warmup in seconds (v1.6, section 20). |
+| `snlib.teleport.cancelled-move` | (none) | Sent when a pending teleport is cancelled because the player moved (v1.6, section 20). |
+| `snlib.teleport.cancelled-damage` | (none) | Sent when a pending teleport is cancelled because the player took damage (v1.6, section 20). |
 | `snlib.selection.pos1-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 1 (v1.1, section 18). |
 | `snlib.selection.pos2-set` | `{x}`, `{y}`, `{z}`, `{world}` | Sent when a selection wand sets position 2 (v1.1, section 18). |
 | `snlib.selection.different-worlds` | (none) | Sent when the two positions of a selection end up in different worlds (v1.1, section 18). |
@@ -1162,6 +1195,7 @@ Builds `PLAYER_HEAD` stacks from texture values or from an `OfflinePlayer` owner
 - `public static void applyBase64(SkullMeta meta, String value)` - applies a texture to a `SkullMeta` with a deterministic profile UUID derived from the texture bytes; unparseable values leave the meta intact with a single WARN; a null meta is a no-op.
 - `public static ItemStack fromPlayer(@Nullable OfflinePlayer owner)` - creates an amount-1 `PLAYER_HEAD` stack with the given player's skin; a null owner returns the default head. Zero NMS and zero own HTTP: the server resolves the skin from its profile cache (transient Steve while the profile is not cached).
 - `public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner)` - applies an owner to a `SkullMeta` via `setOwningPlayer`; a null meta or owner is a no-op. Same resolution semantics as `fromPlayer` (server profile cache, transient Steve, no NMS/HTTP).
+- `public static void applyProfile(SkullMeta meta, @Nullable PlayerProfile profile)` - applies a fully resolved `PlayerProfile` (textures included) to a `SkullMeta` via `setPlayerProfile`; a null meta or profile is a no-op. Used to re-apply the profile the async skin resolver (`com.sn.lib.item.internal.SkinResolver`) fetched off-thread with `PlayerProfile.update()` when a `skull-owner` had no cached textured profile.
 - `public static @Nullable String extractTextureValue(String value)` - normalizes a raw input to its base64 payload: strips prefixes (recursively), encodes http(s) URLs to the `{"textures":{"SKIN":{"url":"..."}}}` JSON in base64, accepts `eyJ...` as-is; returns null when the input is not a texture.
 - `public static void clearCache()` - empties the bounded profile cache; invoked by the SnLib plugin in its teardown (onDisable).
 
@@ -1535,7 +1569,7 @@ Single enrollment point of all the library's shared listeners. Fixed mechanics: 
 - `public static void inscribe(Listener listener)` - adds a shared listener to the hub; it stays dormant until `registerAll`.
 - `public static void registerAll(SnLibPlugin plugin)` - registers each enrolled listener against the SnLib plugin. Idempotent: it first does `HandlerList.unregisterAll(plugin)` to drop SnLib's previous registrations, so a double call or a re-enable never duplicates handlers (a SnLib disable also unregisters them all).
 
-#### Canonical enumeration of the 14 listeners (with their origin package)
+#### Canonical enumeration of the 16 listeners (with their origin package)
 
 Exact static initializer order:
 
@@ -1553,6 +1587,8 @@ Exact static initializer order:
 12. `UpdateChecker.joinListener()` - `com.sn.lib.update` (update notice on join, D4, v1.1).
 13. `new HologramChunkListener()` - `com.sn.lib.hologram.internal` (chunk load/unload for holograms).
 14. `new SelectionWandListener()` - `com.sn.lib.region.internal` (cuboid selection wand, v1.1).
+15. `new TeleportMoveListener()` - `com.sn.lib.teleport.internal` (warmup teleport cancel on move, v1.6).
+16. `new TeleportDamageListener()` - `com.sn.lib.teleport.internal` (warmup teleport cancel on damage, v1.6).
 
 ### TenantSweeper (internal)
 
@@ -1861,7 +1897,8 @@ Fluent builder of physical stacks covering the entire appearance section of the 
 - `public SnItem potionEffects(List<String> effects)` - Custom potion effects for items with `PotionMeta`. Flat spec form `[effect-id, level, duration]`; level default 1 (the amplifier is `level - 1`) and duration default 200 ticks.
 - `public SnItem modelData(int modelData)` - Custom model data; it only stamps the meta when explicitly set.
 - `public SnItem headBase64(String value)` - Head texture accepted by `HeadUtil.extractTextureValue`; requires `PLAYER_HEAD` (another material WARNs and is ignored).
-- `public SnItem skullOwner(String nameOrUuid)` - Head by player (name or UUID, trimmed; null/blank is a no-op); requires `PLAYER_HEAD`. Resolution in `build()`: first `UUID.fromString` in try/catch -> `Bukkit.getOfflinePlayer(UUID)` (non-blocking); if it does not parse as UUID -> `Bukkit.getOfflinePlayerIfCached(name)`. `Bukkit.getOfflinePlayer(String)` is FORBIDDEN (it can block the main thread with an HTTP lookup). Cache miss: single WARN and default head. Precedence: if `headBase64` is also present, skull-owner wins and the base64 texture is ignored with a single WARN (`skull-owner-conflict`). The skin is applied by `HeadUtil.applyOwner`.
+- `public SnItem skullOwner(String nameOrUuid)` - Head by player (name or UUID, trimmed; null/blank is a no-op); requires `PLAYER_HEAD`. Synchronous resolution in `build()` stays non-blocking: first `UUID.fromString` in try/catch -> `Bukkit.getOfflinePlayer(UUID)`; if it does not parse as UUID -> `Bukkit.getOfflinePlayerIfCached(name)`. `Bukkit.getOfflinePlayer(String)` is FORBIDDEN (it can block the main thread with an HTTP lookup). Precedence: if `headBase64` is also present, skull-owner wins and the base64 texture is ignored with a single WARN (`skull-owner-conflict`). Async upgrade (1.6): when the server has no cached textured profile, the head shows the best-effort default now and an OFF-THREAD `PlayerProfile.update()` fetch (via `SkinResolver`) upgrades it - a live GUI re-renders the slot when it lands, a direct build shows it on the next build once the shared cache warms; the uncached-name WARN is GONE, only a genuinely unresolvable owner still WARNs once. See `applySkullOwner` internal logic below.
+- `public SnItem skinRefresh(@Nullable Consumer<String> onDeferred)` (1.6) - Registers a callback fired at `build()` when this item's `skull-owner` has no cached textured profile yet: it receives the raw owner and is expected to schedule the off-thread resolution and, for a live GUI, re-render the affected slot once the texture lands. The GUI module wires this automatically (see section 12); a direct builder may leave it unset, in which case `build()` falls back to `SkinResolver.requestSelf` to warm the shared cache for the next build. Null clears it. Returns `this`.
 - `public SnItem attribute(String attributeId, String operation, double amount, @Nullable String slotGroup)` - Adds an attribute modifier line (trimmed ids; a null/blank attributeId or operation is ignored). The attribute resolves leniently via `attributeKeyCandidates` (see internal logic); the operation is an `AttributeModifier.Operation` name (ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1); slotGroup is an `EquipmentSlotGroup` name (null/blank = ANY).
 - `public SnItem damage(int damage)` - Initial spent VANILLA durability; clamped to `[0, maxDurability]` when applied. Independent from ItemDef's `custom-durability` system. A material without vanilla durability or a meta that is not `Damageable` WARNs once and is ignored.
 - `public SnItem unbreakable(boolean unbreakable)` - Vanilla unbreakable flag.
@@ -1871,6 +1908,7 @@ Fluent builder of physical stacks covering the entire appearance section of the 
 - `public static @Nullable EquipmentSlot parseEquipmentSlot(String raw)` - Lenient spec name to `EquipmentSlot`: `MAINHAND` maps to `HAND` and `OFFHAND` to `OFF_HAND`; an unknown name returns null.
 
 #### Internal logic
+- `applySkullOwner(ItemMeta)` (1.6, three non-blocking tiers): (1) a hit in the shared `SkinResolver.cachedProfile(owner)` is applied outright via `HeadUtil.applyProfile` (this is how every consumer ends up textured once the cache is warm); (2) otherwise the owner resolves non-blocking (`resolveSkullOwner`) and is applied as the best-effort look now, and if that profile already `hasTextures()` it stops; (3) when the look still lacks textures, an off-thread fetch is scheduled - through the wired `skinRefresh` hook for a live GUI, or `SkinResolver.requestSelf(owner)` for a direct build. The genuinely-unresolvable WARN is deferred to the fetch, so an uncached name no longer warns just for being uncached. A non-`SkullMeta` material still WARNs once (`skull-owner-meta`).
 - `readEnchantments` and `applyPotionEffects` walk the spec's flat `[id, level, ...]` form: `tokenize` splits each entry by spaces/commas/semicolons, so the flat and inline forms parse the same. A number without a preceding id WARNs with the expected format and is ignored.
 - `resolveMaterial`: `Material.matchMaterial` first, then `Registry.MATERIAL` by NamespacedKey; invalid WARNs and uses `STONE`.
 - `resolveEnchant`/`resolveEffect`: Registry by key with the legacy `getByName` fallback (deprecated on purpose, resolves names like `FAST_DIGGING`).
@@ -2210,6 +2248,27 @@ Per-context backup of the real items displaced by `ItemRegistry.apply`, with GUA
 - `loadPersisted` tolerates broken entries (invalid UUID, invalid slot, corrupt Base64) with one WARN per entry ("Unreadable equipment backup...") and ignores them.
 - The memory-degradation WARN ("EquipmentBackup without the yml module declared...") is emitted exactly once (`AtomicBoolean.compareAndSet`).
 
+### SkinResolver (internal, v1.6)
+`src/main/java/com/sn/lib/item/internal/SkinResolver.java`
+
+Off-thread skin resolution for player heads: fills the texture of a `skull-owner` whose profile the server has not cached, then re-applies the textured head. The synchronous `SnItem` path stays non-blocking; this is the async completion it was missing. Server-wide statics (a shared `SkinCache<PlayerProfile>` and a `WARNED` dedupe set) justified by contract note (a): skin data is content-addressed and identical for every consumer. `PlayerProfile.update()` runs the network fetch on Paper's own executor, never HTTP on the calling thread. `clearCache()` runs on the SnLib plugin teardown.
+
+- `public static @Nullable String normalizeKey(String owner)` - Canonical cache key: a UUID normalizes to its lowercase string form, any other value to its lowercase trimmed form, so the same player keyed by UUID or by name (any case) shares one slot. Null/blank -> null.
+- `public static @Nullable PlayerProfile cachedProfile(String owner)` - Cheap cache read (any thread) of a textured profile, or null on a miss. Consumed by `SnItem.build()`.
+- `public static void request(Sn ctx, String owner, Runnable onLanded)` - Requests an off-thread fetch owned by `ctx`'s scheduler and runs `onLanded` on the main thread when a textured profile lands. Gated by the shared cache (`beginFetch`): a no-op when the key is already cached, in flight, or inside its negative window. The GUI path passes an `onLanded` that re-renders the affected slot.
+- `public static void requestSelf(String owner)` - Fire-and-forget warm-up for a direct (non-GUI) build: schedules the fetch through SnLib's own context so the NEXT build of the same owner shows the texture, no re-render. No-op when SnLib is disabled or the call is off the main thread.
+- `public static void clearCache()` - Empties the shared cache and the WARN dedupe; called by the SnLib plugin on disable.
+- Internal: `baseProfile` builds a `Bukkit.createProfile(UUID)` or name-only profile to `update()`; `hop` bounces the completion (on Paper's executor) onto the owner's main thread; `land` releases the in-flight mark, then caches a textured result and runs `onLanded`, or negative-caches the failure and WARNs once per owner ("skull-owner '...' could not be resolved to a textured profile").
+
+### SkinCache&lt;V&gt; (internal, v1.6)
+`src/main/java/com/sn/lib/item/internal/SkinCache.java`
+
+Bounded, TTL-aware resolution cache backing `SkinResolver`: a positive cache (access-order LRU, size-bounded, per-entry expiry), a short negative cache of failed keys, and an in-flight guard collapsing concurrent fetches of the same key. Generic and Bukkit-free ON PURPOSE so every decision is a pure unit (`SkinCacheTest`, with an injected clock); the resolver instantiates it with `PlayerProfile` values, a 30-minute positive TTL, a 2-minute negative TTL and a cap of 512. Every method synchronizes on the instance.
+
+- `get` / `put` (clears any prior failure) / `negativeHit` / `putNegative` - the two caches, with lazy expiry drop on read.
+- `shouldFetch(key)` - pure predicate: no fresh positive hit, no live negative suppression, no fetch in flight.
+- `beginFetch(key)` - atomic gate: if `shouldFetch`, marks the key in-flight and returns true (the caller owns the fetch); pair every true with a later `endFetch`. `clear()` empties both caches and the in-flight set.
+
 ### TODOs and limitations
 
 There are no TODO/FIXME markers in the module's code. Limitations documented in the code:
@@ -2268,7 +2327,8 @@ Package-private enum `NavKind` (navigation role, detected from the action lists 
 - `public List<String> denyActions()` - Raw action lines executed when the click requirement fails.
 - `NavKind navKind()` (package-private) - Navigation role; sessions gate disabled arrows through it.
 - `@Nullable GuiItemDef navDisabled()` (package-private) - Appearance override rendered INSTEAD of this navigation item when there is no page to go to (first page for previous, last for next), or null if not declared. A disabled navigation item never fires any action.
-- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Builds the physical stack for `viewer` re-reading every appearance field of the yml section (via `SnItem.fromConfig(yml, path, viewer, phs).build()`), so placeholders resolve per viewer plus the extra locals `phs`.
+- `public ItemStack render(@Nullable Player viewer, Ph... phs)` - Builds the physical stack for `viewer` re-reading every appearance field of the yml section (via `SnItem.fromConfig(yml, path, viewer, phs)`), so placeholders resolve per viewer plus the extra locals `phs`. Delegates to the skin-hook overload with a null hook.
+- `ItemStack render(@Nullable Player viewer, @Nullable Consumer<String> skinRefresh, Ph... phs)` (package-private, 1.6) - Render variant that threads a skin-refresh hook into the built `SnItem` (`item.skinRefresh(skinRefresh)`): when the item carries an unresolved `skull-owner`, `skinRefresh` receives the owner so the caller (the `GuiSession`) can schedule the off-thread fetch and re-render. A null hook is the plain `render(Player, Ph...)`.
 
 ### GuiDef
 `src/main/java/com/sn/lib/gui/GuiDef.java`
@@ -2386,6 +2446,7 @@ ONE viewer's live GUI: each viewer has their session with their OWN inventory, O
 - Recreation (`recreate(Component title)`): sets `transitioningPage = true`, creates the new inventory with the SAME holder, re-renders, re-opens to the viewer and lowers the flag in a `finally`; the guard prevents the swap's `InventoryCloseEvent` from tearing the session down.
 - `createInventory`: tries the declared `inventory-type`; on `Throwable` it WARNs once per session (`typeWarned`) "[gui <id>] inventory-type <X> could not be created (<t>); using CHEST" and falls to a `rows * 9` chest.
 - Render (`renderContents`): clears the inventory and renders in three phases with precedence: declared items (skipping slots taken by binds or the paginated bind), then the paginated bind's current page (skipping slots with a manual bind, clamping `page` to the total), then the manual binds. Each definition's view requirement tests against the viewer's resolver (PAPI + locals); if it fails, the slot stays null.
+- Async skin hook (1.6, `skinHook`): every render path - `renderItem` (declared item into all its slots), `renderPagedSlot` (one paged entry, refactored out of the old `renderPaged` loop) and `renderBinding` (a manual bind) - passes the `GuiItemDef.render(viewer, skinRefresh, phs)` overload a hook `owner -> SkinResolver.request(ctx, owner, reRender)`. On an unresolved `skull-owner` head the resolver fetches the texture off-thread and, when it lands on the main thread, runs the matching guarded re-render: `reRenderItem` (skips if closed or the inventory changed), `reRenderPagedSlot(atPage, index)` (skips if closed, the page changed, or the bind is gone) or `reRenderBinding(slot, binding)` (skips if closed or the slot was re-bound). So an offline head pops its skin in without a full-menu refresh.
 - Anti-theft marker (`stamp`): every rendered stack stamps via `TagIo.set(stack, ctx.plugin(), GuiManager.ITEM_TAG, def.id() + ":" + slot)` (PDC key `snlib_gui_item`, namespaced by owning plugin, payload `"<guiId>:<slot>"`).
 - Timers (`startTimers`): if the menu `update-interval` > 0 it starts a menu timer; for each item with `update-interval` > 0 it starts an item timer. Both ticks first check `closed`, and if the viewer is no longer viewing the inventory they close the session (self-cleanup). The menu tick calls `refreshMenu()`: it re-evaluates the title (and thus recreates the inventory preserving session, page and binds when it changed); the item tick re-renders only that item.
 - Clicks (`runClick`): the single funnel for declared items, manual binds and paginated entries. Strict-clicks gate FIRST: with `strict-clicks: true`, a click outside the 4 basic mouse clicks with no declared specific list covering it (`GuiItemDef.basicClick` + `specificActionsFor`) is discarded BEFORE the requirement test, with a debug note: neither the click actions nor the deny actions run (the listener already cancelled the event). `middle-click-actions` enables MIDDLE and a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE (a vanilla double click is two lefts; deliberate); NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND and UNKNOWN have no possible specific list and stay always discarded in strict. With strict false (default) behavior is identical to v1.0.0. Past the gate, it builds an `ActionContext(viewer, ctx, this, click, phs)` (the surfaceless compat overload: GUI clicks have no `ClickSurface`) and runs `clickActionsFor(click)` if `clickRequirementFor(click)` passes, or `denyActionsFor(click)` if not, via `ctx.actions().run` (specific-over-generic resolution field by field).
@@ -2393,7 +2454,7 @@ ONE viewer's live GUI: each viewer has their session with their OWN inventory, O
 
 #### Notes and gotchas
 - The "native" close covers all paths: quit/kick (QuitCleanupListener -> `GuiManager.closeSessionsOf`), reload (`GuiManager.reload()` -> `closeAll()`), consumer disable (`TenantRegistry` sweep with the `GuiSession::close` callback) and manual client close (`handleClose` via the click listener). In all of them, timers cancelled and registries clean. Only the `handleClose` path (natural close or `[close]`) fires `close-sound`/`close-actions`: the programmatic paths mark `closed` before force-closing and are excluded by design (running actions during shutdown is dangerous).
-- `renderPaged` clears and repopulates `pagedPhs` on every render, so the locals `handleClick` sees always correspond to the current page.
+- `renderPaged` clears `pagedPhs` and repopulates it per slot (each `renderPagedSlot` puts the resolved locals or removes the entry for an empty slot), so the locals `handleClick` sees always correspond to the current page - and a single async skin re-render of one slot keeps the rest intact.
 
 ### GuiTemplate
 `src/main/java/com/sn/lib/gui/GuiTemplate.java`
@@ -2468,7 +2529,7 @@ Static: `private static volatile boolean reactiveSweep` - opt-in toggle of the r
 
 ## 13. Commands
 
-Command module of the consumer context, reached via `sn.commands()`. It provides a fluent root/subcommand tree builder (`SnCommands` -> `RootBuilder` -> `SubCommandBuilder`) that materializes into a Bukkit `RootCommand` with permission check first, argument count validation against the generated usage, typed parsing per `Arg` and generated paginated help with `Page`. Every root injects the `reload` and `help` subcommands by default (and `debug` if the spec declared it), replaceable or omittable with `withoutDefaults()`. Registration against Bukkit is done by `internal/BukkitCommandRegistry` with `Plugin` ownership (reload-safe, tenant sweep when the consumer disables) and client tree refresh via `updateCommands()`. The library itself registers its diagnostic `/snlib` command through this same path (`internal/SnLibCommand`). All execution and tab-complete run on the server's main thread (standard Bukkit dispatch).
+Command module of the consumer context, reached via `sn.commands()`. It provides a fluent root/subcommand tree builder (`SnCommands` -> `RootBuilder` -> `SubCommandBuilder`) that materializes into a Bukkit `RootCommand` with permission check first, argument count validation against the generated usage, typed parsing per `Arg` and generated paginated help with `Page`. Subcommands NEST (1.6): a subcommand that owns children (declared through `SubCommandBuilder.sub(name, spec)`) is a GROUP that dispatches on the next token (`/clan admin disband <clan>`); a childless subcommand is a LEAF that parses its positional args. Every root injects the `reload` and `help` subcommands by default (and `debug` if the spec declared it), replaceable or omittable with `withoutDefaults()`; a bare-root invocation runs the optional `onEmpty` hook or, without one, the generated help. Registration against Bukkit is done by `internal/BukkitCommandRegistry` with `Plugin` ownership (reload-safe, tenant sweep when the consumer disables) and client tree refresh via `updateCommands()`. The library itself registers its diagnostic `/snlib` command through this same path (`internal/SnLibCommand`). All execution and tab-complete run on the server's main thread (standard Bukkit dispatch).
 
 ### SnCommands
 `src/main/java/com/sn/lib/command/SnCommands.java`
@@ -2494,20 +2555,31 @@ Builder of a root tree.
 - `public RootBuilder description(String description)` - root description (null normalizes to "").
 - `public SubCommandBuilder sub(String name)` - starts a subcommand; closed with `SubCommandBuilder.and()`. Validates a non-empty name.
 - `public RootBuilder withoutDefaults()` - omits the `reload` and `help` defaults. The consumer MUST then provide its own reload and help: sn-core declares them mandatory in every root.
+- `public RootBuilder onEmpty(Consumer<RootContext> action)` (1.6) - action invoked when the root runs with ZERO arguments, replacing the default generated-help fallback. The handle (`RootContext`) can still trigger that help via `RootContext.help()` (for example after printing a banner). Without a hook the bare root prints the generated help. Non-null (`Objects.requireNonNull`).
 - `public RootCommand register()` - builds the tree, injects the applicable defaults, binds the alias supplier to the built root (`BukkitCommandRegistry.bindAliasSupplier`, 1.5.0) and registers it against Bukkit; returns the `RootCommand`.
 
 **Notes and gotchas**
 - The root name normalizes with trim + lowercase in the builder constructor.
 - `debug` is NOT disabled by `withoutDefaults()`: its only switch is whether the context's spec declared `debugCommand()`.
 
+#### RootContext (public class, v1.6)
+`src/main/java/com/sn/lib/command/RootContext.java`
+
+Handle passed to the bare-root `onEmpty` hook: the invoking sender plus the ability to render the generated help, so a hook can print its own banner and still fall through to the standard help.
+
+- `public CommandSender sender()` - the sender that ran the bare root command.
+- `public void help()` - renders page 1 of the generated help (the default bare-root behavior).
+- `public void help(int page)` - renders the given 1-based page of the generated help.
+
 ### RootCommand
 `src/main/java/com/sn/lib/command/RootCommand.java`
 
-Root of a command tree; extends `org.bukkit.command.Command` and implements `Registrable` (reload module). It dispatches to its subcommands with a permission check first, validates the argument count against the generated usage, parses typed via each `Arg` and generates the help. Permission inheritance: a subcommand without its own permission inherits the root's; a root without a permission is public. Tab-complete and the generated help list ONLY subcommands that are visible AND whose effective permission the sender has. Messages resolve through the context's lang module if declared; without lang the default `snlib.*` templates embedded in the library render.
+Root of a command tree; extends `org.bukkit.command.Command` and implements `Registrable` (reload module). It dispatches to its subcommands with a permission check first, validates the argument count against the generated usage, parses typed via each `Arg` and generates the help. Subcommands NEST (1.6): a subcommand that owns children is a GROUP that dispatches on the next token among its children (with child aliases), a childless subcommand is a LEAF that parses its positional args; groups nest arbitrarily. Permission chain: each node may carry its own permission and a node without one inherits the nearest ancestor's (a group's, or ultimately the root's); the effective check enforced as the tree is descended is EVERY permission on the path from the root down to the leaf. Leaf usage strings and the generated help render the FULL path, and the help lists one entry per reachable LEAF (groups flattened) rather than one per group. Tab-complete and the generated help list ONLY nodes that are visible AND whose permission chain the sender holds. Messages resolve through the context's lang module if declared; without lang the default `snlib.*` templates embedded in the library render. The pure resolution (`resolve`) and tab (`tab`) are static and Bukkit-context-independent, covered by `NestedCommandTest`.
 
 Constants (private, but they define the observable contract):
-- `DEFAULT_MESSAGES` - static map of default templates mirroring `snlib-messages.yml` (server-wide static justified by being constant). Keys: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry`, `snlib.help.footer`.
+- `DEFAULT_MESSAGES` - static map of default templates mirroring `snlib-messages.yml` (server-wide static justified by being constant). Keys: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry` (default `&e{usage} &7{description}`, no `&8:` separator since 1.6), `snlib.help.footer`.
 - `HELP_PAGE_SIZE = 10` - entries per page of the generated help.
+- Constructor takes an extra `@Nullable Consumer<RootContext> onEmpty` (1.6) after the defaults/debug flags.
 
 Public methods:
 - `public JavaPlugin owner()` - consumer plugin owning this tree.
@@ -2517,40 +2589,43 @@ Public methods:
 - `public List<String> tabComplete(CommandSender sender, String alias, String[] args)` - permission-gated tab (see internal logic).
 
 **Internal logic (execute)**
-1. Root permission: without permission the sender receives `snlib.no-permission` and it stops.
-2. No arguments: sends the help (page 1).
-3. Resolves the subcommand by name or alias (lowercase); unknown -> `snlib.unknown-subcommand` with `{value}`.
-4. The sub's effective permission (its own or the root's inherited one); without it -> `snlib.no-permission`.
-5. If `subArgs.length < requiredArgs` -> `snlib.usage` with `{usage}` (custom or generated usage).
-6. `when(index, predicate)` conditions: every condition whose index falls within the provided tokens evaluates over the raw token; on failure -> `snlib.usage`. A condition over an absent optional is skipped (the `at < subArgs.length` check).
-7. Typed parsing in declaration order: for each declared `Arg`, while tokens remain, it parses via the sender-aware `parse(sender, token)` (1.5.0; the default delegates to `parse(token)`) and stores in a `LinkedHashMap`. If the LAST declared arg is greedy, the token is the space-joined remainder. An `Arg.ArgParseException` sends its `langKey()` with its `phs()` and stops.
-8. No declared executor -> `snlib.usage`. The executor runs wrapped in a `Throwable` try/catch: a failure logs `SEVERE` with "Subcommand '/<root> <sub>' failed" and the stack trace, without propagating to Bukkit's dispatcher.
+`execute` calls the static `resolve(sender, rootPermission, subs, rootPath, args)` and switches on its `Resolution`:
+1. Root permission: without it, `resolve` returns `Message("snlib.no-permission")`.
+2. Zero arguments: `resolve` returns `Empty`; `execute` runs the `onEmpty` hook (1.6) with a `RootContext(sender, page -> sendHelp(sender, page))` - a failure logs `SEVERE` "Bare-root handler of '/<root>' failed" - or, without a hook, sends the help (page 1).
+3. `resolve` finds the first-token node by name or alias (lowercase); unknown -> `Message("snlib.unknown-subcommand", {value})`. Then it recurses through `dispatch(sender, sub, args, matchedAt, path)`:
+   - Node permission gate (its own; the chain is enforced node by node as the tree descends) -> `snlib.no-permission` on failure.
+   - GROUP (has children): with no next token -> `snlib.usage` with the group usage `/path <childA|childB>` (only the children the sender may use); an unknown next token -> `snlib.unknown-subcommand` with the full path; otherwise recurse into the matched child.
+   - LEAF: `subArgs = args` after the matched token. `subArgs.length < requiredArgs` -> `snlib.usage` with the full-path `{usage}`. `when(index, predicate)` conditions over the raw token (an absent optional is skipped) -> `snlib.usage` on failure. Typed parsing in declaration order via the sender-aware `parse(sender, token)` (1.5.0), the LAST arg greedy joining the remainder; an `Arg.ArgParseException` yields `Message(e.langKey(), e.phs())`. No executor -> `snlib.usage`. Otherwise `Run(sub, context, path)`.
+4. `execute` runs a `Run`'s executor wrapped in a `Throwable` try/catch: a failure logs `SEVERE` with "Subcommand '<full path>' failed" and the stack trace, without propagating to Bukkit's dispatcher.
 
 **Internal logic (tabComplete)**
+Delegates to the static `tab(sender, rootPermission, subs, args)`:
 - Without the root permission it returns an empty list (the sender sees NOTHING of the tree).
-- With `args.length <= 1`: names of visible subcommands whose effective permission the sender has, filtered by prefix and sorted.
-- For arguments: the sub's permission gate again; `argIndex = args.length - 2`; if the index exceeds the declared args, only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial, argName)` (1.5.0), passing the declared argument name so a free-form arg can suggest its `<argName>` hint (the internal `entryAt` returns the name/arg entry, replacing the old `argAt`). A `suggest` returning null normalizes to an empty list.
+- `tabAt` recurses: at group depth it suggests the visible child names whose permission the sender holds, filtered by prefix and sorted (`suggestNames`); descending into a group re-checks that group's permission. At leaf depth (`tabLeaf`) it completes the positional arg: if the index exceeds the declared args only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial, argName)` (1.5.0), passing the declared name so a free-form arg suggests its `<argName>` hint. A `suggest` returning null normalizes to an empty list.
 
 **Internal logic (generated help)**
-Header `snlib.help.header` (placeholder `{plugin}`, the plugin name), one `snlib.help.entry` per visible and permitted subcommand (placeholders `{usage}`, `{description}` and `{permission}`, the latter empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
+Header `snlib.help.header` (placeholder `{plugin}`), then `collectHelp` FLATTENS the tree into one `HelpLine` per reachable LEAF: a node hidden or whose own permission the sender lacks (and its subtree) is skipped, a group recurses into its children, a leaf yields its full-path usage, description and effective permission (`inheritedPermission` narrowed by each node's own permission on the path). Each line renders `snlib.help.entry` (placeholders `{usage}`, `{description}`, `{permission}` - empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
 
 **Notes and gotchas**
 - Defaults inject in the constructor only if no sub with that name or alias already exists (`hasSub`): a consumer's sub named `reload`/`help`/`debug` replaces the default.
-- The defaults' base permission is `<lowercased-plugin-name>.admin.` + `reload`/`debug`. The default `help` has no permission of its own (it inherits the root's if any).
+- The defaults' base permission is `<lowercased-plugin-name>.admin.` + `reload`/`debug` (the `<plugin>.admin.<sub>` convention). The default `help` has no permission of its own (it inherits the root's if any).
 - Extra tokens beyond the declared args are silently ignored (except a final greedy which consumes them).
 - Only factory args (`Args.SnArg`) can be greedy: `isGreedy` does an instanceof of `Args.SnArg` and queries `greedy()`.
-- The generated usage has the form `/root sub <required> [optional]`, with `...` appended to the last arg's name if greedy.
+- The generated usage renders the FULL path: `/root group leaf <required> [optional]`, with `...` appended to the last arg's name if greedy; a group's usage is `/root group <childA|childB>`.
+- `resolve` returns a sealed `Resolution` (`Empty`, `Message`, `Run`), so the outcome is decided independently of the Bukkit context and unit-tested without a server (`NestedCommandTest`).
 
 #### RootCommand.Condition (package-private record)
 `record Condition(int index, Predicate<String> test)` - declarative condition over the raw token at `index`, created by `SubCommandBuilder.when(int, Predicate)`; a failing token rejects the invocation with the usage message BEFORE any typed parsing.
 
 #### RootCommand.Sub (package-private class)
-Immutable subcommand node built by `SubCommandBuilder`: `name` (trim + lowercase), `aliases` (lowercased, immutable copy), nullable `permission`, nullable `usage`, `description`, `visible`, `args` (immutable `LinkedHashMap`, declaration order is parse order), `requiredArgs`, `conditions`, nullable `executor`. `static Sub of(String name, @Nullable String permission, String description, Consumer<CommandContext> executor)` fabricates the default subs (argless, visible).
+Immutable subcommand node built by `SubCommandBuilder`: `name` (trim + lowercase), `aliases` (lowercased, immutable copy), nullable `permission`, nullable `usage`, `description`, `visible`, `args` (immutable `LinkedHashMap`, declaration order is parse order), `requiredArgs`, `conditions`, nullable `executor`, and `children` (1.6, immutable copy; a non-empty list makes the node a GROUP that dispatches instead of running its args/executor). `static Sub of(String name, @Nullable String permission, String description, Consumer<CommandContext> executor)` fabricates the default subs (argless, visible, no children).
+
+The `execute` outcome is a sealed `Resolution permits Empty, Message, Run` (1.6): `Empty` (zero args, the `onEmpty` hook or help applies), `Message(key, phs)` (a lang key to send), `Run(sub, context, path)` (the resolved leaf ready to run). `HelpLine(usage, description, permission)` is the flattened help record.
 
 ### SubCommandBuilder
 `src/main/java/com/sn/lib/command/SubCommandBuilder.java`
 
-Builder of a subcommand within an `SnCommands.RootBuilder` chain; `and()` returns to the root builder to declare the next subcommand or register the tree.
+Builder of a subcommand within an `SnCommands.RootBuilder` chain; `and()` returns to the root builder to declare the next subcommand or register the tree. A subcommand may own children (1.6), turning it into a GROUP that dispatches on the next token; a node that owns children is a group, so its own `arg`/`when`/`executes` are unused at runtime (declare those on the leaf children).
 
 - `public SubCommandBuilder aliases(String... aliases)` - adds aliases (trim + lowercase).
 - `public SubCommandBuilder permission(String permission)` - its own permission; without one it inherits the root's.
@@ -2561,11 +2636,13 @@ Builder of a subcommand within an `SnCommands.RootBuilder` chain; `and()` return
 - `public SubCommandBuilder argOptional(String name, Arg<?> arg)` - declares an OPTIONAL trailing positional argument: it suggests and parses when the token is present but its absence never rejects the invocation. Optionals go last.
 - `public SubCommandBuilder when(int index, Predicate<String> condition)` - declarative condition over the raw token at `index` (0-based among the subcommand's arguments); a failing token rejects with the usage before typed parsing. A negative index throws `IllegalArgumentException`.
 - `public SubCommandBuilder executes(Consumer<CommandContext> executor)` - handler that runs once permission, argument count, conditions and typed parsing have all passed.
-- `public SnCommands.RootBuilder and()` - returns to the root builder.
+- `public SubCommandBuilder sub(String name, Consumer<SubCommandBuilder> spec)` (1.6) - declares a child nested under this one, turning this node into a GROUP: at runtime it dispatches on the next token among its children. The `spec` configures the child through this same builder API (arguments, permission, `executes`, or further nested `sub(...)` children). Returns THIS builder (so more children, or `and()` on a top-level group, can follow); the child is NOT part of the fluent chain, so it uses no `and()`. Validates a non-empty name and a non-null spec.
+- `public SnCommands.RootBuilder and()` - returns to the root builder. Throws `IllegalStateException` on a nested child (`parent == null`): a child declared through `sub(name, spec)` is closed by its spec block, not by `and()`.
 
 **Notes and gotchas**
 - `requiredArgs` counts only the `arg(...)` calls; `argOptional` does not increment the counter, so the minimum count check never demands them.
 - An absent optional does NOT land in the value map: `CommandContext.get(name)` on it throws `IllegalArgumentException`. For optionals it is better to check presence with `context.raw(index)` before reading.
+- A group's own `arg`/`when`/`executes` are ignored at runtime (`dispatch` short-circuits on a non-empty `children`); put positional args and executors on the leaf children.
 
 ### Args
 `src/main/java/com/sn/lib/command/Args.java`
@@ -3825,3 +3902,55 @@ Unrelated to the Velocity base, tracked for a future release:
 - `SnYml` has player-aware `getString`/`getStringList` only; numeric/boolean getters have no viewer
   overload.
 - `DiscordWebhook` and `UpdateChecker` expose no completion future (fire-and-forget).
+
+---
+## 20. Warmup teleports (v1.6)
+
+Package `com.sn.lib.teleport`: an OPT-IN warmup teleport module reached via `sn.teleports()` (declared with `SnSpec.builder().teleports()`). It solves the warmup teleport every `/home` `/warp` `/rally` re-implements: one pending teleport per player (dedup), a warmup message, cancel on movement and on damage, an optional cooldown category shared with `sn.cooldowns()`, and a Folia-safe completion through `Player#teleportAsync`. Cancellation is driven by two shared listeners (`internal/TeleportMoveListener`, `internal/TeleportDamageListener`) registered ONCE by the SnLib bootstrap via ListenerHub; they only ever act for owners that declared the module (no declared module, no manager, nothing runs). Main-thread only for `request`.
+
+### Teleports
+`src/main/java/com/sn/lib/teleport/Teleports.java`
+
+Warmup teleport module of one context. A per-plugin instance registers in the static `TenantRegistry<Teleports> MANAGERS` (the two shared listeners resolve every manager with a pending teleport, and the sweep callback is the double safety net) and hooks `QuitCleanupListener`; per-plugin state (the `ConcurrentHashMap<UUID, PendingTeleport> pendings`) lives inside the instance. A static `DEFAULT_MESSAGES` map mirrors the three `snlib.teleport.*` keys for when the lang module is absent.
+
+- `public Teleports(Sn ctx)` - wires the module: tenant registration plus quit cleanup.
+- `public TeleportResult request(Player player, Location target)` - convenience overload with `TeleportOptions.instant()` (no warmup, no cooldown): a plain immediate teleport that still flows through the bookkeeping.
+- `public TeleportResult request(Player player, Location target, TeleportOptions opts)` - main entry. Null player/target or an unloaded target world -> `FAILED`; a null `opts` becomes `instant()`. The target is `clone()`d. Computes `alreadyPending`, `onCooldown` (only when not already pending and the options' category still has `remainingMillis > 0`) and delegates the decision to `evaluate`, then acts: `TELEPORTED` -> immediate `performTeleport`, `WARMUP_STARTED` -> `startWarmup`, the three rejections have no side effect (the caller messages). Returns the `TeleportResult`.
+- `static TeleportResult evaluate(boolean alreadyPending, boolean onCooldown, int warmupSeconds)` - pure state machine in priority order: dedup (`ALREADY_PENDING`) wins over cooldown (`ON_COOLDOWN`), and a zero warmup means `TELEPORTED`, else `WARMUP_STARTED`. Extracted for unit coverage (`TeleportStateMachineTest`).
+- `public boolean isPending(Player)` / `isPending(UUID)` - whether the player has a pending (warming-up) teleport of THIS context.
+- `public boolean cancel(Player)` / `cancel(UUID)` - cancels the pending teleport WITHOUT sending a message; returns whether one was pending. Idempotent (a no-op when nothing is pending).
+- `public void shutdown()` - cancels every warmup task (each guarded, the scheduler may be dying) and clears the map; idempotent, runs no `onComplete`. Invoked by the context teardown (step 4 of `Sn.shutdown()`) and by the tenant sweep.
+- `public static void dispatchMove(Player)` / `dispatchDamage(Player)` - internal bridges for the shared listeners: cancel the player's pending teleport in EVERY declared manager with the move/damage message. Not part of the consumer contract.
+
+**Internal logic**
+- `startWarmup` puts the `PendingTeleport` (main-thread only, so the `containsKey` check in `request` and this put form a stable dedup), schedules `complete(id)` at `opts.warmupTicks()` via `ctx.scheduler().syncLater`, and sends the warmup message with `{time}`.
+- `complete` removes the pending entry, re-checks the player is online and calls `performTeleport`.
+- `performTeleport` arms the cooldown category (when set and `cooldownSeconds > 0`) via `ctx.cooldowns().tryUseTicks`, then `player.teleportAsync(target)` and, on completion, runs the `onComplete` callback only through the `shouldRunOnComplete` gate.
+- `static boolean shouldRunOnComplete(@Nullable Consumer<Player> onComplete, @Nullable Boolean success)` - pure gate: the callback runs only after a genuinely successful teleport (`success == Boolean.TRUE`), never a vetoed one (`false`) nor an exceptional one (`null`). Covered by `TeleportCompletionGateTest`. `runOnComplete` hops to the main thread (`ctx.scheduler().sync`), re-resolves the online player and swallows a throwing callback with a WARN.
+- `cancelPending(id, move)` removes the entry, stops the task and sends the move or damage cancel message (unless silent). `onQuit` delegates to `cancel` (idempotent since a kick fires kick and quit).
+- `PendingTeleport` (private): the cloned target, its options and a volatile `TaskHandle`; `stopTask` nulls and cancels it under a Throwable catch (the scheduler may be dying during teardown).
+
+### TeleportOptions
+`src/main/java/com/sn/lib/teleport/TeleportOptions.java`
+
+Immutable per-request configuration, built via `builder()` (reusable: `build()` snapshots) or the shortcuts `instant()` (shared no-warmup singleton) and `warmup(int seconds)`. Message keys resolve against the requesting context's lang module when declared, else the embedded English defaults.
+
+- Constants: `DEFAULT_WARMUP_KEY = "snlib.teleport.warmup"` (carries `{time}`), `DEFAULT_CANCELLED_MOVE_KEY = "snlib.teleport.cancelled-move"`, `DEFAULT_CANCELLED_DAMAGE_KEY = "snlib.teleport.cancelled-damage"`.
+- `public int warmupSeconds()` (clamped `>= 0`; 0 = instant) / `public long warmupTicks()` (`warmupSeconds * 20`).
+- `public @Nullable String cooldownCategory()` / `public int cooldownSeconds()` (clamped `>= 0`, ignored when the category is null).
+- `public String warmupKey()` / `cancelledMoveKey()` / `cancelledDamageKey()` / `public boolean silent()` / `public @Nullable Consumer<Player> onComplete()`.
+- Builder: `warmupSeconds(int)`, `cooldown(String category, int seconds)` (arms the category on completion AND rejects a request while it runs; shared with `sn.cooldowns()`), `warmupKey`/`cancelledMoveKey`/`cancelledDamageKey` (null-safe overrides), `silent(boolean)`, `onComplete(@Nullable Consumer<Player>)`, `build()`. Covered by `TeleportOptionsTest`.
+
+### TeleportResult
+`src/main/java/com/sn/lib/teleport/TeleportResult.java`
+
+Enum outcome of `request`; the module never throws for a rejected request. Values: `WARMUP_STARTED` (warmup message sent, teleport pending), `TELEPORTED` (`warmupSeconds == 0`, dispatched immediately), `ALREADY_PENDING` (dedup: a second request while one is pending, never double-scheduled), `ON_COOLDOWN` (the options' category is still running; query `sn.cooldowns().remainingMillis(uuid, category)`), `FAILED` (null player/target or unloaded target world). `accepted()` is true for `WARMUP_STARTED`/`TELEPORTED`; `rejected()` is its complement.
+
+### TeleportMoveListener / TeleportDamageListener (internal)
+`src/main/java/com/sn/lib/teleport/internal/`
+
+Single shared listeners owned by SnLib (inscribed in ListenerHub, never self-registering), both at `EventPriority.MONITOR` with `ignoreCancelled = true`.
+- `TeleportMoveListener.onMove(PlayerMoveEvent)` - hot-path contract: `blockUnchanged(from, to)` quick-exits before any work when the destination is null or the move keeps the player in the same block (head rotation or sub-block movement, the overwhelming majority), so only an actual block-position change reaches `Teleports.dispatchMove`. `public static boolean sameBlock(int, int, int, int, int, int)` is the pure integer compare, covered by `TeleportMoveDeltaTest`.
+- `TeleportDamageListener.onDamage(EntityDamageEvent)` - non-player entities quick-exit, then `Teleports.dispatchDamage(player)` cancels the damaged player's pending teleport across every declared manager.
+
+The ListenerHub enumeration grows from 14 to 16 listeners (the move and damage teleport listeners), still registered once at bootstrap.

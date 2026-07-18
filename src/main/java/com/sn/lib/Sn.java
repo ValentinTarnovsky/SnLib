@@ -24,6 +24,7 @@ import com.sn.lib.papi.SnPapi;
 import com.sn.lib.region.SelectionManager;
 import com.sn.lib.reload.ReloadManager;
 import com.sn.lib.scheduler.SnScheduler;
+import com.sn.lib.teleport.Teleports;
 import com.sn.lib.tenant.TenantRegistry;
 import com.sn.lib.update.UpdateChecker;
 import com.sn.lib.yml.YmlManager;
@@ -64,6 +65,7 @@ public final class Sn {
     private final UpdateChecker updates;
     private final ItemRegistry items;
     private final SelectionManager selections;
+    private final Teleports teleports;
     private final GuiManager guis;
     private final SnDb db;
     private final SnCommands commands;
@@ -104,6 +106,7 @@ public final class Sn {
             }
         }
         this.selections = new SelectionManager(this);
+        this.teleports = spec.teleports() ? new Teleports(this) : null;
         this.guis = spec.guis() ? new GuiManager(this) : null;
         if (guis != null) {
             guis.load();
@@ -282,6 +285,22 @@ public final class Sn {
     }
 
     /**
+     * Warmup teleport module of the owning plugin: one pending teleport per player (dedup),
+     * a warmup message, cancel on move and on damage, an optional cooldown category shared
+     * with {@code cooldowns()} and a Folia-safe completion.
+     *
+     * @throws UnsupportedOperationException if the spec did not declare the teleports
+     *         module via {@code SnSpec.builder().teleports()}
+     */
+    public Teleports teleports() {
+        if (teleports == null) {
+            throw new UnsupportedOperationException(
+                    "teleports module not declared: missing SnSpec.builder().teleports()");
+        }
+        return teleports;
+    }
+
+    /**
      * GUI module of the owning plugin: the {@code guis/} folder with one GUI per file,
      * one session and inventory per viewer, and opt-in pagination per menu.
      *
@@ -365,6 +384,9 @@ public final class Sn {
         // 4. Only now cancel every remaining task of the owning plugin.
         items.cancelTasks();
         selections.shutdown();
+        if (teleports != null) {
+            teleports.shutdown();
+        }
         scheduler.cancelAll();
         // 5. Locked items: put the displaced real equipment back; the write-through
         //    store persists synchronously through the shuttingDown flag.

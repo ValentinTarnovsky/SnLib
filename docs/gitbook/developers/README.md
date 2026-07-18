@@ -87,6 +87,7 @@ Some modules (utils, selections) are always available with no spec gate.
 | [Bossbars, holograms, cron, leaderboards, Discord](modules/bossbars-holograms-cron-leaderboards-discord.md) | Adventure bossbars, TextDisplay holograms, a cron scheduler, snapshot leaderboards and a webhook sender. |
 | [Update checker](modules/update-checker.md) | Notify-only GitHub release checking for the consumer's own repo; never downloads or swaps anything. |
 | [Region selection](modules/region-selection.md) | Visual cuboid wand selections for any consumer, with an immutable `Cuboid` type. |
+| [Warmup teleports](modules/teleports.md) | Opt-in warmup teleports: one pending per player, cancel on move and damage, an optional shared cooldown and a Folia-safe completion. |
 | [Velocity base](modules/velocity-base.md) | The proxy-side counterpart: `Snv` context, managed config, scheduler and commands, sharing the same text pipeline as Paper. |
 
 For the administrator-facing view of what these modules produce (config files,

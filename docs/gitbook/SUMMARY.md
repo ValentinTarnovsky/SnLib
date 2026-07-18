@@ -35,6 +35,7 @@
   * [Bossbars, Holograms, Cron, Leaderboards, Discord](developers/modules/bossbars-holograms-cron-leaderboards-discord.md)
   * [Update Checker](developers/modules/update-checker.md)
   * [Region Selection](developers/modules/region-selection.md)
+  * [Warmup Teleports](developers/modules/teleports.md)
   * [Velocity Base](developers/modules/velocity-base.md)
 * [Compatibility and Versioning](developers/compatibility-and-versioning.md)
 * [Threading Model](developers/threading-model.md)

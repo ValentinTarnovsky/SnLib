@@ -390,6 +390,20 @@ public final class GuiItemDef {
      * the yml section so placeholders resolve per viewer plus the extra locals {@code phs}.
      */
     public ItemStack render(@Nullable Player viewer, Ph... phs) {
-        return SnItem.fromConfig(yml, path, viewer, phs).build();
+        return render(viewer, (Consumer<String>) null, phs);
+    }
+
+    /**
+     * Render variant that threads a skin-refresh hook into the built {@link SnItem}: when
+     * the item carries an unresolved {@code skull-owner}, {@code skinRefresh} is invoked
+     * with the owner so the caller can schedule the off-thread fetch and re-render. A null
+     * hook is the plain {@link #render(Player, Ph...)}.
+     */
+    ItemStack render(@Nullable Player viewer, @Nullable Consumer<String> skinRefresh, Ph... phs) {
+        SnItem item = SnItem.fromConfig(yml, path, viewer, phs);
+        if (skinRefresh != null) {
+            item.skinRefresh(skinRefresh);
+        }
+        return item.build();
     }
 }

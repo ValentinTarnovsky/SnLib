@@ -25,9 +25,16 @@ snlib:
     header: "&8&m----------&r &e&l{plugin} &8&m----------"
     # One line per subcommand visible to the sender; {usage} is its syntax, {description} its
     # description and {permission} its permission node.
-    entry: "&e{usage}&8: &7{description}"
+    entry: "&e{usage} &7{description}"
     # Printed after the entries only when the help spans several pages; {command} is the root command name.
     footer: "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"
+  teleport:
+    # Sent when a warmup teleport starts. Placeholder: {time} is the warmup in seconds.
+    warmup: "&7Teleporting in &e{time}&7. Do not move."
+    # Sent when a pending teleport is cancelled because the player moved.
+    cancelled-move: "&cTeleport cancelled - you moved."
+    # Sent when a pending teleport is cancelled because the player took damage.
+    cancelled-damage: "&cTeleport cancelled - you took damage."
   selection:
     # Sent when a selection wand sets position 1. Placeholders: {x} {y} {z} {world}
     pos1-set: "&aPos1 set: &f{x}, {y}, {z} &7({world})"

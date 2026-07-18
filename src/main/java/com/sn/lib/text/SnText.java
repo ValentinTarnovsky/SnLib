@@ -10,6 +10,10 @@ import java.util.function.Function;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import com.sn.lib.Ph;
 
@@ -38,6 +42,31 @@ public final class SnText {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
+    /**
+     * Cosmetic-only MiniMessage: colors, decorations, gradient, rainbow and reset are the
+     * ONLY resolved tags. Interactive and metadata tags (click, hover, insertion, font,
+     * keybind, translatable, selector, ...) are not resolved, so they never fire from
+     * player-supplied text and render as inert literal text instead.
+     */
+    private static final MiniMessage COSMETIC = MiniMessage.builder()
+            .tags(TagResolver.builder()
+                    .resolver(StandardTags.color())
+                    .resolver(StandardTags.decorations())
+                    .resolver(StandardTags.gradient())
+                    .resolver(StandardTags.rainbow())
+                    .resolver(StandardTags.reset())
+                    .build())
+            .build();
+
+    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
+
+    /** Full legacy serializer: hex colors emitted in the {@code §x§R§R...} bungee form. */
+    private static final LegacyComponentSerializer LEGACY_SECTION = LegacyComponentSerializer.builder()
+            .character(LegacyComponentSerializer.SECTION_CHAR)
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .build();
+
     private static final String CENTER_TAG = "[center]";
     private static final String RGB_TAG = "[rgb]";
     private static final String SMALL_TAG = "[small]";
@@ -57,20 +86,78 @@ public final class SnText {
     }
 
     /**
-     * Full render: {@code [small]}/{@code [rgb]}/{@code [center]} prefix tags, then legacy
-     * code conversion, then MiniMessage deserialization. Null input renders as the empty
-     * component.
+     * Full render: section-sign safety, then {@code [small]}/{@code [rgb]}/{@code [center]}
+     * prefix tags, then legacy code conversion, then MiniMessage deserialization. Null input
+     * renders as the empty component.
+     *
+     * <p>Section safety is the FIRST step: any {@code §} code (a simple {@code §X} or the
+     * {@code §x§R§R§G§G§B§B} bungee-hex form) is normalized back to the {@code &} form the
+     * pipeline understands. MiniMessage 4.25 hard-rejects a raw section sign in its input,
+     * so a pre-rendered or PAPI-expanded value carrying {@code §} would otherwise crash the
+     * whole render; this normalization makes {@code §} content render like its {@code &}
+     * equivalent. A {@code §}-free input is passed through untouched and renders exactly as
+     * before.</p>
      */
     public static Component color(String s) {
         if (s == null) {
             return Component.empty();
         }
-        return MINI.deserialize(legacyToMini(consumeCenterMark(applyPrefixTags(s))));
+        return MINI.deserialize(legacyToMini(consumeCenterMark(applyPrefixTags(normalizeSectionSigns(s)))));
     }
 
     /** MiniMessage-only render, no prefix tags and no legacy conversion. */
     public static Component mini(String s) {
         return s == null ? Component.empty() : MINI.deserialize(s);
+    }
+
+    /**
+     * Same pipeline as {@link #color(String)} but only the COSMETIC MiniMessage subset is
+     * honored: colors, decorations, gradient, rainbow and reset. Interactive and metadata
+     * tags (click, hover, insertion, font, keybind, translatable, selector, ...) are left
+     * unresolved and render as inert literal text, so this is the safe render for
+     * player-supplied styled text vetted through {@link StylePolicy}. Null input renders as
+     * the empty component.
+     */
+    public static Component cosmetic(String s) {
+        if (s == null) {
+            return Component.empty();
+        }
+        return COSMETIC.deserialize(legacyToMini(consumeCenterMark(applyPrefixTags(normalizeSectionSigns(s)))));
+    }
+
+    /**
+     * Visible text only: every form of styling (legacy {@code &}/{@code §} codes, hex,
+     * MiniMessage tags, gradients) is removed and the fully rendered glyphs are returned.
+     * Null in, null out.
+     */
+    public static String plain(String s) {
+        if (s == null) {
+            return null;
+        }
+        return PLAIN.serialize(color(s));
+    }
+
+    /** Codepoint count of {@link #plain(String)}; null and empty count as zero. */
+    public static int visibleLength(String s) {
+        if (s == null || s.isEmpty()) {
+            return 0;
+        }
+        String plain = plain(s);
+        return plain.codePointCount(0, plain.length());
+    }
+
+    /**
+     * FULL render serialized to section-sign codes: legacy, hex, MiniMessage and gradients
+     * are all resolved to a {@link Component} first (so a gradient or {@code <gradient>} tag
+     * becomes one hex code per glyph) and then serialized through
+     * {@link LegacyComponentSerializer} with hex in the {@code §x§R§R...} bungee form. For
+     * PAPI and legacy string sinks that cannot take a Component. Null in, null out.
+     */
+    public static String section(String s) {
+        if (s == null) {
+            return null;
+        }
+        return LEGACY_SECTION.serialize(color(s));
     }
 
     /**
@@ -88,9 +175,20 @@ public final class SnText {
     /**
      * Converts PlaceholderAPI output back to the {@code &} form the pipeline understands:
      * bungee hex sequences become {@code &#RRGGBB} and section-sign codes become {@code &}
-     * codes, so PAPI-colored values survive the MiniMessage conversion.
+     * codes, so PAPI-colored values survive the MiniMessage conversion. Delegates to the
+     * shared section-safety normalizer; the same conversion runs as the first step of
+     * {@link #color(String)}.
      */
     public static String normalizePapiOutput(String s) {
+        return normalizeSectionSigns(s);
+    }
+
+    /**
+     * Shared section-safety normalizer: rewrites {@code §x§R§R§G§G§B§B} bungee-hex sequences
+     * to {@code &#RRGGBB} and simple {@code §X} codes to {@code &X}. A {@code §}-free string
+     * (the common case) is returned unchanged, by identity.
+     */
+    private static String normalizeSectionSigns(String s) {
         if (s == null || s.indexOf(SECTION) < 0) {
             return s;
         }

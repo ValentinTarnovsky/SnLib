@@ -125,4 +125,8 @@ Any `%placeholder%` in a text field resolves before colors and tags are applied,
 display-name: "[rgb]&lWelcome, %player_name%!"
 ```
 
+{% hint style="info" %}
+Some PlaceholderAPI expansions return text that is already colored with section-sign (`§`) codes rather than `&` codes. That is fine: Sn plugins normalize a placeholder's `§` output back into the same coloring system before rendering, so a `%placeholder%` that comes back pre-colored displays correctly instead of breaking the line. You do not have to do anything for this to work.
+{% endhint %}
+
 See [Configuration Files](configuration-files.md) for where placeholders work and [Actions and Requirements](actions-and-requirements.md) for placeholders used inside conditions.

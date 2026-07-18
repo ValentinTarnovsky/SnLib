@@ -57,5 +57,6 @@ The practical benefit is consistency: the "no permission" message, the usage for
 | `snlib.unknown-subcommand` | The given subcommand does not exist. |
 | `snlib.reload-done` | Shown after a successful reload. |
 | `snlib.help.*` | The header, per-entry, and footer lines of generated help output. |
+| `snlib.teleport.*` | The warmup and cancelled-on-move / cancelled-on-damage lines a plugin's warmup teleports show. |
 
 Each of these lines is yours to restyle. Since they are merged in rather than hard-coded, editing them in your language file changes them everywhere that plugin uses them.

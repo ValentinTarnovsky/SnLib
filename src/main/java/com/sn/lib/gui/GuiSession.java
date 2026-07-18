@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.bukkit.Bukkit;
@@ -26,6 +27,7 @@ import com.sn.lib.Sn;
 import com.sn.lib.action.ActionContext;
 import com.sn.lib.action.PageTarget;
 import com.sn.lib.action.Requirement;
+import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.scheduler.TaskHandle;
 import com.sn.lib.tenant.internal.TenantSweeper;
 import com.sn.lib.text.SnText;
@@ -587,13 +589,24 @@ public final class GuiSession implements PageTarget {
         if (navDisabledNow(item) && item.navDisabled() != null) {
             effective = item.navDisabled();
         }
-        ItemStack prototype = passes(effective.viewRequirement()) ? effective.render(viewer) : null;
+        ItemStack prototype = passes(effective.viewRequirement())
+                ? effective.render(viewer, skinHook(() -> reRenderItem(item)))
+                : null;
         for (int slot : item.slots()) {
             if (slot >= target.getSize() || binds.containsKey(slot) || pagedSlots.contains(slot)) {
                 continue;
             }
             target.setItem(slot, prototype == null ? null : stamp(prototype.clone(), slot));
         }
+    }
+
+    /** Re-renders a declared item into its slots after an async skin fetch landed. */
+    private void reRenderItem(GuiItemDef item) {
+        Inventory current = inventory;
+        if (closed || current == null) {
+            return;
+        }
+        renderItem(current, item);
     }
 
     /** Renders the viewer's current page of the paged bind into its slots. */
@@ -611,35 +624,89 @@ public final class GuiSession implements PageTarget {
             page = total;
         }
         List<T> slice = bind.pagination().page(page);
-        int[] slots = bind.slots();
         pagedPhs.clear();
-        GuiItemDef item = bind.template().item();
-        for (int index = 0; index < slots.length; index++) {
-            int slot = slots[index];
-            if (slot < 0 || slot >= target.getSize() || binds.containsKey(slot)) {
-                continue;
-            }
-            ItemStack stack = null;
-            if (index < slice.size()) {
-                PhCollector collector = new PhCollector();
-                bind.mapper().accept(slice.get(index), collector);
-                Ph[] phs = collector.toArray();
-                if (item.viewRequirement().test(viewer, resolver(phs))) {
-                    stack = stamp(bind.template().render(viewer, phs), slot);
-                    pagedPhs.put(slot, phs);
-                }
-            }
-            target.setItem(slot, stack);
+        for (int index = 0; index < bind.slots().length; index++) {
+            renderPagedSlot(target, bind, slice, index);
         }
+    }
+
+    /**
+     * Renders one entry of the paged bind (position {@code index} of the current page's
+     * slice) into its slot, wiring the skin hook so an unresolved head re-renders that slot
+     * when the fetch lands. Slots taken by a manual bind are left alone; a short page or a
+     * failed view requirement clears the slot and its captured placeholders.
+     */
+    private <T> void renderPagedSlot(Inventory target, PagedBind<T> bind, List<T> slice, int index) {
+        int[] slots = bind.slots();
+        if (index < 0 || index >= slots.length) {
+            return;
+        }
+        int slot = slots[index];
+        if (slot < 0 || slot >= target.getSize() || binds.containsKey(slot)) {
+            return;
+        }
+        GuiItemDef item = bind.template().item();
+        ItemStack stack = null;
+        Ph[] resolved = null;
+        if (index < slice.size()) {
+            PhCollector collector = new PhCollector();
+            bind.mapper().accept(slice.get(index), collector);
+            Ph[] phs = collector.toArray();
+            if (item.viewRequirement().test(viewer, resolver(phs))) {
+                int atPage = page;
+                stack = stamp(item.render(viewer, skinHook(() -> reRenderPagedSlot(atPage, index)), phs),
+                        slot);
+                resolved = phs;
+            }
+        }
+        if (resolved != null) {
+            pagedPhs.put(slot, resolved);
+        } else {
+            pagedPhs.remove(slot);
+        }
+        target.setItem(slot, stack);
+    }
+
+    /** Re-renders a single paged slot after an async skin fetch landed, if still current. */
+    private void reRenderPagedSlot(int atPage, int index) {
+        Inventory current = inventory;
+        PagedBind<?> bind = pagedBind;
+        if (closed || page != atPage || current == null || bind == null) {
+            return;
+        }
+        renderPagedSlotAt(current, bind, index);
+    }
+
+    private <T> void renderPagedSlotAt(Inventory target, PagedBind<T> bind, int index) {
+        renderPagedSlot(target, bind, bind.pagination().page(page), index);
     }
 
     private void renderBinding(Inventory target, int slot, Binding binding) {
         Requirement viewReq = binding.template().item().viewRequirement();
         ItemStack stack = null;
         if (viewReq.test(viewer, resolver(binding.phs()))) {
-            stack = stamp(binding.template().render(viewer, binding.phs()), slot);
+            stack = stamp(binding.template().item().render(viewer,
+                    skinHook(() -> reRenderBinding(slot, binding)), binding.phs()), slot);
         }
         target.setItem(slot, stack);
+    }
+
+    /** Re-renders a manually bound slot after an async skin fetch landed, if not re-bound. */
+    private void reRenderBinding(int slot, Binding binding) {
+        Inventory current = inventory;
+        if (closed || current == null || slot >= current.getSize() || binds.get(slot) != binding) {
+            return;
+        }
+        renderBinding(current, slot, binding);
+    }
+
+    /**
+     * A skin-refresh hook for the render currently in progress: on an unresolved head it
+     * asks {@link SkinResolver} to fetch the texture off-thread and, when it lands on the
+     * main thread, runs {@code reRender} (which re-checks close/page/rebind guards).
+     */
+    private Consumer<String> skinHook(Runnable reRender) {
+        return owner -> SkinResolver.request(ctx, owner, reRender);
     }
 
     /** Stamps the anti-theft PDC marker {@code snlib_gui_item} = {@code "<guiId>:<slot>"}. */

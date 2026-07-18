@@ -23,6 +23,7 @@ public final class SnSpec {
     private final boolean guis;
     private final @Nullable String itemsName;
     private final boolean db;
+    private final boolean teleports;
     private final boolean debugCommand;
     private final @Nullable String updatesRepo;
     private final @Nullable String updatesTagPrefix;
@@ -33,6 +34,7 @@ public final class SnSpec {
         this.guis = builder.guis;
         this.itemsName = builder.itemsName;
         this.db = builder.db;
+        this.teleports = builder.teleports;
         this.debugCommand = builder.debugCommand;
         this.updatesRepo = builder.updatesRepo;
         this.updatesTagPrefix = builder.updatesTagPrefix;
@@ -68,6 +70,11 @@ public final class SnSpec {
         return db;
     }
 
+    /** Whether the warmup teleport module was declared. */
+    public boolean teleports() {
+        return teleports;
+    }
+
     /** Whether the runtime debug command was declared. */
     public boolean debugCommand() {
         return debugCommand;
@@ -96,6 +103,7 @@ public final class SnSpec {
         private boolean guis;
         private @Nullable String itemsName;
         private boolean db;
+        private boolean teleports;
         private boolean debugCommand;
         private @Nullable String updatesRepo;
         private @Nullable String updatesTagPrefix;
@@ -130,6 +138,12 @@ public final class SnSpec {
         /** Declares the database module. */
         public Builder db() {
             this.db = true;
+            return this;
+        }
+
+        /** Declares the warmup teleport module. */
+        public Builder teleports() {
+            this.teleports = true;
             return this;
         }
 

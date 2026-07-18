@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jetbrains.annotations.Nullable;
@@ -119,6 +120,7 @@ public final class SnCommands {
         private String description = "";
         private boolean withoutDefaults;
         private @Nullable Supplier<Collection<String>> aliasSupplier;
+        private @Nullable Consumer<RootContext> onEmpty;
 
         RootBuilder(String name) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
@@ -201,6 +203,17 @@ public final class SnCommands {
             return this;
         }
 
+        /**
+         * Action invoked when the root is executed with ZERO arguments, replacing the
+         * default generated-help fallback. The handle can still trigger that help through
+         * {@link RootContext#help()} (for example after printing a banner). Without a hook
+         * the root prints the generated help.
+         */
+        public RootBuilder onEmpty(Consumer<RootContext> action) {
+            this.onEmpty = Objects.requireNonNull(action, "action");
+            return this;
+        }
+
         /** Builds the tree, injects the applicable defaults and registers it. */
         public RootCommand register() {
             List<RootCommand.Sub> built = new ArrayList<>(subs.size());
@@ -208,7 +221,7 @@ public final class SnCommands {
                 built.add(sub.build());
             }
             RootCommand command = new RootCommand(ctx, lang, name, aliases, description,
-                    permission, built, !withoutDefaults, debugCommand);
+                    permission, built, !withoutDefaults, debugCommand, onEmpty);
             BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier);
             command.register();
             return command;

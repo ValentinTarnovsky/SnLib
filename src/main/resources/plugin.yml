@@ -4,7 +4,7 @@ version: ${project.version}
 author: ValentinTarnovsky
 api-version: '1.20'
 load: STARTUP
-description: Common library core for Sn plugins (standalone hard-depend).
+description: Common library core for Sn plugins.
 softdepend: [PlaceholderAPI, Vault]
 
 commands:

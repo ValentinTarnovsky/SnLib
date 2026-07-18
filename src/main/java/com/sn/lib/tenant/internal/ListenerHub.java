@@ -21,6 +21,8 @@ import com.sn.lib.item.internal.ItemInteractListener;
 import com.sn.lib.item.internal.ItemPropertyListener;
 import com.sn.lib.item.internal.LockedItemListener;
 import com.sn.lib.region.internal.SelectionWandListener;
+import com.sn.lib.teleport.internal.TeleportDamageListener;
+import com.sn.lib.teleport.internal.TeleportMoveListener;
 import com.sn.lib.update.UpdateChecker;
 
 /**
@@ -51,6 +53,8 @@ public final class ListenerHub {
         inscribe(UpdateChecker.joinListener());
         inscribe(new HologramChunkListener());
         inscribe(new SelectionWandListener());
+        inscribe(new TeleportMoveListener());
+        inscribe(new TeleportDamageListener());
     }
 
     private ListenerHub() {

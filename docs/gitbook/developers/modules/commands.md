@@ -80,6 +80,55 @@ A player with `arena.use` but not `arena.admin` sees only `join` in tab completi
 You can also hide a subcommand regardless of permission with `visible(false)` (useful for
 internal or deprecated aliases that should still run but never advertise themselves).
 
+## Nested subcommands (groups)
+
+A subcommand can own children, which turns it into a **group** that dispatches on the next
+token instead of running an executor. Declare a child with the `sub(name, spec)` overload on
+the subcommand builder; `spec` configures the child through the same builder API (arguments,
+permission, `executes`, or further nested children):
+
+```java
+sn.commands().root("clan")
+        .permission("clan.use")
+        .sub("admin")                          // a group: it dispatches, it never runs
+            .permission("clan.admin")          // gates every child under it
+            .sub("disband", s -> s
+                .description("Disband a clan")
+                .arg("clan", Args.oneOf(clans::names))
+                .executes(ctx -> disband(ctx.get("clan"))))
+            .sub("setleader", s -> s
+                .description("Reassign a clan leader")
+                .arg("clan", Args.oneOf(clans::names))
+                .arg("player", Args.onlinePlayer())
+                .executes(ctx -> setLeader(ctx.get("clan"), ctx.player("player"))))
+        .and()
+        .register();
+```
+
+That yields `/clan admin disband <clan>` and `/clan admin setleader <clan> <player>`.
+Groups nest arbitrarily: a child can declare its own children and become a group in turn.
+
+A few rules follow from a node being a group:
+
+- **A group dispatches, it never runs.** Its own `arg`, `when` and `executes` are unused at
+  runtime, so declare those on the leaf children. A group invoked with no next token replies
+  with its full-path usage listing the child names the sender may use
+  (`/clan admin <disband|setleader>`); an unknown next token replies with the full-path
+  `snlib.unknown-subcommand`.
+- **`and()` closes only top-level subcommands.** A child declared through `sub(name, spec)`
+  is closed by its spec lambda, not by `and()`. Calling `and()` on a nested child throws.
+- **Help flattens the tree.** The generated help lists one entry per reachable *leaf*, each
+  rendered with its full path (`/clan admin disband <clan>`), never one entry per group.
+
+### Permission chains
+
+Each node - the root, every group, every leaf - may carry its own `permission(...)`, and a
+node without one **inherits the nearest ancestor's** (a group's, or ultimately the root's).
+The *effective* check to run, or even to see, a leaf is **every** permission on the path from
+the root down to it. In the tree above a sender needs both `clan.use` (root) and `clan.admin`
+(the `admin` group) to reach `/clan admin disband`. Tab completion and the generated help
+descend the same chain: a group whose permission the sender lacks hides its whole subtree.
+
 ## Aliases
 
 A root can take its aliases from three sources, in priority order:
@@ -259,9 +308,11 @@ Every root gets two subcommands injected automatically, unless you opt out:
 - **`reload`** - permission `<plugin>.admin.reload`. Delegates to the shared reload
   manager through the context (`Sn.reloadAll()`), which re-reads configs, lang files and
   the rest of your declared modules, then confirms with the `snlib.reload-done` message.
-- **`help`** - generated from the visible, permitted subcommands. Paginated at 10 entries
-  per page; the footer with the page indicator only appears when there is more than one
-  page. Invoke a specific page with `/<root> help <n>`.
+- **`help`** - generated from the visible, permitted subcommands, one entry per reachable
+  leaf rendered with its full path. Paginated at 10 entries per page; the footer with the
+  page indicator only appears when there is more than one page. Invoke a specific page with
+  `/<root> help <n>`. Each entry renders through the `snlib.help.entry` key, whose default
+  is `&e{usage} &7{description}` (`{permission}` is also available if you want to show it).
 
 A subcommand you declare with the name `reload` or `help` **replaces** the default. To
 drop both defaults entirely, call `withoutDefaults()` on the root builder - but then you
@@ -277,6 +328,41 @@ SnSpec.builder().config("config.yml").debugCommand().build();
 
 // yields /<root> debug on every root your plugin registers
 ```
+
+### The `<plugin>.admin` permission convention
+
+The injected defaults follow one convention worth adopting for your own admin subcommands:
+every administrative node lives under `<plugin>.admin.<sub>`, derived from your plugin's
+lowercased name. `reload` is `<plugin>.admin.reload` and `debug` is `<plugin>.admin.debug`.
+Declare a parent `<plugin>.admin` permission in your `plugin.yml` with each
+`<plugin>.admin.<sub>` node as a `children:` entry (all `default: op`), and a single grant of
+`<plugin>.admin` unlocks the whole admin fleet at once - the same shape SnLib uses for its
+own `snlib.admin` parent over `snlib.admin.reload`, `snlib.admin.version` and the rest. Put
+your admin subcommands under an `admin` group (see [nested subcommands](#nested-subcommands-groups))
+and the `.admin.<sub>` permission nodes line up with the command tree one to one.
+
+## Bare-root behavior (`onEmpty`)
+
+Running the root with no arguments (`/kit`) prints the generated help by default. Override
+that with `onEmpty(handler)` on the root builder to run your own logic instead - a banner, a
+status line, opening a menu:
+
+```java
+sn.commands().root("kit")
+        .permission("kits.use")
+        .onEmpty(ctx -> {
+            ctx.sender().sendMessage(SnText.color("&6Kits &7- &f/kit help"));
+            ctx.help();                 // still fall through to the generated help
+        })
+        // ... subs ...
+        .register();
+```
+
+The handler receives a `RootContext`: the invoking `sender()`, plus `help()` / `help(page)`
+to render the standard generated help (so a banner can still fall through to it). The hook
+fires only on the truly empty invocation; a wrong subcommand or a bad argument still goes
+through normal resolution and its `snlib.*` message. A handler that throws is caught and
+logged at `SEVERE` against your plugin, exactly like a subcommand executor.
 
 ## Reload safety and ghost commands
 

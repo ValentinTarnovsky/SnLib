@@ -116,6 +116,18 @@ public final class HeadUtil {
     }
 
     /**
+     * Applies a fully resolved {@link PlayerProfile} (textures included) to a skull meta
+     * via {@link SkullMeta#setPlayerProfile}. Used to re-apply a profile the async skin
+     * resolver fetched off-thread. Null meta or null profile is a no-op.
+     */
+    public static void applyProfile(SkullMeta meta, @Nullable PlayerProfile profile) {
+        if (meta == null || profile == null) {
+            return;
+        }
+        meta.setPlayerProfile(profile);
+    }
+
+    /**
      * Applies a texture to a skull meta with a deterministic profile UUID derived from the
      * texture bytes. Unparseable values leave the meta untouched with one WARN.
      */

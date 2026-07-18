@@ -14,14 +14,23 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Builder of one subcommand inside a {@link SnCommands.RootBuilder} chain; {@link #and()}
  * returns to the root builder to declare the next subcommand or register the tree.
+ *
+ * <p>A subcommand may own children through {@link #sub(String, Consumer)}, turning it into
+ * a GROUP that dispatches on the next token ({@code /clan admin disband <clan>}); a child is
+ * configured through the same builder API and may nest further. A group carries its own
+ * optional {@link #permission} gating every child; leaves keep their own arguments,
+ * conditions and executor. A node that owns children is a group: its own {@link #arg},
+ * {@link #when} and {@link #executes} are not used at runtime, so declare those on the leaf
+ * children instead.</p>
  */
 public final class SubCommandBuilder {
 
-    private final SnCommands.RootBuilder parent;
+    private final @Nullable SnCommands.RootBuilder parent;
     private final String name;
     private final List<String> aliases = new ArrayList<>();
     private final Map<String, Arg<?>> args = new LinkedHashMap<>();
     private final List<RootCommand.Condition> conditions = new ArrayList<>();
+    private final List<SubCommandBuilder> children = new ArrayList<>();
 
     private @Nullable String permission;
     private @Nullable String usage;
@@ -31,7 +40,7 @@ public final class SubCommandBuilder {
     private boolean optionalDeclared;
     private @Nullable Consumer<CommandContext> executor;
 
-    SubCommandBuilder(SnCommands.RootBuilder parent, String name) {
+    SubCommandBuilder(@Nullable SnCommands.RootBuilder parent, String name) {
         this.parent = parent;
         this.name = name;
     }
@@ -118,13 +127,47 @@ public final class SubCommandBuilder {
         return this;
     }
 
-    /** Returns to the root builder. */
+    /**
+     * Declares a child subcommand nested under this one, turning this node into a GROUP: at
+     * runtime this node dispatches on the next token among its children. The {@code spec}
+     * configures the child through this same builder API - arguments, permission,
+     * {@link #executes}, or further nested {@link #sub(String, Consumer) children}. Returns
+     * THIS builder so more children (or {@link #and()} on a top-level group) can follow. The
+     * child is not part of the fluent chain, so it uses no {@link #and()}.
+     */
+    public SubCommandBuilder sub(String name, Consumer<SubCommandBuilder> spec) {
+        Objects.requireNonNull(name, "name");
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("Empty subcommand name");
+        }
+        Objects.requireNonNull(spec, "spec");
+        SubCommandBuilder child = new SubCommandBuilder(null, name);
+        spec.accept(child);
+        children.add(child);
+        return this;
+    }
+
+    /**
+     * Returns to the root builder to declare the next subcommand or register the tree.
+     *
+     * @throws IllegalStateException on a nested child, which is closed by its
+     *         {@link #sub(String, Consumer)} block rather than by {@code and()}
+     */
     public SnCommands.RootBuilder and() {
+        if (parent == null) {
+            throw new IllegalStateException(
+                    "and() is not available on a nested subcommand; a child declared through "
+                            + "sub(name, spec) is closed by its spec block, not by and()");
+        }
         return parent;
     }
 
     RootCommand.Sub build() {
+        List<RootCommand.Sub> builtChildren = new ArrayList<>(children.size());
+        for (SubCommandBuilder child : children) {
+            builtChildren.add(child.build());
+        }
         return new RootCommand.Sub(name, aliases, permission, usage, description,
-                visible, args, requiredArgs, conditions, executor);
+                visible, args, requiredArgs, conditions, executor, builtChildren);
     }
 }

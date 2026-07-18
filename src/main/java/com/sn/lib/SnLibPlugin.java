@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import com.sn.lib.command.internal.SnLibCommand;
 import com.sn.lib.compat.SnVersion;
 import com.sn.lib.hologram.internal.HologramChunkListener;
+import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
 import com.sn.lib.util.HeadUtil;
@@ -83,6 +84,7 @@ public final class SnLibPlugin extends JavaPlugin {
             this.metrics = null;
         }
         HeadUtil.clearCache();
+        SkinResolver.clearCache();
         PlayerLookup.clearCache();
         this.selfCtx = null;
         instance = null;
