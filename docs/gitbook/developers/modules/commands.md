@@ -79,6 +79,15 @@ A player with `arena.use` but not `arena.admin` sees only `join` in tab completi
 
 You can also hide a subcommand regardless of permission with `visible(false)` (useful for
 internal or deprecated aliases that should still run but never advertise themselves).
+`visible(false)` hides the node everywhere: the generated help, tab completion and its
+group's usage line.
+
+Since 1.10.0 there is a second, independent flag: `helpVisible(false)` hides the node (and
+its subtree) from the generated help **only** - it still tab-completes, still appears in
+its group's usage line and still executes. Use it to keep a deep subcommand group (for
+example a per-arena setup tree) out of a crowded root help while admins can still discover
+it through tab. A node that is `visible(false)` stays out of the help regardless of
+`helpVisible`.
 
 ## Nested subcommands (groups)
 

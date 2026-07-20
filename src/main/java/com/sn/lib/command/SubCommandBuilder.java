@@ -36,6 +36,7 @@ public final class SubCommandBuilder {
     private @Nullable String usage;
     private String description = "";
     private boolean visible = true;
+    private boolean helpVisible = true;
     private int requiredArgs;
     private boolean optionalDeclared;
     private @Nullable Consumer<CommandContext> executor;
@@ -74,6 +75,19 @@ public final class SubCommandBuilder {
     /** Whether this subcommand appears in tab completion and the generated help. */
     public SubCommandBuilder visible(boolean visible) {
         this.visible = visible;
+        return this;
+    }
+
+    /**
+     * Whether this subcommand appears in the generated help; independent of
+     * {@link #visible(boolean)}. A node with {@code helpVisible(false)} is skipped by the
+     * generated help ONLY: it still tab-completes, still appears in its group's usage line
+     * and still executes. Useful to keep a deep subcommand group out of a crowded root
+     * help while it stays discoverable through tab completion. A node that is not
+     * {@link #visible(boolean) visible} stays out of the help regardless of this flag.
+     */
+    public SubCommandBuilder helpVisible(boolean helpVisible) {
+        this.helpVisible = helpVisible;
         return this;
     }
 
@@ -168,6 +182,6 @@ public final class SubCommandBuilder {
             builtChildren.add(child.build());
         }
         return new RootCommand.Sub(name, aliases, permission, usage, description,
-                visible, args, requiredArgs, conditions, executor, builtChildren);
+                visible, helpVisible, args, requiredArgs, conditions, executor, builtChildren);
     }
 }

@@ -40,7 +40,9 @@ import com.sn.lib.text.SnText;
  * <p>Permission inheritance: a subcommand without its own permission inherits the nearest
  * ancestor permission (a group or, ultimately, the root); a root without permission is
  * public. Tab completion and the generated help list only subcommands that are visible AND
- * whose permission chain the sender holds.</p>
+ * whose permission chain the sender holds; a node may additionally opt out of the generated
+ * help alone through {@link SubCommandBuilder#helpVisible(boolean) helpVisible(false)},
+ * which keeps it tab-completable and listed in its group's usage line.</p>
  *
  * <p>Messages resolve through the context lang module when declared; without it the
  * shared {@code snlib.*} default templates bundled with the library render directly.</p>
@@ -352,16 +354,17 @@ public final class RootCommand extends Command implements Registrable {
     }
 
     /**
-     * Flattens the tree into one help line per reachable leaf: a node hidden or whose own
-     * permission the sender lacks (and its subtree) is skipped; a group recurses into its
-     * children; a leaf yields its full-path usage, description and effective permission
-     * ({@code inheritedPermission} narrowed by each node's own permission on the path).
+     * Flattens the tree into one help line per reachable leaf: a node hidden
+     * ({@code !visible} or {@code !helpVisible}) or whose own permission the sender lacks
+     * (and its subtree) is skipped; a group recurses into its children; a leaf yields its
+     * full-path usage, description and effective permission ({@code inheritedPermission}
+     * narrowed by each node's own permission on the path).
      */
     static List<HelpLine> collectHelp(CommandSender sender, List<Sub> nodes, String path,
             @Nullable String inheritedPermission) {
         List<HelpLine> out = new ArrayList<>();
         for (Sub sub : nodes) {
-            if (!sub.visible) {
+            if (!sub.visible || !sub.helpVisible) {
                 continue;
             }
             if (sub.permission != null && !sender.hasPermission(sub.permission)) {
@@ -530,6 +533,7 @@ public final class RootCommand extends Command implements Registrable {
         final @Nullable String usage;
         final String description;
         final boolean visible;
+        final boolean helpVisible;
         final Map<String, Arg<?>> args;
         final int requiredArgs;
         final List<Condition> conditions;
@@ -538,8 +542,9 @@ public final class RootCommand extends Command implements Registrable {
 
         Sub(String name, List<String> aliases, @Nullable String permission,
                 @Nullable String usage, String description, boolean visible,
-                Map<String, Arg<?>> args, int requiredArgs, List<Condition> conditions,
-                @Nullable Consumer<CommandContext> executor, List<Sub> children) {
+                boolean helpVisible, Map<String, Arg<?>> args, int requiredArgs,
+                List<Condition> conditions, @Nullable Consumer<CommandContext> executor,
+                List<Sub> children) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
             List<String> lowered = new ArrayList<>(aliases.size());
             for (String alias : aliases) {
@@ -550,6 +555,7 @@ public final class RootCommand extends Command implements Registrable {
             this.usage = usage;
             this.description = description;
             this.visible = visible;
+            this.helpVisible = helpVisible;
             this.args = Collections.unmodifiableMap(new LinkedHashMap<>(args));
             this.requiredArgs = requiredArgs;
             this.conditions = List.copyOf(conditions);
@@ -559,7 +565,7 @@ public final class RootCommand extends Command implements Registrable {
 
         static Sub of(String name, @Nullable String permission, String description,
                 Consumer<CommandContext> executor) {
-            return new Sub(name, List.of(), permission, null, description, true,
+            return new Sub(name, List.of(), permission, null, description, true, true,
                     Map.of(), 0, List.of(), executor, List.of());
         }
     }

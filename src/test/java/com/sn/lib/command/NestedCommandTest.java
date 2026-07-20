@@ -341,6 +341,103 @@ class NestedCommandTest {
         assertThrows(IllegalStateException.class, orphan::and);
     }
 
+    // ------------------------------------------------ help-only visibility
+
+    /**
+     * A tree mixing the two flags: a {@code helpVisible(false)} leaf, a
+     * {@code helpVisible(false)} group with a leaf child, a {@code visible(false)} leaf and
+     * a plain leaf.
+     */
+    private static List<RootCommand.Sub> visibilitySubs() {
+        RootCommand.Sub join = new SubCommandBuilder(null, "join")
+                .description("Joins a game")
+                .executes(context -> { })
+                .build();
+        RootCommand.Sub secret = new SubCommandBuilder(null, "secret")
+                .description("Fully hidden")
+                .visible(false)
+                .executes(context -> { })
+                .build();
+        RootCommand.Sub shortcut = new SubCommandBuilder(null, "shortcut")
+                .description("Help-hidden leaf")
+                .helpVisible(false)
+                .executes(context -> { })
+                .build();
+        RootCommand.Sub setup = new SubCommandBuilder(null, "setup")
+                .description("Setup tools")
+                .helpVisible(false)
+                .sub("wand", wand -> wand
+                        .description("Gives the setup wand")
+                        .executes(context -> { }))
+                .build();
+        return List.of(join, secret, shortcut, setup);
+    }
+
+    @Test
+    void helpVisibleFalseHidesTheNodeAndItsSubtreeFromHelpOnly() {
+        assertEquals(List.of("/clan join"), helpUsages(senderWith(), visibilitySubs(), null));
+    }
+
+    @Test
+    void helpVisibleFalseNodesStillTabComplete() {
+        assertEquals(List.of("join", "setup", "shortcut"),
+                RootCommand.tab(senderWith(), null, visibilitySubs(), new String[] {""}));
+        assertEquals(List.of("wand"),
+                RootCommand.tab(senderWith(), null, visibilitySubs(),
+                        new String[] {"setup", ""}));
+    }
+
+    @Test
+    void helpVisibleFalseNodesStillExecute() {
+        RootCommand.Run leaf = asRun(RootCommand.resolve(senderWith(), null, visibilitySubs(),
+                "/clan", new String[] {"shortcut"}));
+        assertEquals("shortcut", leaf.sub().name);
+        RootCommand.Run nested = asRun(RootCommand.resolve(senderWith(), null, visibilitySubs(),
+                "/clan", new String[] {"setup", "wand"}));
+        assertEquals("wand", nested.sub().name);
+        assertEquals("/clan setup wand", nested.path());
+    }
+
+    @Test
+    void helpVisibleFalseChildStillAppearsInTheGroupUsageLine() {
+        RootCommand.Sub group = new SubCommandBuilder(null, "admin")
+                .description("Admin tools")
+                .sub("start", start -> start
+                        .description("Starts a game")
+                        .executes(context -> { }))
+                .sub("setup", setup -> setup
+                        .description("Setup tools")
+                        .helpVisible(false)
+                        .executes(context -> { }))
+                .build();
+        assertEquals("/clan admin <start|setup>",
+                RootCommand.groupUsage(senderWith(), group, "/clan admin"));
+    }
+
+    @Test
+    void visibleFalseStillHidesFromHelpTabAndGroupUsage() {
+        // Unchanged visible(false) semantics: absent everywhere, yet still executable.
+        assertEquals(List.of("join", "setup", "shortcut"),
+                RootCommand.tab(senderWith(), null, visibilitySubs(), new String[] {""}));
+        assertTrue(helpUsages(senderWith(), visibilitySubs(), null).stream()
+                .noneMatch(usage -> usage.contains("secret")));
+        RootCommand.Sub group = new SubCommandBuilder(null, "admin")
+                .description("Admin tools")
+                .sub("start", start -> start
+                        .description("Starts a game")
+                        .executes(context -> { }))
+                .sub("hidden", hidden -> hidden
+                        .description("Fully hidden child")
+                        .visible(false)
+                        .executes(context -> { }))
+                .build();
+        assertEquals("/clan admin <start>",
+                RootCommand.groupUsage(senderWith(), group, "/clan admin"));
+        RootCommand.Run run = asRun(RootCommand.resolve(senderWith(), null, visibilitySubs(),
+                "/clan", new String[] {"secret"}));
+        assertEquals("secret", run.sub().name);
+    }
+
     // ------------------------------------------------- flat-tree regression
 
     private static List<RootCommand.Sub> flatSubs() {
