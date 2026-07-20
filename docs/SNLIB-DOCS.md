@@ -8,6 +8,10 @@
 > bundled `guis/*.yml` are seeded into the data folder (section 12), config-driven command
 > aliases plus arg-name tab hints and sender-aware / suggest-only args (section 13), and a
 > one-time WARN when a lang value embeds the literal prefix placeholder token (section 05).
+> Updated on 2026-07-20 for the 1.8.0 additions (API level 4): `ItemRegistry.take`/`removeAll`
+> symmetric removal (section 11), `SnYml.setComments`/`setInlineComments` write surface
+> (section 04), and a one-time WARN when a lang value lost the `<click:>`/`<hover:>` tag its
+> jar default carries (section 05).
 > Coverage: every class under `src/main/java/com/sn/lib`, resources, build and tests (211
 > tests, all green; 1.5.0 adds text, gui, command and lang tests on top).
 
@@ -566,6 +570,8 @@ A YAML file owned by a consumer context (`Sn ctx`): tab-tolerant loading, placeh
 - `public ConfigurationSection getSection(String key)` - raw section or null if it does not exist; values read through it do NOT go through `resolve` (no placeholders).
 - `public boolean isSet(String key)` - true when the key exists in the file, even with a 0/false/empty value; keeps "explicit 0" distinguishable from "missing key".
 - `public void set(String key, Object value)` - sets the value in memory; `save()` must be called to persist.
+- `public void setComments(String key, List<String> lines)` (1.8.0) - sets the in-memory block comments rendered above the key, one list entry per line without the leading `#`; null clears them. Persisted by `save()` (the yaml load path parses comments, so they round-trip). The write-surface companion of `set` so keys a plugin writes at runtime (setup wizards writing into seedOnly files) ship the same per-key documentation as shipped resources.
+- `public void setInlineComments(String key, List<String> lines)` (1.8.0) - sets the in-memory inline comments after the key's value; null clears them.
 - `public void save()` - persists the current state (see "coalesced save()" below).
 - `public void flush()` - drains any pending save; invoked by the context teardown (see below).
 - `public SnYml placeholder(String key, Supplier<String> value)` - registers a local placeholder resolved BEFORE any PAPI lookup; fluent (returns `this`).
@@ -730,8 +736,10 @@ Constants: it exposes no public constants or enums. Internally it uses the priva
 
 Private methods, in load-flow order:
 
-- `private void load()` - Orchestrates the load: clears `warnedKeys`, seeds the English, merges the snlib keys, parses the fallback, decides the desired code (if it is `en`, active = fallback; otherwise it loads the translation), caches the prefix, rebuilds the caches and finally runs `warnLiteralPrefixToken`.
+- `private void load()` - Orchestrates the load: clears `warnedKeys`, seeds the English, merges the snlib keys, parses the fallback, decides the desired code (if it is `en`, active = fallback; otherwise it loads the translation), caches the prefix, rebuilds the caches and finally runs `warnLiteralPrefixToken` and `warnInteractiveTagDrift`.
 - `private void warnLiteralPrefixToken()` (1.5.0) - Defense-in-depth: SnLib prepends the configured `prefix` to single-line messages automatically, so a value that also embeds the literal prefix placeholder token (`LITERAL_PREFIX_TOKEN`, the `prefix` key in `{ }` placeholder form) would render it verbatim. Scans every leaf value of the active language file once per load and, when one or more keys carry the token, logs ONE summary WARN naming how many keys are affected (`N message key(s) in lang/messages_<code>.yml embed the literal ... token; ... remove it from those values`). One warning per load, never per key. Pure helpers `countKeysWithLiteralPrefixToken(Map)` and `carriesLiteralPrefixToken(List)` (a multi-line value counts once) are package-private and unit-tested.
+- `private void warnInteractiveTagDrift()` (1.8.0) - Defense-in-depth: the always-merge updater never rewrites an existing lang value, so a `<click:...>`/`<hover:...>` tag present in the jar reference but lost from the live value (admin edit, translation) keeps the button LOOK while the click silently dies. Compares the consumer jar resource (`CONSUMER_RESOURCE`) against the resolved templates once per load and, when any key lost a tag kind its default carries, logs ONE summary WARN naming the affected keys (`N message key(s) in lang/messages_<code>.yml lost the <click>/<hover> tag their jar default carries (keys); the button still renders but clicking it does nothing`). Pure helpers `lostInteractiveMarker(List, List)` and `containsMarker(List, String)` (case-insensitive, per tag kind via `INTERACTIVE_MARKERS`) are package-private and unit-tested.
+- `private @Nullable YamlConfiguration parseResource(String path)` (1.8.0) - Parses a jar resource as YAML (tab-tolerant via `YamlPreprocessor`); null when absent or unreadable.
 - `private void seedEnglish(File dir, File enFile)` - Seeds `lang/messages_en.yml` from the consumer's jar via `YamlUpdater.update(plugin, CONSUMER_RESOURCE, enFile, false)` (always-merge, gated by `update-configs`). If the consumer's jar does NOT include the resource and the file does not exist, it creates a minimal two-comment-line file and emits a WARN ("The X jar does not include lang/messages_en.yml; a minimal file was created").
 - `private void mergeSnlibKeys(File enFile)` - Merges SnLib.jar's `snlib-messages.yml` resource into the on-disk `messages_en.yml` via `YamlUpdater.merge(resource, disk)`. Always on and EXEMPT from the `update-configs` gate: the `snlib.*` keys are the library's own message contract. If the disk does not parse as YAML (checked with `YamlUpdater.isParseable` over the preprocessed text) it skips the merge with a WARN; if the merge changes nothing, it does not rewrite the file. A resource missing from SnLib.jar produces a WARN and no merge.
 - `private void loadTranslation(File dir, File enFile, String code)` - Loads a non-English translation: if `messages_<code>.yml` does not exist, WARN and fallback to English (activeCode returns to `en`); if it exists, it merges against the on-disk English, parses, and if it ended up empty or corrupt it also falls back to English with a WARN.
@@ -2095,6 +2103,8 @@ Methods:
 - `public @Nullable String idOf(ItemStack item)` - The stack's registered id when this context created it, or null.
 - `public boolean is(ItemStack item, String id)` - Whether the stack is an instance of the item registered under `id`.
 - `public void give(Player player, String id, int amount)` - Gives `amount` units of the item, splitting into max-stack chunks; whatever does not fit drops at the player's feet (via `InvUtil.giveItems`).
+- `public int take(Player player, String id, int amount)` (1.8.0) - Removes up to `amount` units of the item from the player's inventory - every slot (storage, armor, off hand) plus the stack on the open cursor - matched by the owner-namespaced `snlib_item_id` tag. The symmetric counterpart of `give`: removal is programmatic, so locked/no-drop flags never block it and no cancellable event fires; the equipment backup is untouched (applied equipment is removed with `unapply`, never with this). Returns how many units were actually removed.
+- `public int removeAll(Player player, String id)` (1.8.0) - Removes every unit of the item from the player's inventory and open cursor (`take` with `Integer.MAX_VALUE`); returns how many units were removed. The removal path every command-given locked item MUST have (a give-only locked item is unremovable by design of the lock it opted into).
 
 #### Notes and gotchas
 - `PLAYER_SLOTS` is a fixed list of the 6 player slots (HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET): it keeps the source enum open (it does not iterate `EquipmentSlot.values()`, which in newer versions includes BODY/SADDLE).

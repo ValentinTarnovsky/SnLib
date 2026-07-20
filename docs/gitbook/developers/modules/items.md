@@ -16,6 +16,7 @@ sn.items().give(player, "wand", 1);
 
 - `register(id, def)` registers a definition (re-registering replaces it, adds any recipe, and starts held-effect timers lazily). `register(id, snYml)` parses a definition from a YAML section.
 - `give(player, id, amount)` builds the stack tagged with an owner-namespaced id and hands it over, splitting into max-stack chunks and dropping the overflow at the player's feet.
+- `take(player, id, amount)` / `removeAll(player, id)` are the symmetric removal: they scan every inventory slot (storage, armor, off hand) plus the open cursor for stacks tagged with the id and remove up to `amount` units (all of them for `removeAll`), returning how many were removed. Removal is programmatic, so `locked`/`no-drop` flags never block it and no cancellable event fires. Every command-given locked item MUST ship a removal path built on these (typically a give/remove toggle command plus cleanup on quit) - a give-only locked item is unremovable by design of the lock it opted into.
 
 {% hint style="info" %}
 Every created stack carries the PDC key `snlib_item_id` (namespaced per owner plugin). That tag is how the module resolves any stack back to its definition, which is what makes the protections below reliable.

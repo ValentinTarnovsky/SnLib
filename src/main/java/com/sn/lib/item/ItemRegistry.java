@@ -352,6 +352,60 @@ public final class ItemRegistry {
         }
     }
 
+    /**
+     * Removes up to {@code amount} units of the item registered under {@code id} from the
+     * player's inventory - every slot (storage, armor, off hand) plus the stack on the
+     * open cursor - matched by the owner-namespaced {@code snlib_item_id} tag. The
+     * symmetric counterpart of {@link #give}: removal is programmatic, so locked/no-drop
+     * flags never block it and no cancellable event fires. The equipment backup is
+     * untouched - applied equipment is removed with {@link #unapply}, never with this.
+     *
+     * @return how many units were actually removed
+     */
+    public int take(Player player, String id, int amount) {
+        if (player == null || id == null || amount <= 0) {
+            return 0;
+        }
+        PlayerInventory inventory = player.getInventory();
+        int removed = 0;
+        for (int slot = 0; slot < inventory.getSize() && removed < amount; slot++) {
+            ItemStack current = inventory.getItem(slot);
+            if (!is(current, id)) {
+                continue;
+            }
+            int taken = Math.min(current.getAmount(), amount - removed);
+            if (taken >= current.getAmount()) {
+                inventory.setItem(slot, null);
+            } else {
+                current.setAmount(current.getAmount() - taken);
+            }
+            removed += taken;
+        }
+        if (removed < amount) {
+            ItemStack cursor = player.getItemOnCursor();
+            if (is(cursor, id)) {
+                int taken = Math.min(cursor.getAmount(), amount - removed);
+                if (taken >= cursor.getAmount()) {
+                    player.setItemOnCursor(null);
+                } else {
+                    cursor.setAmount(cursor.getAmount() - taken);
+                }
+                removed += taken;
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Removes every unit of the item registered under {@code id} from the player's
+     * inventory and open cursor; see {@link #take} for the matching and event semantics.
+     *
+     * @return how many units were removed
+     */
+    public int removeAll(Player player, String id) {
+        return take(player, id, Integer.MAX_VALUE);
+    }
+
     /** Writes the locked-mode PDC flags declared by the definition onto the stack. */
     private void tagLockedFlags(ItemStack stack, ItemDef def) {
         if (def.locked()) {

@@ -71,6 +71,8 @@ public final class SnLang {
     private static final long ACTIONBAR_REFRESH_TICKS = 40L;
     /** The prefix placeholder SnLib prepends automatically; embedding it in a value renders it literally. */
     static final String LITERAL_PREFIX_TOKEN = "{prefix}";
+    /** MiniMessage interactive tag markers; losing one silently turns a chat button inert. */
+    static final String[] INTERACTIVE_MARKERS = {"<click:", "<hover:"};
 
     private final Sn ctx;
     private final @Nullable SnYml config;
@@ -335,6 +337,7 @@ public final class SnLang {
         cachePrefix();
         buildCaches();
         warnLiteralPrefixToken();
+        warnInteractiveTagDrift();
     }
 
     /**
@@ -597,6 +600,72 @@ public final class SnLang {
             }
         }
         return false;
+    }
+
+    /**
+     * Defense-in-depth WARN: the always-merge updater never rewrites an existing lang
+     * value, so a {@code <click:...>}/{@code <hover:...>} tag present in the jar reference
+     * but lost from the live value (admin edit, translation) keeps the button LOOK while
+     * the click silently dies. Compares the consumer jar resource against the resolved
+     * templates once per load and logs a single summary WARN naming the affected keys.
+     * One warning per load, never per key.
+     */
+    private void warnInteractiveTagDrift() {
+        YamlConfiguration reference = parseResource(CONSUMER_RESOURCE);
+        if (reference == null) {
+            return;
+        }
+        List<String> affected = new ArrayList<>();
+        for (String key : leafKeys(reference)) {
+            if (lostInteractiveMarker(readLines(reference, key), templates.get(key))) {
+                affected.add(key);
+            }
+        }
+        if (!affected.isEmpty()) {
+            ctx.plugin().getLogger().warning(affected.size() + " message key(s) in " + LANG_DIR
+                    + "/messages_" + activeCode + ".yml lost the <click>/<hover> tag their jar"
+                    + " default carries (" + String.join(", ", affected) + "); the button still"
+                    + " renders but clicking it does nothing - restore the tags in those values");
+        }
+    }
+
+    /** True when the reference value carries an interactive marker the live value lost. */
+    static boolean lostInteractiveMarker(@Nullable List<String> reference,
+                                         @Nullable List<String> live) {
+        for (String marker : INTERACTIVE_MARKERS) {
+            if (containsMarker(reference, marker) && !containsMarker(live, marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when any line of the value contains the marker, case-insensitively. */
+    static boolean containsMarker(@Nullable List<String> values, String marker) {
+        if (values == null) {
+            return false;
+        }
+        for (String value : values) {
+            if (value != null && value.toLowerCase(Locale.ROOT).contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Parses a jar resource as YAML (tab-tolerant); null when absent or unreadable. */
+    private @Nullable YamlConfiguration parseResource(String path) {
+        try (InputStream in = ctx.plugin().getResource(path)) {
+            if (in == null) {
+                return null;
+            }
+            String raw = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            YamlConfiguration cfg = new YamlConfiguration();
+            cfg.loadFromString(YamlPreprocessor.preprocess(raw).cleanText());
+            return cfg;
+        } catch (IOException | InvalidConfigurationException ex) {
+            return null;
+        }
     }
 
     /** Static means renderable once: no {@code %token%} and no <code>{token}</code>. */

@@ -38,6 +38,12 @@ This means you can translate a plugin incrementally. Translate the keys you care
 
 Most plugins define a `prefix` at the top of the language file and add it in front of every one-line message automatically. Because it is added for you, you should never write the prefix placeholder inside a message value - the plugin's prefix token written in placeholder form. It is not replaced there, so it would just show up literally on top of the prefix the plugin already put in front. If any message value contains that token, the plugin logs a single warning at startup telling you how many messages need cleaning up. Remove the token from those lines and keep the prefix in the `prefix` key only.
 
+## Keep clickable tags when editing
+
+Some messages contain interactive tags like `<click:run_command:'...'>` and `<hover:show_text:'...'>` - they are what makes a chat button such as `[JOIN]` actually do something when clicked. Because your edits are always preserved, an edit or a translation that drops one of those tags is never repaired automatically: the button keeps its look but clicking it silently does nothing. Keep the tags around your rewritten text (only the visible text between them is yours to restyle). If a value loses a tag its default carries, the plugin logs a single warning at startup naming the affected keys so you can restore them.
+
+Note for servers with Bedrock players (Geyser): Bedrock chat does not support click events at all, so well-made plugins also show the plain command to type next to the button. Keep that part of the message too when restyling.
+
 ## Shared core messages in every language
 
 There is a set of common messages that are not specific to any one plugin - things like "you do not have permission to use this command", the correct-usage line shown when a command is typed wrong, and the messages for invalid or out-of-range arguments. These are the `snlib.*` keys.

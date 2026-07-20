@@ -70,6 +70,15 @@ any value carries the token, logs a single WARN naming how many keys are affecte
 warning is emitted once per load, never per key. Remove the token from those values.
 {% endhint %}
 
+{% hint style="warning" %}
+The always-merge updater never rewrites an existing lang value, so a `<click:...>` or
+`<hover:...>` tag shipped in the jar default can be lost from the live file (an admin edit
+or a translation that dropped it) while the button LOOK still renders - clicking it then
+does nothing. On each load the module compares the jar reference against the live values
+and logs a single WARN naming every key that lost a tag kind its default carries. Restore
+the tags in those values to bring the buttons back.
+{% endhint %}
+
 `broadcast` sends to the whole server, resolving PAPI against the server:
 
 ```java

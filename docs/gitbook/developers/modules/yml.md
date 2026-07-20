@@ -126,6 +126,16 @@ cfg.set("last-run", System.currentTimeMillis());
 cfg.save();
 ```
 
+`setComments(key, lines)` sets the block comments rendered above a key (one list entry per line, no leading `#`; null clears them), and `setInlineComments(key, lines)` the inline comments after its value. Comments round-trip through load and `save()`, so setup code that writes keys at runtime (for example a wizard writing into a seedOnly file) can ship the same per-key documentation as a shipped resource:
+
+```java
+cfg.set("maps.arena2.end-teleport", "");
+cfg.setComments("maps.arena2.end-teleport",
+        java.util.List.of("Everyone is teleported here when the round ends.",
+                "Leave blank to send each player back to where they were."));
+cfg.save();
+```
+
 `save()` is asynchronous with coalescing: it snapshots the serialized text on the calling thread and writes it off-thread, keeping at most one pending write per file (a newer save replaces the pending snapshot). This means you can call `save()` freely without piling up disk I/O.
 
 During teardown the behavior changes deliberately. Once the owning context is shutting down, `save()` writes SYNCHRONOUSLY on the calling thread, and the context's teardown calls `flush()` to drain any write that was still pending. A snapshot older than one already written never overwrites newer state, so the async drain and the synchronous teardown save cannot race into a stale file.

@@ -243,6 +243,22 @@ public final class SnYml {
     }
 
     /**
+     * Sets the in-memory block comments rendered above {@code key}, one list entry per
+     * line without the leading {@code #}; null clears them. Persisted by {@link #save()}.
+     * The write-surface companion of {@link #set} so keys a plugin writes at runtime
+     * (setup wizards writing into seedOnly files) ship the same per-key documentation as
+     * shipped resources.
+     */
+    public void setComments(String key, List<String> lines) {
+        yaml.setComments(key, lines);
+    }
+
+    /** Sets the in-memory inline comments after {@code key}'s value; null clears them. */
+    public void setInlineComments(String key, List<String> lines) {
+        yaml.setInlineComments(key, lines);
+    }
+
+    /**
      * Persists the current state. In normal runtime the serialized snapshot is taken on
      * the calling thread and written off-thread with coalescing: at most one write is
      * pending per file and a newer save replaces the pending snapshot. Once the owning
