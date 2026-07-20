@@ -53,7 +53,9 @@ import com.sn.lib.yml.YamlUpdater;
  * <p>Fallback: a key absent from the active language falls back to English with one WARN
  * per key; a key absent from English renders as {@code <missing:key>}. Single-line
  * messages sent through {@link #send} and {@link #broadcast} get the optional top-level
- * {@code prefix} value prepended, list values are sent line by line as-is.</p>
+ * {@code prefix} value prepended, list values are sent line by line as-is. A leading
+ * {@code [noprefix]} tag opts a single-line value out of the prefix; the tag itself is
+ * stripped by the SnText render.</p>
  *
  * <p>Caching: lines without placeholder tokens are pre-rendered to {@link Component} at
  * load (including {@code [rgb]} interpolation, paid once); dynamic lines keep the raw
@@ -71,6 +73,8 @@ public final class SnLang {
     private static final long ACTIONBAR_REFRESH_TICKS = 40L;
     /** The prefix placeholder SnLib prepends automatically; embedding it in a value renders it literally. */
     static final String LITERAL_PREFIX_TOKEN = "{prefix}";
+    /** Leading tag that opts a single-line value out of the configured prefix. */
+    static final String NOPREFIX_TAG = "[noprefix]";
     /** MiniMessage interactive tag markers; losing one silently turns a chat button inert. */
     static final String[] INTERACTIVE_MARKERS = {"<click:", "<hover:"};
 
@@ -692,7 +696,7 @@ public final class SnLang {
             if (line == null || line.isEmpty()) {
                 return;
             }
-            if (prefix.isEmpty() && (phs == null || phs.length == 0)) {
+            if ((phs == null || phs.length == 0) && (prefix.isEmpty() || skipsPrefix(line))) {
                 List<Component> cached = rendered.get(key);
                 if (cached != null && !cached.isEmpty()) {
                     audience.sendMessage(cached.get(0));
@@ -712,10 +716,11 @@ public final class SnLang {
      * {@code [small]} tags: a prefixed message keeps its tags at position 0 so they still
      * render. The prefix inserted after {@code [small]} stays INSIDE the tag's scope and
      * renders in small caps, consistent with {@code [rgb]} applying its gradient to the
-     * prefix.
+     * prefix. A {@code [noprefix]} tag anywhere in the leading tag run opts the line out:
+     * nothing is inserted and the tag itself is stripped by the SnText render.
      */
     private String withPrefix(String line) {
-        if (prefix.isEmpty()) {
+        if (prefix.isEmpty() || skipsPrefix(line)) {
             return line;
         }
         int i = 0;
@@ -731,6 +736,30 @@ public final class SnLang {
             }
         }
         return i == 0 ? prefix + line : line.substring(0, i) + prefix + line.substring(i);
+    }
+
+    /**
+     * True when the line's leading tag run carries {@code [noprefix]}, case-insensitive
+     * and in any order among {@code [center]}/{@code [rgb]}/{@code [small]}. A tag after
+     * the first visible character does not opt out, consistent with every other prefix
+     * tag being leading-only.
+     */
+    static boolean skipsPrefix(String line) {
+        int i = 0;
+        while (true) {
+            if (line.regionMatches(true, i, NOPREFIX_TAG, 0, NOPREFIX_TAG.length())) {
+                return true;
+            }
+            if (line.regionMatches(true, i, "[center]", 0, 8)) {
+                i += 8;
+            } else if (line.regionMatches(true, i, "[rgb]", 0, 5)) {
+                i += 5;
+            } else if (line.regionMatches(true, i, "[small]", 0, 7)) {
+                i += 7;
+            } else {
+                return false;
+            }
+        }
     }
 
     /** Fixed pipeline: locals, PAPI per viewer, PAPI output normalization, SnText render. */

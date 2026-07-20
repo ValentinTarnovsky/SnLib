@@ -59,7 +59,10 @@ shop:
 
 `send` accepts a `Player` or any `CommandSender` (console included); when the target is a
 player, PAPI resolves per-viewer. Single-line messages get the optional top-level `prefix`
-value prepended; list values are sent line by line, unprefixed.
+value prepended; list values are sent line by line, unprefixed. A single-line value can opt
+out of the prefix with a leading `[noprefix]` tag (1.9.0): the line is sent bare and the tag
+itself is stripped by the render. It composes with `[center]`/`[rgb]`/`[small]` in any order
+within the leading tag run.
 
 {% hint style="warning" %}
 SnLib prepends the configured `prefix` to single-line messages for you, so a message value

@@ -70,6 +70,8 @@ public final class SnText {
     private static final String CENTER_TAG = "[center]";
     private static final String RGB_TAG = "[rgb]";
     private static final String SMALL_TAG = "[small]";
+    /** Consumed and discarded here; its semantics (skip the lang prefix) live in SnLang. */
+    private static final String NOPREFIX_TAG = "[noprefix]";
     private static final char SECTION = (char) 0xA7;
 
     private static final Map<Character, String> MINI_TAGS = Map.ofEntries(
@@ -284,8 +286,11 @@ public final class SnText {
     }
 
     /**
-     * Consumes {@code [center]}, {@code [rgb]} and {@code [small]} prefix tags,
-     * case-insensitive and in any order, at the start of the line. Fixed internal
+     * Consumes {@code [center]}, {@code [rgb]}, {@code [small]} and {@code [noprefix]}
+     * prefix tags, case-insensitive and in any order, at the start of the line.
+     * {@code [noprefix]} is stripped without effect here: it is SnLang's marker for
+     * "do not prepend the configured prefix", consumed by every render so the literal
+     * tag never reaches the player. Fixed internal
      * application order: {@code [small]} runs BEFORE {@code [rgb]} so the gradient colors
      * the final glyphs and the small pass operates on the short string (not on the string
      * inflated 9x by the gradient hex codes); the gradient's visible count is unchanged
@@ -316,6 +321,9 @@ public final class SnText {
             } else if (rest.regionMatches(true, 0, SMALL_TAG, 0, SMALL_TAG.length())) {
                 small = true;
                 rest = rest.substring(SMALL_TAG.length());
+                consumed = true;
+            } else if (rest.regionMatches(true, 0, NOPREFIX_TAG, 0, NOPREFIX_TAG.length())) {
+                rest = rest.substring(NOPREFIX_TAG.length());
                 consumed = true;
             }
         }

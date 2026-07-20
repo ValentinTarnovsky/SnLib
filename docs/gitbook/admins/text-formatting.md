@@ -64,9 +64,9 @@ lore:
 If you are not familiar with MiniMessage, you do not need it: the legacy `&` codes and hex colors above already cover almost everything a config editor needs. MiniMessage is there for anyone who wants richer formatting (gradients, hover text, and more) using its own tag syntax.
 {% endhint %}
 
-## The three special tags: `[small]`, `[rgb]`, `[center]`
+## The special tags: `[small]`, `[rgb]`, `[center]`, `[noprefix]`
 
-On top of standard Minecraft coloring, Sn plugins support three extra tags written at the very START of a line. They are composable in any order - `[center][rgb]`, `[rgb][center]`, `[small][rgb][center]` all produce the same result.
+On top of standard Minecraft coloring, Sn plugins support extra tags written at the very START of a line. They are composable in any order - `[center][rgb]`, `[rgb][center]`, `[small][rgb][center]` all produce the same result.
 
 ### `[small]` - small caps
 
@@ -86,7 +86,7 @@ Paints the line with a smooth gradient that flows through these fixed colors, le
 purple -> blue -> cyan -> green -> yellow -> orange -> red
 ```
 
-It overrides any color codes already on the line, but it keeps bold/italic/underline/strikethrough/obfuscated formatting intact:
+It overrides any color codes already on the line, while bold/italic/underline/strikethrough/obfuscated formatting still applies. Formatting behaves exactly like it does outside the gradient: a color code on the line also ends any formatting that came before it, so a bold prefix followed by `&8| &7` does not carry its bold into the rest of the line.
 
 ```yaml
 display-name: "[rgb]&lEpic Gradient Title"
@@ -106,7 +106,15 @@ lore:
   - "[center][rgb]Centered gradient line"
 ```
 
-### Combining all three
+### `[noprefix]` - skip the message prefix
+
+Only meaningful in language files: a one-line message starting with `[noprefix]` is sent WITHOUT the plugin's chat prefix, and the tag itself never shows. Useful for banners, full-width gradient lines and centered announcements that look better standing alone. See [Language Files](language-files.md) for details. Anywhere else (item names, lore, menu titles) the tag is simply stripped.
+
+```yaml
+reload-done: "[noprefix][rgb]Configuration reloaded."
+```
+
+### Combining the tags
 
 ```yaml
 lore:
@@ -114,7 +122,7 @@ lore:
   - "[rgb][center]Same result, tags in any order"
   - "[center]&eCentered legacy-only line"
   - "[small]Small caps lore line"
-  - "[center][small][rgb]All three tags composed"
+  - "[center][small][rgb]All three style tags composed"
 ```
 
 ## Placeholders render along with everything else

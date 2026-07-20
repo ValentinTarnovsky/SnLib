@@ -29,7 +29,7 @@ The order is not incidental, it is load-bearing:
 - **`[small]` before `[rgb]`** so the gradient colors the final small-caps glyphs, and so the small-caps pass works on the short string rather than the string already inflated by per-character hex codes.
 - **`[center]` last in the legacy phase**, measured over the already-colored legacy string, right before the whole thing is handed to MiniMessage. "Last" means last in the legacy phase, never after the Component is built, because centering can only measure a legacy string.
 
-Because the three prefix tags are consumed together at the start of the line, they compose in ANY order: `[center][rgb]`, `[rgb][center]`, `[small][rgb][center]` all render identically.
+Because the prefix tags are consumed together at the start of the line, they compose in ANY order: `[center][rgb]`, `[rgb][center]`, `[small][rgb][center]` all render identically. A fourth tag, `[noprefix]` (1.9.0), is consumed in the same leading run but has no effect on the render itself: it is SnLang's marker for "do not prepend the configured lang prefix" (see [lang](lang.md)), stripped by every render so the literal tag never reaches the player.
 
 ## `[small]` - small caps
 
@@ -59,8 +59,8 @@ The transform skips legacy color codes, section-sign sequences and MiniMessage t
 
 Two rules matter when mixing `[rgb]` with other codes:
 
-- It **overrides** any pre-existing COLOR codes on the line (the gradient wins).
-- It **preserves** formatting flags: `&l` (bold), `&o` (italic), `&n` (underline), `&m` (strikethrough), `&k` (obfuscated) survive the gradient.
+- It **overrides** any pre-existing COLOR codes on the line (the gradient wins), and - like everywhere else in the legacy pipeline - a color code also **clears** the formatting opened before it, so a bold segment followed by `&8`/`&7` does not carry its bold across the rest of the gradient (since 1.9.0; before that the bold bled through).
+- It **preserves** formatting flags: `&l` (bold), `&o` (italic), `&n` (underline), `&m` (strikethrough), `&k` (obfuscated) survive the gradient until a color code or `&r` ends them.
 
 ```yaml
 display-name: "[rgb]&lEpic Gradient Title"   # bold gradient

@@ -6,9 +6,12 @@ package com.sn.lib.text;
  * <p>Pure string transform, no Bukkit. Seven color anchors are interpolated across the
  * visible characters of a line, emitting one {@code &#RRGGBB} code per character.
  * Pre-existing COLOR codes ({@code &0}-{@code &f}, {@code &#RRGGBB}) are discarded because
- * the gradient overrides them; FORMAT codes ({@code &l &o &n &m &k}) accumulate and are
- * re-applied after every emitted hex; {@code &r} resets the accumulated format. Spaces are
- * appended as-is and do not consume a gradient position.</p>
+ * the gradient overrides them, but they still CLEAR the accumulated format, matching
+ * vanilla legacy semantics (a color code resets earlier format codes) and the reset the
+ * MiniMessage conversion applies outside the gradient. FORMAT codes ({@code &l &o &n &m
+ * &k}) accumulate and are re-applied after every emitted hex; {@code &r} also resets the
+ * accumulated format. Spaces are appended as-is and do not consume a gradient
+ * position.</p>
  */
 public final class RgbGradientUtil {
 
@@ -50,9 +53,11 @@ public final class RgbGradientUtil {
                         if (format.indexOf("&" + c) < 0) {
                             format.append('&').append(c);
                         }
-                    } else if (c == 'r') {
+                    } else if (c == 'r' || isColorChar(c)) {
                         format.setLength(0);
                     }
+                } else {
+                    format.setLength(0);
                 }
                 i += code - 1;
                 continue;
@@ -119,6 +124,10 @@ public final class RgbGradientUtil {
 
     private static boolean isFormatChar(char c) {
         return c >= 'k' && c <= 'o';
+    }
+
+    private static boolean isColorChar(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
     }
 
     private static boolean isHex(String s, int from) {

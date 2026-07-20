@@ -140,4 +140,34 @@ class SnTextTest {
         assertEquals(SnText.smallCaps("hi"), plain(c));
         assertTrue(find(c, SnText.smallCaps("hi")).bold());
     }
+
+    @Test
+    void rgbGradientLegacyColorClearsAccumulatedBold() {
+        // The prefix-bleed shape: withPrefix inserts the prefix after [rgb], so the
+        // prefix's &l must not survive its own trailing &8/&7 into the message body.
+        Component c = SnText.color("[rgb]&#8354f2&lSnMiniGames &8| &7Configuration reloaded.");
+        assertEquals("SnMiniGames | Configuration reloaded.", plain(c));
+        assertTrue(find(c, "S").bold(), "the brand glyphs keep the prefix's &l");
+        assertFalse(find(c, "|").bold(), "&8 must clear the accumulated bold");
+        assertFalse(find(c, "C").bold(), "bold must not bleed into the message body");
+    }
+
+    @Test
+    void rgbGradientHexColorClearsAccumulatedFormat() {
+        Component c = SnText.color("[rgb]&lA&#ff0000B");
+        assertTrue(find(c, "A").bold());
+        assertFalse(find(c, "B").bold(), "a hex color inside the gradient clears the format");
+    }
+
+    @Test
+    void noPrefixTagIsStrippedFromTheRender() {
+        Component c = SnText.color("[noprefix]&7Hello");
+        assertEquals("Hello", plain(c));
+    }
+
+    @Test
+    void noPrefixTagComposesWithOtherLeadingTagsInAnyOrder() {
+        assertEquals("Hi", plain(SnText.color("[noprefix][rgb]Hi")));
+        assertEquals("Hi", plain(SnText.color("[rgb][NoPrefix]Hi")));
+    }
 }

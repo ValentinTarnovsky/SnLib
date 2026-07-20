@@ -38,6 +38,17 @@ This means you can translate a plugin incrementally. Translate the keys you care
 
 Most plugins define a `prefix` at the top of the language file and add it in front of every one-line message automatically. Because it is added for you, you should never write the prefix placeholder inside a message value - the plugin's prefix token written in placeholder form. It is not replaced there, so it would just show up literally on top of the prefix the plugin already put in front. If any message value contains that token, the plugin logs a single warning at startup telling you how many messages need cleaning up. Remove the token from those lines and keep the prefix in the `prefix` key only.
 
+## Skipping the prefix on one line
+
+Sometimes a specific message looks better without the prefix - a full-width gradient line, a banner, a centered announcement. Start that message value with the `[noprefix]` tag and the plugin sends that one line bare; the tag itself never shows. It combines with the other tags in any order:
+
+```yaml
+reload-done: "[noprefix][rgb]Configuration reloaded."
+motd: "[noprefix][center]&#8354f2Welcome to the server"
+```
+
+The tag only has meaning at the start of the line (together with the other leading tags). Written in the middle of a message it is treated as normal text. Requires the server to run SnLib 1.9.0 or newer; on older versions the tag shows literally.
+
 ## Keep clickable tags when editing
 
 Some messages contain interactive tags like `<click:run_command:'...'>` and `<hover:show_text:'...'>` - they are what makes a chat button such as `[JOIN]` actually do something when clicked. Because your edits are always preserved, an edit or a translation that drops one of those tags is never repaired automatically: the button keeps its look but clicking it silently does nothing. Keep the tags around your rewritten text (only the visible text between them is yours to restyle). If a value loses a tag its default carries, the plugin logs a single warning at startup naming the affected keys so you can restore them.
