@@ -177,6 +177,7 @@ items:
     display-name: "[rgb]&lLegendary Blade"
     material: DIAMOND_SWORD
     custom-model-data: 1001
+    item-model: "nexo:legendary_blade"   # optional, 1.21.2+: base ItemModel key; works alongside custom-model-data
     amount: 1
     glow: true
     lore:

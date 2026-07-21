@@ -242,6 +242,7 @@ items:
       - "GENERIC_ATTACK_DAMAGE ADD_NUMBER 4 MAINHAND"
     damage: 0
     custom-model-data: 1001
+    item-model: "nexo:profile_icon"   # optional, 1.21.2+: base ItemModel key; works alongside custom-model-data
     amount: 1
     slots: [4]
     glow: true

@@ -17,6 +17,7 @@ item-id: # can be anything as long it is unique
   material: string (can resolve basehead-base64) # default: "STONE"
   skull-owner: string # player name or UUID; resolves placeholders per viewer (%player_name%); requires PLAYER_HEAD; uncached name -> default head # default: ""
   custom-model-data: int # default: 0
+  item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
   amount: int # default: 1
   glow: true/false # default: false
   lore: # default: []

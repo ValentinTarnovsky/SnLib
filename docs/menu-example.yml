@@ -79,6 +79,7 @@ items:
     attributes: list ex: ["ATTRIBUTE OPERATION amount [slot-group]"] # attribute modifiers, static values # default: []
     damage: int # initial vanilla damage already spent; needs a material with durability # default: not set
     custom-model-data: int # default: 0
+    item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
     amount: int # default: 1
     slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6] # alternative: key (one layout character, see example-layout-item)
     glow: true/false # default: false
@@ -180,7 +181,7 @@ items:
   # override rendered in the SAME slots INSTEAD of the navigation item when
   # there is no page to go to (first page for previous, last page for next).
   # nav-disabled supports the same appearance fields as a regular item
-  # (display-name, material, custom-model-data, amount, glow, lore, flags...)
+  # (display-name, material, custom-model-data, item-model, amount, glow, lore, flags...)
   # but no slots and no actions: a disabled arrow never fires anything.
 
   previous-page:
@@ -296,6 +297,7 @@ templates:
     display-name: string # default: ""
     material: string (can resolve basehead-base64) # default: "STONE"
     custom-model-data: int # default: 0
+    item-model: string # 1.21.2+ base ItemModel key # default: ""
     amount: int # default: 1
     # NO "slots:" - the plugin assigns slots dynamically
     glow: true/false # default: false

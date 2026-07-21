@@ -39,7 +39,8 @@ import com.sn.lib.yml.SnYml;
  *     cells are the target of the no-slots bindPaged)      consumed by GuiSession.bindPaged
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
- *       custom-model-data, amount, glow, enchantments,     (re-read per viewer: locals,
+ *       custom-model-data, item-model (1.21.2+),           (re-read per viewer: locals,
+ *       amount, glow, enchantments,
  *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [small], [rgb], [center],
  *       color RGB/HEX, trim-pattern, trim-material,         MiniMessage + legacy)
  *       potion-effects, skull-owner (per-viewer

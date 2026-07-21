@@ -38,7 +38,7 @@ Each file describes one menu top to bottom. What you can customize includes:
 - `material` - what the item is (including player heads).
 - `lore` - the description lines under the name.
 - `enchantments` and `glow` - real enchantments, or just the enchanted shimmer without any effect.
-- `amount`, `custom-model-data`, `flags`, `color`, potion effects, and armor trim - the rest of the item's appearance.
+- `amount`, `custom-model-data`, `item-model` (1.21.2+ resource-pack model key like `nexo:2d_player_head`), `flags`, `color`, potion effects, and armor trim - the rest of the item's appearance.
 - `slots` or `key` - where the item goes, either by slot number or by the letter you used in the `layout`.
 
 ### What happens when an item is clicked
@@ -63,7 +63,7 @@ Some Sn plugins define custom physical items - special tools, kit items, currenc
 
 ### Appearance
 
-The same appearance fields as menu items: `display-name`, `material`, `lore`, `enchantments`, `glow`, `custom-model-data`, `flags`, `color`, armor trim, potion effects, player-head owner, and attribute modifiers.
+The same appearance fields as menu items: `display-name`, `material`, `lore`, `enchantments`, `glow`, `custom-model-data`, `item-model` (1.21.2+), `flags`, `color`, armor trim, potion effects, player-head owner, and attribute modifiers.
 
 ### Behavior
 

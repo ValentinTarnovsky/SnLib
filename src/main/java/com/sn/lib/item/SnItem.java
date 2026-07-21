@@ -66,9 +66,11 @@ import com.sn.lib.yml.SnYml;
  * via Registry/NamespacedKey with legacy-name fallbacks; an unresolvable id logs one WARN
  * and is skipped, never thrown.</p>
  *
- * <p>Compat: {@code setEnchantmentGlintOverride} and {@code setMaxStackSize} (1.20.5+) go
+ * <p>Compat: {@code setEnchantmentGlintOverride} and {@code setMaxStackSize} (1.20.5+) and
+ * {@code setItemModel} (1.21.2+) go
  * through {@link SnCompat#probe}; on 1.20.4 glow degrades to a real vanilla enchant plus
- * {@code HIDE_ENCHANTS} and max-stack-size is skipped, each with one WARN. Trim lookup
+ * {@code HIDE_ENCHANTS} and max-stack-size is skipped, each with one WARN; below 1.21.2
+ * item-model is skipped the same way. Trim lookup
  * prefers {@link RegistryAccess} ({@code Registry.TRIM_*} is deprecated since 1.20.6) and
  * falls back to the legacy fields on older servers. {@link ItemFlag} is treated as an open
  * enum: individual {@code valueOf} in try/catch with the lenient
@@ -79,8 +81,8 @@ import com.sn.lib.yml.SnYml;
  * and the deprecated UUID constructor with a deterministic name-derived UUID on 1.20.4.</p>
  *
  * <p>Covered fields: display-name, material (with head texture convention), skull-owner,
- * custom-model-data, amount, glow, lore, enchantments, flags, color, trim, potion-effects,
- * attributes, damage, unbreakable, max-stack-size and equipment-slot.</p>
+ * custom-model-data, item-model, amount, glow, lore, enchantments, flags, color, trim,
+ * potion-effects, attributes, damage, unbreakable, max-stack-size and equipment-slot.</p>
  *
  * <p>Server-wide statics allowed by the SnLib contract: the WARN dedup set records facts
  * about this server's registries, not about a consumer.</p>
@@ -112,6 +114,7 @@ public final class SnItem {
     private String trimMaterial;
     private final List<String> potionEffects = new ArrayList<>();
     private Integer modelData;
+    private String itemModel;
     private String headBase64;
     private String skullOwner;
     private final List<AttributeLine> attributes = new ArrayList<>();
@@ -143,7 +146,8 @@ public final class SnItem {
     /**
      * Maps every appearance field of the golden spec found under {@code path}: display-name,
      * material (with the {@code texture-}/{@code basehead-}/{@code base64-} head convention),
-     * custom-model-data (only when set), amount, glow, lore, enchantments, flags, color,
+     * custom-model-data (only when set), item-model (1.21.2+ base ItemModel key,
+     * placeholder-resolved), amount, glow, lore, enchantments, flags, color,
      * trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size,
      * equipment-slot, skull-owner (placeholder-resolved per viewer), attributes (static
      * definition values, no placeholders) and damage (only when set). Strings resolve
@@ -173,6 +177,10 @@ public final class SnItem {
         item.amount(yml.getInt(p + "amount", 1));
         if (yml.isSet(p + "custom-model-data")) {
             item.modelData(yml.getInt(p + "custom-model-data", 0));
+        }
+        String rawItemModel = SnText.applyLocals(yml.getString(p + "item-model", "", viewer), phs);
+        if (!rawItemModel.isEmpty()) {
+            item.itemModel(rawItemModel);
         }
         if (yml.getBoolean(p + "glow", false)) {
             item.glow();
@@ -314,6 +322,20 @@ public final class SnItem {
         return this;
     }
 
+    /**
+     * Base ItemModel key (1.21.2+ {@code minecraft:item_model} component), e.g.
+     * {@code nexo:2d_player_head}; a key without a namespace defaults to {@code minecraft:}.
+     * Independent of {@link #modelData(int)} - both components may coexist on one item.
+     * Skipped with one WARN on servers below 1.21.2 or when the key is invalid.
+     * Null or blank is a no-op.
+     */
+    public SnItem itemModel(String key) {
+        if (key != null && !key.isBlank()) {
+            this.itemModel = key.trim();
+        }
+        return this;
+    }
+
     /** Head texture accepted by {@link HeadUtil#extractTextureValue}; requires PLAYER_HEAD. */
     public SnItem headBase64(String value) {
         this.headBase64 = value;
@@ -429,6 +451,9 @@ public final class SnItem {
         applyAttributes(meta);
         if (modelData != null) {
             meta.setCustomModelData(modelData);
+        }
+        if (itemModel != null) {
+            applyItemModel(meta);
         }
         if (unbreakable != null) {
             meta.setUnbreakable(unbreakable);
@@ -970,6 +995,25 @@ public final class SnItem {
             setter.invoke(meta, Integer.valueOf(Math.max(1, Math.min(99, maxStackSize))));
         } catch (ReflectiveOperationException e) {
             warnOnce("maxstack-invoke", "setMaxStackSize failed (" + e + "); skipped");
+        }
+    }
+
+    private void applyItemModel(ItemMeta meta) {
+        NamespacedKey key = NamespacedKey.fromString(itemModel.toLowerCase(Locale.ROOT));
+        if (key == null) {
+            warnOnce("item-model-key:" + itemModel,
+                    "invalid item-model key '" + itemModel + "'; skipped");
+            return;
+        }
+        Method setter = SnCompat.probe(ItemMeta.class, "setItemModel", NamespacedKey.class);
+        if (setter == null) {
+            // pre-1.21.2: the probe already warned with ONE WARN; the field is skipped.
+            return;
+        }
+        try {
+            setter.invoke(meta, key);
+        } catch (ReflectiveOperationException e) {
+            warnOnce("item-model-invoke", "setItemModel failed (" + e + "); skipped");
         }
     }
 

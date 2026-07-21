@@ -435,8 +435,8 @@ spec, it ALREADY works without plugin code.
 
 | Spec | Fields |
 |------|--------|
-| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
-| `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, amount, glow, lore, enchantments, flags, color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
+| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
+| `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, glow, lore, enchantments, flags, color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
 | `docs/selection-example.yml` (v1.1) | item (full SnItem appearance schema), permission, particle (type/color/size), step, interval-ticks, render-distance, visibility (OWNER_ONLY/WORLD), particle-budget, max-render-volume, max-volume, timeout-ticks, silent |
 
 The headers of `GuiDef.java`, `GuiItemDef.java` and `ItemDef.java` carry the
@@ -451,7 +451,7 @@ field-by-field checklist with the exact parse point.
   `UnsupportedClassVersionError` before any probe.
 - Zero NMS/packets: 100% Paper and Adventure API. Nothing references
   `InventoryView`. Any API newer than 1.20.4 (setMaxStackSize, glint
-  override) degrades with ONE WARN via `SnCompat.probe`.
+  override, setItemModel 1.21.2+) degrades with ONE WARN via `SnCompat.probe`.
 - Open enums: Sound/Particle/ItemFlag resolve via individual `valueOf` with
   catch, never switch/EnumSet; lenient aliases
   `HIDE_POTION_EFFECTS` <-> `HIDE_ADDITIONAL_TOOLTIP` and `REDSTONE` <-> `DUST`.

@@ -19,7 +19,7 @@ selection-wand:
   # Wand item appearance. Supports the FULL SnItem appearance schema of
   # item-example.yml: display-name (with [small]/[rgb]/[center] prefix tags),
   # material (incl. the texture-/basehead-/base64- head convention), skull-owner,
-  # custom-model-data, amount, glow, lore, enchantments, flags, color,
+  # custom-model-data, item-model, amount, glow, lore, enchantments, flags, color,
   # trim-pattern/trim-material, potion-effects, attributes, damage, unbreakable,
   # max-stack-size and equipment-slot.
   # Absent section -> internal fallback: BLAZE_ROD named "&6&lRegion Wand".

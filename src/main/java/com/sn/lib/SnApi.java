@@ -14,12 +14,13 @@ package com.sn.lib;
  * (shared multi-plugin releases repo support in UpdateChecker); LEVEL 4 = release 1.8.0
  * (ItemRegistry take/removeAll, SnYml comment write surface, lang interactive-tag drift
  * WARN); LEVEL 5 = release 1.10.0 (SubCommandBuilder helpVisible help-only visibility
- * flag).</p>
+ * flag); LEVEL 6 = release 1.11.0 (SnItem itemModel 1.21.2+ item_model component
+ * support).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 5;
+    public static final int LEVEL = 6;
 
     private SnApi() {
     }
