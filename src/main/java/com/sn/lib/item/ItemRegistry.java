@@ -68,6 +68,7 @@ public final class ItemRegistry {
     private final RecipeLoader recipes;
     private final HeldEffectsTask heldEffects;
     private final Map<String, ItemDef> defs = new ConcurrentHashMap<>();
+    private final Map<String, RedeemEntry> redeems = new ConcurrentHashMap<>();
     private volatile @Nullable SnYml itemsSource;
 
     /** Creates the registry for the given context and tracks it for owner resolution. */
@@ -404,6 +405,47 @@ public final class ItemRegistry {
      */
     public int removeAll(Player player, String id) {
         return take(player, id, Integer.MAX_VALUE);
+    }
+
+    /** Registration pair behind a redeemable id: its consumption spec and Java callback. */
+    public record RedeemEntry(RedeemSpec spec, RedeemHandler handler) {
+    }
+
+    /**
+     * Marks the item registered under {@code id} as redeemable: any right-click holding
+     * the item (air or block, sneaking or not, from either hand) cancels the interaction
+     * (so a placeable item is never placed and a container never opens), consumes units
+     * per the spec's {@link RedeemSpec.Mode} and invokes the handler with the consumed
+     * total and stacks. A use denied by another plugin ({@code useItemInHand DENY})
+     * never redeems, and a click on a {@link RedeemSpec#blockedOn()} material steps
+     * aside so the block interaction wins. The item's cooldown and
+     * interact-requirements still gate the flow; a redemption replaces the interact
+     * variants and durability of that click, and one physical click redeems at most
+     * once (the same-tick dual fire of both hands is de-duplicated).
+     *
+     * <p>The registration is programmatic and survives item reloads, like programmatic
+     * definitions; re-registering an id replaces the previous entry (a reload callback
+     * re-registering with the freshly read config is the intended pattern). It dies with
+     * this context on owner disable.</p>
+     */
+    public void redeemable(String id, RedeemSpec spec, RedeemHandler handler) {
+        if (id == null || id.isBlank() || spec == null || handler == null) {
+            plugin.getLogger().warning("redeemable registration ignored: null id, spec or handler");
+            return;
+        }
+        redeems.put(id.trim(), new RedeemEntry(spec, handler));
+    }
+
+    /** Drops the redeemable registration of {@code id}; its stacks become inert again. */
+    public void removeRedeemable(String id) {
+        if (id != null) {
+            redeems.remove(id.trim());
+        }
+    }
+
+    /** Redeemable registration of {@code id}, or null; consulted by the interact dispatch. */
+    public @Nullable RedeemEntry redeemEntry(String id) {
+        return id == null ? null : redeems.get(id.trim());
     }
 
     /** Writes the locked-mode PDC flags declared by the definition onto the stack. */

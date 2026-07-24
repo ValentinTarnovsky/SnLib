@@ -14,6 +14,8 @@ snlib:
   invalid-value: "&cInvalid value: &f{value}"
   # Sent when a numeric argument falls outside its allowed range; {min}/{max} bound it and {value} is the rejected input.
   out-of-range: "&cValue must be between &f{min} &cand &f{max}&c: &f{value}"
+  # Sent when an open-ended numeric argument is under its minimum; {min} is the floor and {value} the rejected input.
+  number-too-small: "&cValue must be at least &f{min}&c: &f{value}"
   # Sent when an argument expected an online player; {value} is the rejected input.
   player-not-found: "&cPlayer not found: &f{value}"
   # Sent when the given subcommand does not exist; {value} is the unknown input.

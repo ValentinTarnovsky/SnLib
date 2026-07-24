@@ -191,6 +191,14 @@ sn.items().give(player, "wand", 1);
   UUID or cached name, never a blocking lookup), `attributes:` /
   `attribute(...)` (modifiers with lenient resolution and a UUID fallback on
   1.20.4) and `damage:` / `damage(int)` (clamped vanilla durability).
+- Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
+  into one lore line per segment, so a list value flows through a single
+  `{placeholder}` in menu templates and items.
+- Redeemables (v1.12): `sn.items().redeemable(id, RedeemSpec, handler)` -
+  right-click on air OR block redeems (interaction cancelled, so placeable
+  materials never place), consuming one unit, the hand stack, or every
+  matching stack with an optional cap; the handler receives the consumed
+  total plus the consumed stacks for per-stack PDC data.
 
 ## commands module (SnCommands)
 
@@ -213,6 +221,10 @@ sn.commands().root("shop")
   commands are unregistered and `player.updateCommands()` clears the ghosts.
 - The default `reload` delegates to the ReloadManager; `debugCommand()` adds
   the `debug` sub.
+- Numeric args (v1.12): every numeric factory parses the case-insensitive
+  `k/m/b/t/qa/qi` suffixes (`2k` = 2000, `1.5b` = 1500000000);
+  `Args.intMin(min)` / `doubleMin(min)` cover open-ended amounts, suggesting
+  the `<argName>` hint instead of a sentinel upper bound.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 

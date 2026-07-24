@@ -286,6 +286,41 @@ items:
 A `PLAYER_HEAD` item adds `skull-owner` (a player name, UUID, or `%placeholder%` resolved per viewer). See the [full player-head example](menus.md#full-field-reference-example) in the menus page for that field in context.
 {% endhint %}
 
+## Redeemable items (1.12.0)
+
+A registered item can be marked redeemable: any right-click holding it (air or block,
+sneaking or not, from either hand) cancels the interaction, consumes items per the spec
+and invokes your handler. SnLib owns the whole dispatch, so a placeable material (a
+player head gem) is never placed instead of redeemed and clicks on air work exactly like
+clicks on blocks - never hand-roll a `PlayerInteractEvent` listener for this.
+
+```java
+sn.items().redeemable("gem",
+        RedeemSpec.allMatching(2304)                    // or single() / handStack() / allMatching()
+                .blockedOn(Set.of(Material.CHEST)),     // let the chest open instead
+        (player, amount, consumed) -> gems.add(player.getUniqueId(), amount));
+```
+
+- `RedeemSpec.single()` consumes one unit from the used hand; `handStack()` the whole
+  held stack; `allMatching()` every matching stack of the inventory and cursor, with an
+  optional unit cap (`allMatching(limit)`).
+- The handler receives the consumed total plus an immutable snapshot of the consumed
+  stacks, so per-stack data (a PDC value tag on a currency note) can be aggregated.
+- A use denied by another plugin is respected, and a click on a `blockedOn` material
+  steps aside so the block interaction wins. The item's cooldown and
+  `interact-requirements` still gate the flow; a redemption replaces the interact
+  variants and durability of that click.
+- The registration is programmatic and survives item reloads; re-register (or
+  `removeRedeemable(id)`) from your reload callback when the mode is config-driven.
+
+## Multi-line lore placeholders (1.12.0)
+
+A lore line containing `\n` splits into one lore line per segment (`SnItem.lore`), so a
+LIST value can flow through a single placeholder in a menu template or item: bind
+`Ph.of("body", String.join("\n", lines))` against a one-line `{body}` template line and
+every entry becomes its own lore line. Each segment carries its own colour codes; a
+trailing newline adds no empty line.
+
 ## Related pages
 
 - [Menus](menus.md) - GUI icons and the shared action/requirement grammar used in `*-click-actions`.

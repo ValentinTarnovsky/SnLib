@@ -56,6 +56,7 @@ public final class RootCommand extends Command implements Registrable {
             Map.entry("snlib.invalid-number", "&cInvalid number: &f{value}"),
             Map.entry("snlib.invalid-value", "&cInvalid value: &f{value}"),
             Map.entry("snlib.out-of-range", "&cValue must be between &f{min} &cand &f{max}&c: &f{value}"),
+            Map.entry("snlib.number-too-small", "&cValue must be at least &f{min}&c: &f{value}"),
             Map.entry("snlib.player-not-found", "&cPlayer not found: &f{value}"),
             Map.entry("snlib.unknown-subcommand", "&cUnknown subcommand: &f{value}"),
             Map.entry("snlib.reload-done", "&aConfiguration reloaded."),

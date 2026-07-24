@@ -222,6 +222,8 @@ what to suggest in tab completion.
 | `Args.oneOf(Function<CommandSender, Collection<String>>)` | `String` (canonical option, scoped to the sender) | `snlib.invalid-value` | up to 100 sender-scoped options |
 | `Args.intRange(min, max)` | `Integer` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
 | `Args.doubleRange(min, max)` | `Double` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
+| `Args.intMin(min)` | `Integer` of at least `min`, no upper bound | `snlib.invalid-number` / `snlib.number-too-small` | the arg-name hint `<argName>` |
+| `Args.doubleMin(min)` | `Double` of at least `min`, no upper bound | `snlib.invalid-number` / `snlib.number-too-small` | the arg-name hint `<argName>` |
 | `Args.duration()` | `Long` millis (e.g. `1d 2h 30m`) | `snlib.invalid-value` | `30s`, `5m`, `1h`, `1d` |
 | `Args.bool()` | `Boolean` (`true/yes/on`, `false/no/off`) | `snlib.invalid-value` | `true`, `false` |
 | `Args.string()` | `String` (one token, as-is) | never | the arg-name hint `<argName>` |
@@ -229,6 +231,14 @@ what to suggest in tab completion.
 | `Args.greedy()` | `String` (every remaining token, space-joined) | never | the arg-name hint `<argName>` |
 | `Args.greedy(hint)` | `String` (every remaining token, space-joined) | never | the explicit hint `<hint>` |
 | `Args.suggesting(options)` | `String` (one token, as-is; you validate) | never | up to 100 current options |
+
+Every numeric factory (`intRange`, `doubleRange`, `intMin`, `doubleMin`) accepts
+abbreviated input with the case-insensitive suffixes `k/m/b/t/qa/qi` (1.12.0): `2k` parses
+as `2000`, `1.5b` as `1500000000`. Comma and dot separators normalize too (`1,500` groups
+to `1500`; `1,5` reads as `1.5`). Declared `intRange`/`doubleRange` bounds are suggested
+literally, so they must be human-meaningful (`1..64`); an amount with no natural upper
+bound belongs to `intMin`/`doubleMin`, never to a sentinel like `Integer.MAX_VALUE` (which
+would tab-complete as `2147483647`).
 
 `Args.greedy()` only makes sense as the **last** argument of a subcommand: it consumes all
 remaining tokens into a single space-joined value, so `/mail send Steve hello there world`
@@ -252,7 +262,8 @@ yourself off-thread (see the utilities module's `PlayerLookup`).
 |---|---|---|
 | an online player | `Args.onlinePlayer()` | completes online names and rejects unknowns |
 | one of a known set | `Args.oneOf(...)` | completes and validates against the set (sender-aware overload available) |
-| a number in a range | `Args.intRange(min, max)` / `Args.doubleRange(min, max)` | parses and range-checks, and suggests the bounds |
+| a number in a real range | `Args.intRange(min, max)` / `Args.doubleRange(min, max)` | parses and range-checks, and suggests the bounds |
+| an open-ended amount (withdraw, pay, give) | `Args.intMin(min)` / `Args.doubleMin(min)` | floor-checks only and suggests `<argName>` instead of an ugly bound |
 | free-form text | `Args.string()` / `Args.greedy()` (add a hint) | no fixed set; suggests an `<argName>` hint |
 | a dynamic set you validate yourself | `Args.suggesting(...)` | suggests the set but accepts any token as-is |
 

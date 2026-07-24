@@ -15,12 +15,15 @@ package com.sn.lib;
  * (ItemRegistry take/removeAll, SnYml comment write surface, lang interactive-tag drift
  * WARN); LEVEL 5 = release 1.10.0 (SubCommandBuilder helpVisible help-only visibility
  * flag); LEVEL 6 = release 1.11.0 (SnItem itemModel 1.21.2+ item_model component
- * support).</p>
+ * support); LEVEL 7 = release 1.12.0 (redeemable items via ItemRegistry.redeemable with
+ * RedeemSpec/RedeemHandler; Args.intMin/doubleMin open-ended numeric factories;
+ * k/m/b/t/qa/qi suffix parsing in every numeric arg; snlib.number-too-small message
+ * key; SnItem lore newline split for multi-line placeholder values).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 6;
+    public static final int LEVEL = 7;
 
     private SnApi() {
     }

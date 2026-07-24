@@ -220,11 +220,24 @@ public final class SnItem {
         return this;
     }
 
-    /** Appends lore lines; each renders through the text pipeline. */
+    /**
+     * Appends lore lines; each renders through the text pipeline. A line containing
+     * {@code \n} splits into one lore line per segment (1.12.0), so a multi-line value
+     * can flow through a single placeholder: bind {@code Ph.of("body", String.join("\n",
+     * lines))} against a one-line template and every segment becomes its own lore line.
+     * Each segment carries its own colour codes; trailing newlines add no empty line.
+     */
     public SnItem lore(List<String> lines) {
         if (lines != null) {
             for (String line : lines) {
-                this.lore.add(line == null ? "" : line);
+                String value = line == null ? "" : line;
+                if (value.indexOf('\n') < 0) {
+                    this.lore.add(value);
+                } else {
+                    for (String segment : value.split("\n")) {
+                        this.lore.add(segment);
+                    }
+                }
             }
         }
         return this;

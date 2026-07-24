@@ -18,6 +18,7 @@ import org.bukkit.util.StringUtil;
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Ph;
+import com.sn.lib.util.NumberFormatter;
 import com.sn.lib.util.TimeUtil;
 
 /**
@@ -39,6 +40,13 @@ import com.sn.lib.util.TimeUtil;
  * {@code <amount>}. A hint is only offered while the partial is empty (or itself starts
  * with {@code <}); once the sender types a real value the free-form arg suggests nothing
  * and accepts whatever is typed.</p>
+ *
+ * <p>Every numeric arg ({@link #intRange}, {@link #doubleRange}, {@link #intMin},
+ * {@link #doubleMin}) parses through {@link NumberFormatter#parseFormatted(String)}, so
+ * abbreviated input with the case-insensitive suffixes {@code k/m/b/t/qa/qi} is accepted
+ * everywhere: {@code 2k} reads as {@code 2000}, {@code 1.5b} as {@code 1500000000}.
+ * Comma and dot separators normalize per that contract ({@code 1,500} groups to
+ * {@code 1500}; {@code 1,5} reads as {@code 1.5}).</p>
  */
 public final class Args {
 
@@ -175,20 +183,18 @@ public final class Args {
     }
 
     /**
-     * Integer within {@code [min, max]}; a non-number rejects with
+     * Integer within {@code [min, max]}; accepts abbreviation suffixes ({@code 2k},
+     * {@code 1.5m}). A non-number or a non-integral value rejects with
      * {@code snlib.invalid-number} and an out-of-range value with
-     * {@code snlib.out-of-range}. Suggests both bounds as examples.
+     * {@code snlib.out-of-range}. Suggests both bounds as examples, so the declared
+     * bounds must be human-meaningful; an amount with no natural upper bound belongs to
+     * {@link #intMin(int)} instead, never to a sentinel like {@code Integer.MAX_VALUE}.
      */
     public static SnArg<Integer> intRange(int min, int max) {
         return new SnArg<Integer>(List.of(String.valueOf(min), String.valueOf(max)), false) {
             @Override
             public Integer parse(String raw) throws ArgParseException {
-                int value;
-                try {
-                    value = Integer.parseInt(raw.trim());
-                } catch (NumberFormatException e) {
-                    throw new ArgParseException("snlib.invalid-number", Ph.of("value", raw));
-                }
+                int value = parseIntToken(raw);
                 if (value < min || value > max) {
                     throw new ArgParseException("snlib.out-of-range", Ph.of("value", raw),
                             Ph.of("min", min), Ph.of("max", max));
@@ -199,27 +205,111 @@ public final class Args {
     }
 
     /**
-     * Double within {@code [min, max]}; a non-number rejects with
-     * {@code snlib.invalid-number} and an out-of-range value with
-     * {@code snlib.out-of-range}. Suggests both bounds as examples.
+     * Double within {@code [min, max]}; accepts abbreviation suffixes ({@code 0.5k},
+     * {@code 1.5b}). A non-number rejects with {@code snlib.invalid-number} and an
+     * out-of-range value with {@code snlib.out-of-range}. Suggests both bounds as
+     * examples, so the declared bounds must be human-meaningful; an amount with no
+     * natural upper bound belongs to {@link #doubleMin(double)} instead, never to a
+     * sentinel or a domain cap that renders in scientific notation.
      */
     public static SnArg<Double> doubleRange(double min, double max) {
         return new SnArg<Double>(List.of(String.valueOf(min), String.valueOf(max)), false) {
             @Override
             public Double parse(String raw) throws ArgParseException {
-                double value;
-                try {
-                    value = Double.parseDouble(raw.trim().replace(',', '.'));
-                } catch (NumberFormatException e) {
-                    throw new ArgParseException("snlib.invalid-number", Ph.of("value", raw));
-                }
-                if (Double.isNaN(value) || value < min || value > max) {
+                double value = parseNumericToken(raw);
+                if (value < min || value > max) {
                     throw new ArgParseException("snlib.out-of-range", Ph.of("value", raw),
                             Ph.of("min", min), Ph.of("max", max));
                 }
                 return value;
             }
         };
+    }
+
+    /**
+     * Integer of at least {@code min} with NO upper bound: the natural factory for
+     * open-ended amounts (withdraw, give, pay counts). Accepts abbreviation suffixes
+     * ({@code 2k}, {@code 1.5m}). Its lone suggestion is the angle-bracket hint derived
+     * from the declared argument name (for example {@code <amount>}); no numeric bound is
+     * ever suggested. A non-number or non-integral value rejects with
+     * {@code snlib.invalid-number} and a value under {@code min} with
+     * {@code snlib.number-too-small}.
+     */
+    public static SnArg<Integer> intMin(int min) {
+        SnArg<Integer> arg = new SnArg<Integer>(List.of(), false) {
+            @Override
+            public Integer parse(String raw) throws ArgParseException {
+                int value = parseIntToken(raw);
+                if (value < min) {
+                    throw new ArgParseException("snlib.number-too-small",
+                            Ph.of("value", raw), Ph.of("min", min));
+                }
+                return value;
+            }
+        };
+        arg.hintMode = true;
+        return arg;
+    }
+
+    /**
+     * Double of at least {@code min} with NO upper bound: the open-ended counterpart of
+     * {@link #doubleRange(double, double)} for amounts whose only real cap is the domain
+     * (balances, prices). Accepts abbreviation suffixes ({@code 0.5k}, {@code 1.5b}).
+     * Its lone suggestion is the angle-bracket hint derived from the declared argument
+     * name; no numeric bound is ever suggested. A non-number rejects with
+     * {@code snlib.invalid-number} and a value under {@code min} with
+     * {@code snlib.number-too-small}.
+     */
+    public static SnArg<Double> doubleMin(double min) {
+        SnArg<Double> arg = new SnArg<Double>(List.of(), false) {
+            @Override
+            public Double parse(String raw) throws ArgParseException {
+                double value = parseNumericToken(raw);
+                if (value < min) {
+                    throw new ArgParseException("snlib.number-too-small",
+                            Ph.of("value", raw), Ph.of("min", min));
+                }
+                return value;
+            }
+        };
+        arg.hintMode = true;
+        return arg;
+    }
+
+    /**
+     * Parses a numeric token through {@link NumberFormatter#parseFormatted(String)}
+     * (suffixes and separator normalization); NaN and infinities reject with
+     * {@code snlib.invalid-number} alongside unparseable input.
+     */
+    private static double parseNumericToken(String raw) throws Arg.ArgParseException {
+        double value;
+        try {
+            value = NumberFormatter.parseFormatted(raw);
+        } catch (NumberFormatException e) {
+            throw new Arg.ArgParseException("snlib.invalid-number", Ph.of("value", raw));
+        }
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            throw new Arg.ArgParseException("snlib.invalid-number", Ph.of("value", raw));
+        }
+        return value;
+    }
+
+    /**
+     * {@link #parseNumericToken(String)} narrowed to int: a non-integral value (for
+     * example {@code 1.5} with no suffix) or one outside the int range rejects with
+     * {@code snlib.invalid-number}. Integrality is tested with a small tolerance and
+     * the value rounded to the nearest integer, because suffix multiplication can land
+     * one ULP off a clean amount ({@code 1.005k} computes as 1004.9999999999999 and
+     * must parse as 1005, while a genuine fraction like {@code 2.5} stays rejected).
+     */
+    private static int parseIntToken(String raw) throws Arg.ArgParseException {
+        double parsed = parseNumericToken(raw);
+        double rounded = Math.rint(parsed);
+        if (Math.abs(parsed - rounded) > 1e-6
+                || rounded < Integer.MIN_VALUE || rounded > Integer.MAX_VALUE) {
+            throw new Arg.ArgParseException("snlib.invalid-number", Ph.of("value", raw));
+        }
+        return (int) rounded;
     }
 
     /**
