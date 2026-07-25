@@ -192,6 +192,12 @@ A list counts as "declared" only when it is non-empty, so you can declare `right
 
 `strict-clicks: true` (opt-in per menu, default false) discards any click outside the four basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) unless a specific list covers it: `middle-click-actions` enables MIDDLE, and a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE. NUMBER_KEY, DROP, CONTROL_DROP and SWAP_OFFHAND have no possible specific list and stay discarded in strict mode. With strict off (the default), any ClickType fires the resolved list, exactly as it always has.
 
+### View requirements gate the click too
+
+`view-requirements` are a visibility gate AND an interaction gate: a click is dispatched against what the slot actually shows the clicking viewer, so an item hidden from them fires nothing at all - neither the click actions nor the deny actions - and the same holds for a paginated slot the current page left empty. Duplicating a view requirement into `click-requirements` is never needed to keep a hidden item safe (before v1.16.1 it was, because the dispatch only matched the slot).
+
+The requirement is re-evaluated at click time, so a change that hides the item takes effect on the very next click even when the menu declares no `update-interval`; when a stale stack was still on screen, that click also clears the slot so the menu converges with the requirement instead of leaving a ghost item.
+
 ### Close actions and sound
 
 `close-actions:` (same grammar as `click-actions`) and `close-sound:` run once per close, on the natural client close (ESC) and on the `[close]` action. They deliberately do NOT run on page changes, on inventory recreations, or when the library closes the session programmatically (reload, owner disable, quit cleanup). Click guards inside close-actions are skipped with a debug note, since there is no click.

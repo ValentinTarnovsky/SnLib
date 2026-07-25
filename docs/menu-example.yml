@@ -97,7 +97,7 @@ items:
       - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
       - "%placeholder% = 1" #ex: %vault_balance% = 1
       - "%placeholder% != 1" #ex: %vault_balance% != 1
-    view-requirements: list of requirements to view this item, placeholders that have to match in order to view this item, if it doesn't match, the item will not be displayed # default: []
+    view-requirements: list of requirements to view this item, placeholders that have to match in order to view this item, if it doesn't match, the item will not be displayed AND it cannot be clicked either (an item you cannot see fires nothing at all, not even the deny-actions, so there is no need to repeat the expression in click-requirements) # default: []
       - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
       - "%placeholder% = 1" #ex: %vault_balance% = 1
       - "%placeholder% != 1" #ex: %vault_balance% != 1

@@ -101,6 +101,10 @@ Inside a list of actions, you can add a click filter as one of the lines. It mak
 
 Requirements are conditions written as comparisons. They appear under keys such as `view-requirements`, `click-requirements`, and `interact-requirements`, and each has a matching `deny-actions` list that runs when the condition is not met.
 
+{% hint style="info" %}
+**`view-requirements` hide AND block.** An item a player does not meet the view requirements for is not drawn for them, and it cannot be clicked either: the click fires nothing at all, not even the `deny-actions`. You never have to repeat a view requirement inside `click-requirements` to keep a hidden item safe. Use `click-requirements` for the opposite case - the item IS visible and you want to tell the player why the click was refused.
+{% endhint %}
+
 A requirement compares a placeholder against a value using an operator:
 
 ```yaml

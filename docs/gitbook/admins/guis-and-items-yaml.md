@@ -51,7 +51,7 @@ This is where menus become interactive. For each item you can define, per type o
 - `*-click-requirements` - conditions that must be true for the click to be allowed.
 - `*-click-deny-actions` - what happens instead when a requirement is not met.
 
-You can also set `view-requirements` to control whether an item is shown to a player at all. Navigation items (next page, previous page) and their disabled states are configured here too when the menu uses pagination.
+You can also set `view-requirements` to control whether an item is shown to a player at all. Hiding is total: an item a player cannot see cannot be clicked by them either, so the empty slot fires nothing - you never need to copy the same condition into `click-requirements`. Navigation items (next page, previous page) and their disabled states are configured here too when the menu uses pagination.
 
 The exact syntax for the action and requirement lists is a small mini-language shared across every Sn plugin. It is documented on its own page: see [Actions and Requirements](actions-and-requirements.md).
 

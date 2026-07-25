@@ -56,12 +56,20 @@ import com.sn.lib.util.TagIo;
  * {@code close-sound} and schedules its {@code close-actions} (never on page swaps nor
  * on programmatic teardown, see {@link #handleClose}).</p>
  *
+ * <p><b>View requirements gate interaction, not only rendering</b>: a click resolves what
+ * the slot actually shows to this viewer, under the same precedence and the same
+ * requirement test the render uses, so an item hidden from a viewer can never be clicked
+ * by them - {@code view-requirements} need no duplicate in {@code click-requirements}.</p>
+ *
  * <p>As a {@link PageTarget}, page operations are gated by the menu's opt-in
  * {@code pagination} flag: with pagination false, {@link #nextPage()},
  * {@link #previousPage()}, {@link #setPage(int)} and {@link #refreshPage()} are no-ops
  * with a debug note. Main-thread only, like the whole GUI module.</p>
  */
 public final class GuiSession implements PageTarget {
+
+    /** Shared empty local-placeholder array of the definitions that declare none. */
+    private static final Ph[] NO_LOCALS = new Ph[0];
 
     private final Sn ctx;
     private final Gui gui;
@@ -168,20 +176,13 @@ public final class GuiSession implements PageTarget {
 
     /**
      * Definition rendered at {@code slot} for this viewer: an API bind takes precedence,
-     * then a paged entry, then the declared item of that slot. Null for an empty slot.
+     * then a paged entry, then the declared item of that slot. Null for an empty slot,
+     * which includes a definition hidden from this viewer by its {@code view-requirements}
+     * and a paged slot the current page left empty.
      */
     public @Nullable GuiItemDef itemAt(int slot) {
-        Binding binding = binds.get(slot);
-        if (binding != null) {
-            return binding.template().item();
-        }
-        if (pagedPhs.containsKey(slot)) {
-            PagedBind<?> bind = pagedBind;
-            if (bind != null) {
-                return bind.template().item();
-            }
-        }
-        return baseSlots.get(slot);
+        Rendered rendered = renderedAt(slot);
+        return rendered == null ? null : rendered.item();
     }
 
     /**
@@ -193,7 +194,7 @@ public final class GuiSession implements PageTarget {
         if (template == null || slot < 0) {
             return;
         }
-        Binding binding = new Binding(template, phs == null ? new Ph[0] : phs.clone());
+        Binding binding = new Binding(template, phs == null ? NO_LOCALS : phs.clone());
         binds.put(slot, binding);
         Inventory current = inventory;
         if (current != null && slot < current.getSize()) {
@@ -264,33 +265,31 @@ public final class GuiSession implements PageTarget {
 
     /**
      * Click dispatch invoked by the shared click listener with a raw top-inventory slot:
-     * resolves the effective definition (manual bind, paged entry, declared item), skips
-     * disabled navigation items and delegates to {@link #runClick}, which resolves the
-     * per-click matrix of the definition (actions, requirement and deny list per
-     * {@link ClickType}) and applies the menu's opt-in strict-clicks gate.
+     * resolves what the slot actually renders for this viewer through
+     * {@link #renderedAt(int)} (manual bind, paged entry, declared item, each behind its
+     * view requirement), skips disabled navigation items and delegates to
+     * {@link #runClick}, which resolves the per-click matrix of the definition (actions,
+     * requirement and deny list per {@link ClickType}) and applies the menu's opt-in
+     * strict-clicks gate.
+     *
+     * <p>A slot that renders nothing for this viewer fires nothing at all - not even the
+     * deny actions: an item hidden by its {@code view-requirements} is unclickable BY
+     * THAT SAME expression, so hiding it never needs a duplicate entry in
+     * {@code click-requirements}.</p>
      */
     public void handleClick(int slot, ClickType click) {
         if (closed) {
             return;
         }
-        Binding binding = binds.get(slot);
-        if (binding != null) {
-            runClick(binding.template().item(), binding.phs(), click);
+        Rendered rendered = renderedAt(slot);
+        if (rendered == null) {
+            clearGhost(slot);
             return;
         }
-        Ph[] pagedLocals = pagedPhs.get(slot);
-        if (pagedLocals != null) {
-            PagedBind<?> bind = pagedBind;
-            if (bind != null) {
-                runClick(bind.template().item(), pagedLocals, click);
-            }
+        if (rendered.declared() && navDisabledNow(rendered.item())) {
             return;
         }
-        GuiItemDef item = baseSlots.get(slot);
-        if (item == null || navDisabledNow(item)) {
-            return;
-        }
-        runClick(item, new Ph[0], click);
+        runClick(rendered.item(), rendered.locals(), click);
     }
 
     /**
@@ -471,6 +470,62 @@ public final class GuiSession implements PageTarget {
                 ? item.clickActionsFor(click)
                 : item.denyActionsFor(click);
         ctx.actions().run(viewer, actions, context);
+    }
+
+    /**
+     * What {@code slot} renders for THIS viewer, resolved with the precedence the render
+     * phases use: a manual bind first, then the paged bind - which OWNS its slots even
+     * when the current page left them empty, so a short page never falls back to the
+     * declared item underneath - then the declared item of the slot. Null when the slot
+     * shows nothing to this viewer, the definition's own local placeholders otherwise.
+     */
+    private @Nullable Rendered renderedAt(int slot) {
+        Binding binding = binds.get(slot);
+        if (binding != null) {
+            return shown(binding.template().item(), binding.phs(), slot, false);
+        }
+        if (pagedSlots.contains(slot)) {
+            PagedBind<?> bind = pagedBind;
+            Ph[] locals = pagedPhs.get(slot);
+            return bind == null || locals == null ? null
+                    : shown(bind.template().item(), locals, slot, false);
+        }
+        GuiItemDef item = baseSlots.get(slot);
+        return item == null ? null : shown(item, NO_LOCALS, slot, true);
+    }
+
+    /**
+     * Pairs the definition with its locals while its view requirement passes for this
+     * viewer, null once it does not. The requirement is re-evaluated on every call, so a
+     * state change that hid the item takes effect immediately instead of waiting for the
+     * next render tick.
+     */
+    private @Nullable Rendered shown(GuiItemDef item, Ph[] locals, int slot, boolean declared) {
+        if (item.viewRequirement().test(viewer, resolver(locals))) {
+            return new Rendered(item, locals, declared);
+        }
+        ctx.debug().log(() -> "GUI '" + def.id() + "': slot " + slot + " item '" + item.id()
+                + "' hidden by its view-requirements for " + viewer.getName());
+        return null;
+    }
+
+    /**
+     * Clears the stack an older render left on a slot that shows nothing to this viewer
+     * any more - its definition is hidden now, or its paged entry is gone - so clicking a
+     * ghost item makes the screen converge with the requirement state instead of looking
+     * unresponsive. Slots no render phase owns are never touched.
+     */
+    private void clearGhost(int slot) {
+        Inventory current = inventory;
+        if (current == null || slot >= current.getSize() || current.getItem(slot) == null) {
+            return;
+        }
+        if (!binds.containsKey(slot) && !pagedSlots.contains(slot)
+                && !baseSlots.containsKey(slot)) {
+            return;
+        }
+        pagedPhs.remove(slot);
+        current.setItem(slot, null);
     }
 
     /**
@@ -757,7 +812,7 @@ public final class GuiSession implements PageTarget {
                     return;
                 }
                 ctx.actions().run(viewer, def.closeActions(),
-                        new ActionContext(viewer, ctx, this, null, new Ph[0]));
+                        new ActionContext(viewer, ctx, this, null, NO_LOCALS));
             });
         } catch (IllegalPluginAccessException e) {
             ctx.debug().log(() -> "close-actions of '" + def.id()
@@ -802,6 +857,15 @@ public final class GuiSession implements PageTarget {
 
     /** Template bound to a slot with its local placeholders captured at bind time. */
     private record Binding(GuiTemplate template, Ph[] phs) {
+    }
+
+    /**
+     * Definition a slot currently shows to the viewer, with the locals it renders under.
+     * {@code declared} marks the ones that come from the menu's {@code items:} section:
+     * only those self-disable as navigation items through their {@code nav-disabled}
+     * override, exactly as before this resolution existed.
+     */
+    private record Rendered(GuiItemDef item, Ph[] locals, boolean declared) {
     }
 
     /** Live paged bind: template, immutable pagination snapshot, target slots and mapper. */

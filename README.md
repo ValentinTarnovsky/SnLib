@@ -323,7 +323,10 @@ PlayerDataCache<Stats> cache = sn.db().playerCache(loader, saver);
   `<=`, over PAPI or local placeholders; `view-requirements`,
   `click-requirements`, `interact-requirements` + `deny-actions`. Since v1.1
   the parser is a recursive descent with parentheses and quoting
-  (`'...'`/`"..."`), fail-open policy untouched.
+  (`'...'`/`"..."`), fail-open policy untouched. In a menu,
+  `view-requirements` hide AND block: an item a viewer cannot see fires
+  nothing on click, not even the deny actions (v1.16.1), so they never need
+  duplicating into `click-requirements`.
 
 ## Cooldowns, Economy and utils
 

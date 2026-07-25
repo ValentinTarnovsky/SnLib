@@ -111,6 +111,8 @@ Guards are stripped left to right until the terminal tag is reached, so you can 
 
 Requirements are boolean expressions over placeholders, used for `view-requirements`, `click-requirements`, `interact-requirements` and their `deny-actions` companions. Since v1.1 the parser is a real **recursive-descent parser**, not a naive split.
 
+In a menu the two gates are not interchangeable. `view-requirements` decide whether the item exists for that viewer at all: since v1.16.1 a failing view requirement both empties the slot and blocks the click, which fires nothing - no click actions, no deny actions - so hiding an item is enough to make it unusable. `click-requirements` are the gate for an item that IS visible: failing them runs the `deny-actions`, which is where the "you cannot afford this" feedback belongs.
+
 ### The grammar
 
 ```
