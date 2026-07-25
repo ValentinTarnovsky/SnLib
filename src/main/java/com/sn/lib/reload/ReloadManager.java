@@ -93,8 +93,11 @@ public final class ReloadManager {
         }
         ctx.items().reload();
         // 4. Re-register this owner's command roots; each register pass refreshes the
-        //    client trees via player.updateCommands().
+        //    client trees via player.updateCommands(). Then re-apply the command
+        //    descriptions and argument labels from the lang file re-read in step 3, so an
+        //    edited translation takes effect without a restart.
         ctx.commands().reregisterAll();
+        ctx.commands().applyLang();
         // 5. Re-dispatch the registered reloadables (typed re-cache); the per-file
         //    onReload hooks already fired during the re-read.
         for (Reloadable reloadable : registered) {

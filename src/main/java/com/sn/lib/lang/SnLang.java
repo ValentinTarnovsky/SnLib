@@ -166,6 +166,25 @@ public final class SnLang {
     }
 
     /**
+     * Raw first line of the message exactly as written in the language file: no rendering,
+     * no prefix, no placeholder resolution. A key absent from both the active language and
+     * the English fallback yields null WITHOUT the {@code <missing:key>} marker and without
+     * the missing-key WARN, so a caller can fall back to its own default. Meant for values
+     * consumed as plain text rather than sent as a message - the generated command help
+     * resolves its descriptions and argument labels through it.
+     */
+    public @Nullable String rawOrNull(String key) {
+        if (key == null) {
+            return null;
+        }
+        List<String> lines = templates.get(key);
+        if (lines == null || lines.isEmpty()) {
+            return null;
+        }
+        return lines.get(0);
+    }
+
+    /**
      * First line as a legacy section-code string, for API that still requires legacy
      * text; same resolution and fallback as {@link #get}.
      */

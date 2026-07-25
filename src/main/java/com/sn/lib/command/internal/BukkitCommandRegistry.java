@@ -2,6 +2,7 @@ package com.sn.lib.command.internal;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -96,6 +97,18 @@ public final class BukkitCommandRegistry {
         reconcileAliases(owner, command, declared);
         COMMANDS.add(owner, command);
         updateCommands();
+    }
+
+    /**
+     * Roots currently registered by the owner, sorted by name; the input of the command lang
+     * pass. The backing set is a {@code ConcurrentHashMap} key set and therefore unordered,
+     * so the sort is what keeps the seeded lang block byte-identical across boots instead of
+     * churning the owner's file on every start.
+     */
+    public static List<RootCommand> rootsOf(JavaPlugin owner) {
+        List<RootCommand> roots = new ArrayList<>(COMMANDS.forOwner(owner));
+        roots.sort(Comparator.comparing(RootCommand::getName));
+        return List.copyOf(roots);
     }
 
     /** Unregisters one root of the owner and refreshes the client command trees. */

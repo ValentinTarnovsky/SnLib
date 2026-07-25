@@ -223,6 +223,57 @@ there, not an alias. `command.aliases` is admin-owned and can disappear on a rel
 would leave the click running a command that no longer exists.
 {% endhint %}
 
+## Translating the help
+
+`description(...)` and the argument names you declare are written in code, but they are not
+what the server owner reads. Once your roots are registered, SnLib seeds every description and
+every argument label into `lang/messages_en.yml` under a top-level `commands` block, using the
+values you declared:
+
+```yaml
+commands:
+  clan:
+    description: "Main command of SnClans"
+    subcommands:
+      create:
+        description: "Creates a clan"
+        args:
+          name: "name"
+          tag: "tag"
+      admin:
+        description: "Admin tools"
+        subcommands:
+          disband:
+            description: "Disbands a clan"
+```
+
+The owner edits those values and the generated help follows on the next `/<cmd> reload` - no
+restart, no source. Edited values are never overwritten; deleting one restores the value you
+declared on the next boot. Translations (`messages_es.yml` and friends) pick the keys up
+through the usual merge-from-English pass.
+
+`args` entries are the **visible label only**. The identifier stays the name you gave to
+`arg(name, ...)` and remains the `context.get(name)` key, so translating a label never touches
+parsing or the order of the arguments - it changes the `<name>` hint in the usage line and in
+tab completion, which stay consistent because both read the same resolved label:
+
+```
+commands.clan.subcommands.create.args.name: "nombre"
+
+  /clan create <nombre> [tag]        <- usage and help
+  <nombre>                           <- tab suggestion
+  context.get("name")                <- unchanged
+```
+
+You write nothing to opt in: declare your descriptions in code as usual and the keys appear on
+first boot. Without the `lang()` module the trees simply keep the values declared in code.
+
+{% hint style="info" %}
+The block nests under reserved `subcommands` and `args` sections instead of mapping node names
+directly, so a subcommand actually named `description`, `args` or `subcommands` cannot collide
+with the structure.
+{% endhint %}
+
 ## Arguments
 
 Declare positional arguments in order with `arg(name, Args.xxx())`. Declaration order is

@@ -2,6 +2,7 @@ package com.sn.lib.command;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,6 +128,16 @@ public final class RootCommand extends Command implements Registrable {
     /** Consumer plugin that owns this command tree. */
     public JavaPlugin owner() {
         return ctx.plugin();
+    }
+
+    /** Top-level nodes of this tree; the entry point of the command lang pass. */
+    List<Sub> subs() {
+        return subs;
+    }
+
+    /** Lang module of the owning context, or null when it was not declared. */
+    @Nullable SnLang lang() {
+        return lang;
     }
 
     /** Registers this root against Bukkit under the owning plugin. */
@@ -357,12 +368,12 @@ public final class RootCommand extends Command implements Registrable {
                 return List.of();
             }
             List<String> greedySuggestions = last.getValue()
-                    .suggest(sender, args[args.length - 1], last.getKey());
+                    .suggest(sender, args[args.length - 1], sub.labels().arg(last.getKey()));
             return greedySuggestions == null ? List.of() : greedySuggestions;
         }
         Map.Entry<String, Arg<?>> entry = entryAt(sub, argIndex);
         List<String> suggestions = entry.getValue()
-                .suggest(sender, args[args.length - 1], entry.getKey());
+                .suggest(sender, args[args.length - 1], sub.labels().arg(entry.getKey()));
         return suggestions == null ? List.of() : suggestions;
     }
 
@@ -417,7 +428,7 @@ public final class RootCommand extends Command implements Registrable {
             String effective = sub.permission != null ? sub.permission : inheritedPermission;
             String here = path + " " + sub.name;
             if (sub.children.isEmpty()) {
-                out.add(new HelpLine(usageOf(sub, here), sub.description, effective));
+                out.add(new HelpLine(usageOf(sub, here), sub.labels().description(), effective));
             } else {
                 out.addAll(collectHelp(sender, sub.children, here, effective));
             }
@@ -468,7 +479,7 @@ public final class RootCommand extends Command implements Registrable {
         int lastIndex = sub.args.size() - 1;
         for (Map.Entry<String, Arg<?>> entry : sub.args.entrySet()) {
             boolean optional = index >= sub.requiredArgs;
-            out.append(optional ? " [" : " <").append(entry.getKey());
+            out.append(optional ? " [" : " <").append(sub.labels().arg(entry.getKey()));
             if (index == lastIndex && isGreedy(entry.getValue())) {
                 out.append("...");
             }
@@ -573,7 +584,36 @@ public final class RootCommand extends Command implements Registrable {
         }
     }
 
-    /** Immutable subcommand node; built by {@link SubCommandBuilder}. */
+    /**
+     * Display strings of a node resolved through the lang module: the description shown in
+     * the generated help plus the visible label of every argument, keyed by the argument
+     * IDENTIFIER (the name given in the builder, which stays the {@code context.get} key and
+     * never changes). The defaults are the values declared in code, so a tree without a lang
+     * module - or with the seeded keys untouched - renders exactly as it was written.
+     */
+    record Labels(String description, Map<String, String> args) {
+
+        /** Identity labels: every argument displays under its own identifier. */
+        static Labels of(String description, Collection<String> argNames) {
+            Map<String, String> identity = new LinkedHashMap<>();
+            for (String name : argNames) {
+                identity.put(name, name);
+            }
+            return new Labels(description, Map.copyOf(identity));
+        }
+
+        /** Visible label of an argument, its identifier when none was resolved. */
+        String arg(String identifier) {
+            String label = args.get(identifier);
+            return label == null ? identifier : label;
+        }
+    }
+
+    /**
+     * Subcommand node built by {@link SubCommandBuilder}. Immutable except for its
+     * {@link Labels}, swapped wholesale (one volatile write) by the command lang pass on
+     * enable and on every reload.
+     */
     static final class Sub {
 
         final String name;
@@ -588,6 +628,7 @@ public final class RootCommand extends Command implements Registrable {
         final List<Condition> conditions;
         final @Nullable Consumer<CommandContext> executor;
         final List<Sub> children;
+        private volatile Labels labels;
 
         Sub(String name, List<String> aliases, @Nullable String permission,
                 @Nullable String usage, String description, boolean visible,
@@ -610,6 +651,17 @@ public final class RootCommand extends Command implements Registrable {
             this.conditions = List.copyOf(conditions);
             this.executor = executor;
             this.children = List.copyOf(children);
+            this.labels = Labels.of(this.description, this.args.keySet());
+        }
+
+        /** Current display strings; the declared ones until the lang pass swaps them. */
+        Labels labels() {
+            return labels;
+        }
+
+        /** Swaps the display strings; called by the command lang pass only. */
+        void labels(Labels labels) {
+            this.labels = labels;
         }
 
         static Sub of(String name, @Nullable String permission, String description,

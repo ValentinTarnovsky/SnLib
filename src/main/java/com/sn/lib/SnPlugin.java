@@ -44,7 +44,11 @@ public abstract class SnPlugin extends JavaPlugin {
         } catch (Throwable t) {
             getLogger().log(Level.SEVERE, "onInnerEnable failed", t);
             getServer().getPluginManager().disablePlugin(this);
+            return;
         }
+        // The command tree exists only once the consumer registered its roots, so the
+        // descriptions and argument labels are seeded into the lang file and applied here.
+        sn.commands().applyLang();
     }
 
     @Override

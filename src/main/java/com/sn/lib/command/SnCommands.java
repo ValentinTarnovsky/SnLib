@@ -83,6 +83,18 @@ public final class SnCommands {
         BukkitCommandRegistry.reregisterAll(ctx.plugin());
     }
 
+    /**
+     * Seeds the description of every registered command and the visible label of every
+     * argument into {@code lang/messages_en.yml} under the top-level {@code commands} block,
+     * then applies the values found there to the trees. Called by {@link com.sn.lib.SnPlugin}
+     * once the consumer registered its roots and again on every reload, so an owner's edits
+     * apply without a restart. Without the lang module the trees keep the values declared in
+     * code. Never throws.
+     */
+    public void applyLang() {
+        CommandLang.apply(ctx, lang, BukkitCommandRegistry.rootsOf(ctx.plugin()));
+    }
+
     /** Config module of the owning plugin, or null when the config module was not declared. */
     private @Nullable YmlManager ymlOrNull() {
         try {

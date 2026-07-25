@@ -12,6 +12,12 @@
 > symmetric removal (section 11), `SnYml.setComments`/`setInlineComments` write surface
 > (section 04), and a one-time WARN when a lang value lost the `<click:>`/`<hover:>` tag its
 > jar default carries (section 05).
+> Updated on 2026-07-24 for the 1.14.0 change (API level 9): the generated command help is
+> translatable - the description of every command and the visible label of every argument are
+> seeded into `lang/messages_en.yml` under a top-level `commands` block (reserved
+> `subcommands` / `args` sections) after the consumer registers its roots, and re-applied on
+> every reload; `SnLang.rawOrNull` and `SnCommands.applyLang` are the new public surface, and
+> `RootCommand.Sub` carries a swappable `Labels` holder (section 13).
 > Updated on 2026-07-24 for the 1.13.0 change (API level 8): command rendering is
 > alias-aware - every generated usage, help entry, help footer and unknown-subcommand path
 > echoes the root label the sender typed instead of the declared root name, `CommandContext`
@@ -733,6 +739,7 @@ Public methods:
 - `public void broadcast(String key, Ph... phs)` - Broadcast to the whole server via `Bukkit.getServer()` as an Audience; PAPI resolves against the server (null viewer).
 - `public Component get(String key, Ph... phs)` - First rendered line of the message, WITHOUT prefix. With no placeholders it uses the pre-rendered cache if present. A missing key yields `<missing:key>`.
 - `public String getLegacy(String key, Ph... phs)` - First line as a legacy string with section codes (via `SnText.colorLegacy`), for APIs that still require legacy text; same resolution and fallback as `get`. A missing key returns the string `<missing:key>` (and fires the single WARN).
+- `public @Nullable String rawOrNull(String key)` - (1.14.0) raw first line exactly as written in the language file: no rendering, no prefix, no placeholder resolution. A key absent from BOTH the active language and the English fallback returns `null` WITHOUT the `<missing:key>` marker and WITHOUT the missing-key WARN, so the caller can fall back to its own default. For values consumed as plain text rather than sent as a message; the translatable command help resolves its descriptions and argument labels through it.
 - `public List<Component> getList(String key, Ph... phs)` - All lines of the message rendered in order; missing keys produce a list with the marker line. With no placeholders it returns a copy of the pre-rendered cache.
 - `public void actionbar(Player target, String key, Ph... phs)` - Shows the first line in the player's action bar; an empty line or empty key is a no-op, a missing key sends the marker to the action bar.
 - `public void actionbar(Player target, String key, Duration hold, Ph... phs)` - Persistent overload (v1.1). Lifecycle: the line is rendered exactly ONCE at call time (PAPI/locals frozen; for dynamic content the consumer re-calls, which replaces), sent immediately and re-sent every 40 ticks (`ACTIONBAR_REFRESH_TICKS`; the vanilla actionbar lasts ~2-3s) until `hold` runs out (deadline via `System.nanoTime()`); on expiry it sends `Component.empty()` to clear it. A null, zero or negative `hold` delegates to the 3-arg overload; a missing key sends the marker ONCE without a timer. A new actionbar with hold for the same player replaces and cancels the previous one (one `TaskHandle` per player in the `persistentBars` map); the timer is cancelled on quit via the `QuitCleanupListener` callback and the `scheduler.cancelAll()` of `Sn.shutdown()` sweeps the remaining handles. A plain actionbar sent during a hold will be overwritten on the next 40-tick refresh.
@@ -2577,6 +2584,21 @@ Constant: `public static final String CONFIG_ALIASES_KEY = "command.aliases"` (1
 - `public RootBuilder root(String name)` - starts a root tree with that name; validates non-null and non-empty (`IllegalArgumentException` "Empty command name").
 - `public void unregisterAll()` - unregisters all of the owning plugin's roots and refreshes the client trees; invoked by the context teardown.
 - `public void reregisterAll()` - re-registers all of the owning plugin's roots; it is the re-registration step of the context's reload flow. Each root re-sources its dynamic aliases (the config binding re-reads `command.aliases` from the just-reloaded config).
+- `public void applyLang()` - (1.14.0) seeds the description of every registered command and the visible label of every argument into `lang/messages_en.yml` under the top-level `commands` block, then applies whatever that file holds to the trees. Called by `SnPlugin.onEnable` once `onInnerEnable` returned (the tree only exists then) and again by `ReloadManager` after `reregisterAll`, so an owner's edits apply without a restart. Without the lang module it is a no-op and the trees keep the values declared in code. Never throws: a failure degrades to those defaults with one WARN.
+
+#### CommandLang (package-private, 1.14.0)
+`src/main/java/com/sn/lib/command/CommandLang.java`
+
+Makes the generated help translatable. It is package-private because the walk needs `RootCommand.Sub`; `SnCommands.applyLang()` is the public entry point.
+
+- **Seeding**: generates a `commands:` block (one entry per root, sorted by name) whose values are exactly the ones declared in code, and merges it into `lang/messages_en.yml` with `YamlUpdater.merge` - so existing values and comments are NEVER overwritten. A changed file triggers `lang.reload()`, which both makes the new keys resolvable and lets the translation files pick them up through the usual merge-from-English pass. An unchanged merge writes nothing and skips the reload.
+- **Shape**: `commands.<root>.description`, then nodes under reserved `subcommands` sections and argument labels under a reserved `args` section, recursing to the deepest leaf. The reserved sections exist so a subcommand actually NAMED `description`, `args` or `subcommands` cannot collide with the structure (SnClans has a `/clan description` subcommand - the flat shape would have been ambiguous).
+- **Applying**: `apply(Function<String,String> resolver, String rootName, List<Sub> subs, Consumer<String> rootDescription)` walks the tree and swaps each node's `RootCommand.Labels`. The resolver seam (rather than an `SnLang` parameter) is what makes the whole feature unit-testable without a server; the production call passes `lang::rawOrNull`. A key that resolves to null OR blank keeps the value declared in code, so a partially translated file degrades entry by entry. The root description also reaches Bukkit through `Command.setDescription`, so vanilla `/help <cmd>` shows the translation too.
+- **Determinism**: `BukkitCommandRegistry.rootsOf` sorts by name because the backing `TenantRegistry` set is a `ConcurrentHashMap` key set and therefore unordered; without the sort the generated block would vary between boots and churn the owner's file.
+
+**Notes and gotchas**
+- Argument entries carry the VISIBLE label only. The identifier stays the name given to `arg(name, ...)` and remains the `context.get(name)` key, so translating a label never touches parsing. It changes the `<name>` hint in the usage line AND in tab completion - both read the same `Labels`, so they cannot drift apart.
+- Subcommand NAMES are never translated: they are the tokens the sender types. Only descriptions and argument labels are.
 - `private @Nullable Collection<String> configAliases(String key)` (1.5.0) - root alias list read from the config, or null when it cannot act as the authority (config module absent, or the key not set). A set key returns its list as-is (an empty list is authoritative and clears the aliases). Backs `aliasesFromConfig`.
 
 #### SnCommands.RootBuilder (public inner class)
@@ -2750,7 +2772,7 @@ Rejection of a raw token, expressed as a lang key plus its local placeholders.
 A parsed subcommand invocation: the sender plus every declared argument already parsed by its `Arg`, indexed by the name given in the builder.
 
 - `public CommandSender sender()` - the sender, player or console.
-- `public String label()` - (1.13.0) the root label the sender typed, without the leading slash: the root name, or the alias they reached the command through (`c` for `/c create Alpha` on a root named `clan`). Already normalized (lowercased, `plugin:` namespace stripped). Echo it instead of hardcoding the root name so a message follows the alias in use.
+- `public String label()` - (1.13.0) the root label the sender typed, without the leading slash: the root name, or the alias they reached the command through (`c` for `/c create Alpha` on a root named `clan`). Already normalized (lowercased, `plugin:` namespace stripped). Echo it instead of hardcoding the root name so a message follows the alias in use. NOTE (1.14.0): `get(name)` still keys on the argument IDENTIFIER declared in the builder; translating an argument's visible label never changes it.
 - `public Player player()` - the sender as a player; throws `IllegalStateException` ("The sender of this command is not a player") if it is not one.
 - `public <T> T get(String name)` - parsed value of a declared argument; throws `IllegalArgumentException` when there is no value with that name (includes the absent-optional case).
 - `public int getInt(String name)` - parsed value as int; accepts any numeric result (`Number.intValue()`) or parses the trimmed `toString()`.

@@ -230,6 +230,11 @@ sn.commands().root("shop")
   lists `/c create <name>` while `/clan help` lists `/clan create <name>`.
   `context.label()` / `root.label()` expose it to consumer subcommands, and
   an explicit `usage(...)` opts in with a `{label}` placeholder.
+- Translatable help (v1.14): the description of every command and the visible
+  label of every argument are seeded into `lang/messages_en.yml` under a
+  top-level `commands` block, so the owner translates the help in a file
+  instead of the source. Argument identifiers are untouched: `<name>` can
+  render as `<nombre>` while `context.get("name")` keeps working.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 
