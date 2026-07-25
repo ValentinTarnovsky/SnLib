@@ -18,12 +18,15 @@ package com.sn.lib;
  * support); LEVEL 7 = release 1.12.0 (redeemable items via ItemRegistry.redeemable with
  * RedeemSpec/RedeemHandler; Args.intMin/doubleMin open-ended numeric factories;
  * k/m/b/t/qa/qi suffix parsing in every numeric arg; snlib.number-too-small message
- * key; SnItem lore newline split for multi-line placeholder values).</p>
+ * key; SnItem lore newline split for multi-line placeholder values); LEVEL 8 = release
+ * 1.13.0 (alias-aware command rendering: CommandContext.label() and RootContext.label()
+ * expose the root label the sender typed, and every generated usage, help entry and help
+ * footer renders under it).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 7;
+    public static final int LEVEL = 8;
 
     private SnApi() {
     }

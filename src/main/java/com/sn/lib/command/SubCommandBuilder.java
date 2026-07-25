@@ -60,7 +60,12 @@ public final class SubCommandBuilder {
         return this;
     }
 
-    /** Usage line shown on argument errors; without one it is generated from the args. */
+    /**
+     * Usage line shown on argument errors; without one it is generated from the args, which
+     * already renders the root label the sender typed. An explicit usage is a literal, so
+     * write {@code "/{label} reload [plugin]"} rather than the root name to keep it correct
+     * when the sender reaches the command through an alias.
+     */
     public SubCommandBuilder usage(String usage) {
         this.usage = usage;
         return this;

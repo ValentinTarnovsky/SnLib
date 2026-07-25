@@ -225,6 +225,11 @@ sn.commands().root("shop")
   `k/m/b/t/qa/qi` suffixes (`2k` = 2000, `1.5b` = 1500000000);
   `Args.intMin(min)` / `doubleMin(min)` cover open-ended amounts, suggesting
   the `<argName>` hint instead of a sentinel upper bound.
+- Alias-aware rendering (v1.13): usages, help entries, the help footer and
+  unknown-subcommand paths echo the label the sender typed, so `/c help`
+  lists `/c create <name>` while `/clan help` lists `/clan create <name>`.
+  `context.label()` / `root.label()` expose it to consumer subcommands, and
+  an explicit `usage(...)` opts in with a `{label}` placeholder.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 

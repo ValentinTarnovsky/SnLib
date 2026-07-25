@@ -7,24 +7,39 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Parsed invocation of a subcommand: the sender plus every declared argument already
- * parsed by its {@link Arg}, keyed by the name given in the builder.
+ * Parsed invocation of a subcommand: the sender, the root label they typed, plus every
+ * declared argument already parsed by its {@link Arg}, keyed by the name given in the
+ * builder.
  */
 public final class CommandContext {
 
     private final CommandSender sender;
     private final Map<String, Object> values;
     private final String[] raw;
+    private final String label;
 
-    CommandContext(CommandSender sender, Map<String, Object> values, String[] raw) {
+    CommandContext(CommandSender sender, Map<String, Object> values, String[] raw,
+            String label) {
         this.sender = sender;
         this.values = values;
         this.raw = raw;
+        this.label = label;
     }
 
     /** Command sender, player or console. */
     public CommandSender sender() {
         return sender;
+    }
+
+    /**
+     * Root label the sender typed, without the leading slash: the root name, or the alias
+     * they reached this command through ({@code c} for {@code /c create Alpha} on a root
+     * named {@code clan}). Lowercased and stripped of the {@code plugin:} namespace form.
+     * Echo it instead of hardcoding the root name so a message follows the alias the sender
+     * is actually using.
+     */
+    public String label() {
+        return label;
     }
 
     /**

@@ -12,6 +12,11 @@
 > symmetric removal (section 11), `SnYml.setComments`/`setInlineComments` write surface
 > (section 04), and a one-time WARN when a lang value lost the `<click:>`/`<hover:>` tag its
 > jar default carries (section 05).
+> Updated on 2026-07-24 for the 1.13.0 change (API level 8): command rendering is
+> alias-aware - every generated usage, help entry, help footer and unknown-subcommand path
+> echoes the root label the sender typed instead of the declared root name, `CommandContext`
+> and `RootContext` expose it through `label()`, and an explicit `usage(...)` opts in with a
+> `{label}` placeholder (section 13).
 > Updated on 2026-07-20 for the 1.9.0 changes: color codes inside the `[rgb]` gradient now
 > clear the accumulated legacy format, so a bold prefix no longer bleeds into the gradient
 > body (section 03), and the new `[noprefix]` leading tag opts a single-line lang value out
@@ -794,7 +799,7 @@ Resource packaged inside SnLib.jar with the shared `snlib.*` message keys. The a
 | `snlib.reload-done` | (none) | Sent to the sender after a successful reload. |
 | `snlib.help.header` | `{plugin}` | Header line printed before the generated help entries; `{plugin}` is the plugin name (v1.2.1). |
 | `snlib.help.entry` | `{usage}`, `{description}`, `{permission}` | One line per reachable leaf visible to the sender, rendered with its full path (`{description}` added in v1.2.1; default changed to `&e{usage} &7{description}` with no `&8:` separator in v1.6). |
-| `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Printed after the entries only when the help spans multiple pages; `{command}` is the root command name. |
+| `snlib.help.footer` | `{page}`, `{total}`, `{command}` | Printed after the entries only when the help spans multiple pages; `{command}` is the root label the sender typed - the root name, or the alias they used (v1.13.0; it was always the declared root name before). |
 | `snlib.teleport.warmup` | `{time}` | Sent when a warmup teleport starts; `{time}` is the warmup in seconds (v1.6, section 20). |
 | `snlib.teleport.cancelled-move` | (none) | Sent when a pending teleport is cancelled because the player moved (v1.6, section 20). |
 | `snlib.teleport.cancelled-damage` | (none) | Sent when a pending teleport is cancelled because the player took damage (v1.6, section 20). |
@@ -2598,13 +2603,14 @@ Builder of a root tree.
 Handle passed to the bare-root `onEmpty` hook: the invoking sender plus the ability to render the generated help, so a hook can print its own banner and still fall through to the standard help.
 
 - `public CommandSender sender()` - the sender that ran the bare root command.
+- `public String label()` - (1.13.0) the root label the sender typed, without the leading slash: the root name or the alias they reached it through. Echo it in a banner instead of hardcoding the root name.
 - `public void help()` - renders page 1 of the generated help (the default bare-root behavior).
 - `public void help(int page)` - renders the given 1-based page of the generated help.
 
 ### RootCommand
 `src/main/java/com/sn/lib/command/RootCommand.java`
 
-Root of a command tree; extends `org.bukkit.command.Command` and implements `Registrable` (reload module). It dispatches to its subcommands with a permission check first, validates the argument count against the generated usage, parses typed via each `Arg` and generates the help. Subcommands NEST (1.6): a subcommand that owns children is a GROUP that dispatches on the next token among its children (with child aliases), a childless subcommand is a LEAF that parses its positional args; groups nest arbitrarily. Permission chain: each node may carry its own permission and a node without one inherits the nearest ancestor's (a group's, or ultimately the root's); the effective check enforced as the tree is descended is EVERY permission on the path from the root down to the leaf. Leaf usage strings and the generated help render the FULL path, and the help lists one entry per reachable LEAF (groups flattened) rather than one per group. Tab-complete and the generated help list ONLY nodes that are visible AND whose permission chain the sender holds; a node may additionally opt out of the generated help alone via `helpVisible(false)` (1.10.0), which keeps it tab-completable and listed in its group's usage line. Messages resolve through the context's lang module if declared; without lang the default `snlib.*` templates embedded in the library render. The pure resolution (`resolve`) and tab (`tab`) are static and Bukkit-context-independent, covered by `NestedCommandTest`.
+Root of a command tree; extends `org.bukkit.command.Command` and implements `Registrable` (reload module). It dispatches to its subcommands with a permission check first, validates the argument count against the generated usage, parses typed via each `Arg` and generates the help. Subcommands NEST (1.6): a subcommand that owns children is a GROUP that dispatches on the next token among its children (with child aliases), a childless subcommand is a LEAF that parses its positional args; groups nest arbitrarily. Permission chain: each node may carry its own permission and a node without one inherits the nearest ancestor's (a group's, or ultimately the root's); the effective check enforced as the tree is descended is EVERY permission on the path from the root down to the leaf. Leaf usage strings and the generated help render the FULL path, and the help lists one entry per reachable LEAF (groups flattened) rather than one per group. Tab-complete and the generated help list ONLY nodes that are visible AND whose permission chain the sender holds; a node may additionally opt out of the generated help alone via `helpVisible(false)` (1.10.0), which keeps it tab-completable and listed in its group's usage line. Rendering is ALIAS-AWARE (1.13.0): every rendered path echoes the label the sender typed rather than the declared root name, so `/c help` on a root named `clan` with the config alias `c` lists `/c create <name>` while `/clan help` lists `/clan create <name>`. The same label drives the usage messages, the unknown-subcommand full paths, the `{command}` of the help footer, `CommandContext.label()` and `RootContext.label()`. Messages resolve through the context's lang module if declared; without lang the default `snlib.*` templates embedded in the library render. The pure resolution (`resolve`) and tab (`tab`) are static and Bukkit-context-independent, covered by `NestedCommandTest`.
 
 Constants (private, but they define the observable contract):
 - `DEFAULT_MESSAGES` - static map of default templates mirroring `snlib-messages.yml` (server-wide static justified by being constant). Keys: `snlib.no-permission`, `snlib.usage`, `snlib.invalid-number`, `snlib.invalid-value`, `snlib.out-of-range`, `snlib.player-not-found`, `snlib.unknown-subcommand`, `snlib.reload-done`, `snlib.help.header`, `snlib.help.entry` (default `&e{usage} &7{description}`, no `&8:` separator since 1.6), `snlib.help.footer`.
@@ -2619,9 +2625,9 @@ Public methods:
 - `public List<String> tabComplete(CommandSender sender, String alias, String[] args)` - permission-gated tab (see internal logic).
 
 **Internal logic (execute)**
-`execute` calls the static `resolve(sender, rootPermission, subs, rootPath, args)` and switches on its `Resolution`:
+`execute` normalizes the label Bukkit dispatched with through the static `typedLabel(label, getName())` - trim, strip the `plugin:name` namespace form to its last segment, lowercase, and fall back to the declared root name when the result is blank - then calls the static `resolve(sender, rootPermission, subs, "/" + typedLabel, args)` (1.13.0; the root path was `"/" + getName()` before) and switches on its `Resolution`:
 1. Root permission: without it, `resolve` returns `Message("snlib.no-permission")`.
-2. Zero arguments: `resolve` returns `Empty`; `execute` runs the `onEmpty` hook (1.6) with a `RootContext(sender, page -> sendHelp(sender, page))` - a failure logs `SEVERE` "Bare-root handler of '/<root>' failed" - or, without a hook, sends the help (page 1).
+2. Zero arguments: `resolve` returns `Empty`; `execute` runs the `onEmpty` hook (1.6) with a `RootContext(sender, typedLabel, page -> sendHelp(sender, typedLabel, page))` - a failure logs `SEVERE` "Bare-root handler of '/<root>' failed" - or, without a hook, sends the help (page 1).
 3. `resolve` finds the first-token node by name or alias (lowercase); unknown -> `Message("snlib.unknown-subcommand", {value})`. Then it recurses through `dispatch(sender, sub, args, matchedAt, path)`:
    - Node permission gate (its own; the chain is enforced node by node as the tree descends) -> `snlib.no-permission` on failure.
    - GROUP (has children): with no next token -> `snlib.usage` with the group usage `/path <childA|childB>` (only the children the sender may use); an unknown next token -> `snlib.unknown-subcommand` with the full path; otherwise recurse into the matched child.
@@ -2634,14 +2640,17 @@ Delegates to the static `tab(sender, rootPermission, subs, args)`:
 - `tabAt` recurses: at group depth it suggests the visible child names whose permission the sender holds, filtered by prefix and sorted (`suggestNames`); descending into a group re-checks that group's permission. At leaf depth (`tabLeaf`) it completes the positional arg: if the index exceeds the declared args only a final greedy arg keeps suggesting; otherwise it delegates to the positional arg's `Arg.suggest(sender, partial, argName)` (1.5.0), passing the declared name so a free-form arg suggests its `<argName>` hint. A `suggest` returning null normalizes to an empty list.
 
 **Internal logic (generated help)**
-Header `snlib.help.header` (placeholder `{plugin}`), then `collectHelp` FLATTENS the tree into one `HelpLine` per reachable LEAF: a node hidden (`!visible` or `!helpVisible`, 1.10.0) or whose own permission the sender lacks (and its subtree) is skipped, a group recurses into its children, a leaf yields its full-path usage, description and effective permission (`inheritedPermission` narrowed by each node's own permission on the path). Each line renders `snlib.help.entry` (placeholders `{usage}`, `{description}`, `{permission}` - empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}`) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
+Header `snlib.help.header` (placeholder `{plugin}`), then `collectHelp` FLATTENS the tree into one `HelpLine` per reachable LEAF: a node hidden (`!visible` or `!helpVisible`, 1.10.0) or whose own permission the sender lacks (and its subtree) is skipped, a group recurses into its children, a leaf yields its full-path usage, description and effective permission (`inheritedPermission` narrowed by each node's own permission on the path). Each line renders `snlib.help.entry` (placeholders `{usage}`, `{description}`, `{permission}` - empty if public), paginated with `Page` in pages of 10; the footer `snlib.help.footer` (`{page}`, `{total}`, `{command}` - the typed label since 1.13.0) appears only with more than one page. The page token of `/cmd help <page>` parses from `context.raw(0)`; anything unparseable falls to page 1, and out-of-range pages clamp.
 
 **Notes and gotchas**
 - Defaults inject in the constructor only if no sub with that name or alias already exists (`hasSub`): a consumer's sub named `reload`/`help`/`debug` replaces the default.
 - The defaults' base permission is `<lowercased-plugin-name>.admin.` + `reload`/`debug` (the `<plugin>.admin.<sub>` convention). The default `help` has no permission of its own (it inherits the root's if any).
 - Extra tokens beyond the declared args are silently ignored (except a final greedy which consumes them).
 - Only factory args (`Args.SnArg`) can be greedy: `isGreedy` does an instanceof of `Args.SnArg` and queries `greedy()`.
-- The generated usage renders the FULL path: `/root group leaf <required> [optional]`, with `...` appended to the last arg's name if greedy; a group's usage is `/root group <childA|childB>`.
+- The generated usage renders the FULL path: `/root group leaf <required> [optional]`, with `...` appended to the last arg's name if greedy; a group's usage is `/root group <childA|childB>`. Since 1.13.0 the `/root` head is the label the sender typed, so an alias invocation renders `/c group leaf <required>`.
+- An EXPLICIT `usage(...)` short-circuits the generation and is a literal, so it does not track the typed label on its own: write `{label}` where the root name would go (`"/{label} reload [plugin]"`) and `usageOf` resolves it through `SnText.applyLocals` against the path's first segment. A literal without the placeholder is left exactly as written (1.13.0).
+- The label plumbing derives from the path, not from an extra parameter: `rootLabelOf(path)` reads the first segment of a rendered path, which is `"/" + label` by construction. That keeps the pure static helpers (`resolve`, `dispatch`, `collectHelp`, `usageOf`, `groupUsage`) at their existing signatures.
+- Tab completion does NOT render any path, so the `alias` argument of `tabComplete` stays unused: suggestions are bare node names and argument hints.
 - `resolve` returns a sealed `Resolution` (`Empty`, `Message`, `Run`), so the outcome is decided independently of the Bukkit context and unit-tested without a server (`NestedCommandTest`).
 
 #### RootCommand.Condition (package-private record)
@@ -2659,7 +2668,7 @@ Builder of a subcommand within an `SnCommands.RootBuilder` chain; `and()` return
 
 - `public SubCommandBuilder aliases(String... aliases)` - adds aliases (trim + lowercase).
 - `public SubCommandBuilder permission(String permission)` - its own permission; without one it inherits the root's.
-- `public SubCommandBuilder usage(String usage)` - usage line shown on argument errors; without one it is generated from the args.
+- `public SubCommandBuilder usage(String usage)` - usage line shown on argument errors; without one it is generated from the args (which already renders the typed root label). An explicit usage is a literal, so since 1.13.0 it opts into the typed label with a `{label}` placeholder: `"/{label} reload [plugin]"`.
 - `public SubCommandBuilder description(String description)` - description (null -> "").
 - `public SubCommandBuilder visible(boolean visible)` - whether it appears in tab-complete and the generated help. `visible(false)` hides the node from the generated help AND tab completion AND its group's usage line (it still executes).
 - `public SubCommandBuilder helpVisible(boolean helpVisible)` (1.10.0) - whether it appears in the generated help; independent of `visible`. `helpVisible(false)` hides the node (and its subtree) from the generated help ONLY: it still tab-completes, still appears in its group's usage line and still executes. A `!visible` node stays out of the help regardless of this flag (the help skip is `!visible || !helpVisible`). Intended use: a plugin keeps a deep subcommand group (e.g. a per-game setup tree) out of a crowded root help while it stays discoverable through tab completion.
@@ -2741,6 +2750,7 @@ Rejection of a raw token, expressed as a lang key plus its local placeholders.
 A parsed subcommand invocation: the sender plus every declared argument already parsed by its `Arg`, indexed by the name given in the builder.
 
 - `public CommandSender sender()` - the sender, player or console.
+- `public String label()` - (1.13.0) the root label the sender typed, without the leading slash: the root name, or the alias they reached the command through (`c` for `/c create Alpha` on a root named `clan`). Already normalized (lowercased, `plugin:` namespace stripped). Echo it instead of hardcoding the root name so a message follows the alias in use.
 - `public Player player()` - the sender as a player; throws `IllegalStateException` ("The sender of this command is not a player") if it is not one.
 - `public <T> T get(String name)` - parsed value of a declared argument; throws `IllegalArgumentException` when there is no value with that name (includes the absent-optional case).
 - `public int getInt(String name)` - parsed value as int; accepts any numeric result (`Number.intValue()`) or parses the trimmed `toString()`.

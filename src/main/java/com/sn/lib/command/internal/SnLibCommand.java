@@ -74,7 +74,7 @@ public final class SnLibCommand {
                         .and()
                 .sub("reload")
                         .permission("snlib.admin.reload")
-                        .usage("/snlib reload [plugin]")
+                        .usage("/{label} reload [plugin]")
                         .description("Reloads the library's own surface or one consumer")
                         .argOptional("plugin", Args.oneOf(SnLibCommand::hookedConsumerNames))
                         .executes(context -> reload(plugin, selfCtx, context))

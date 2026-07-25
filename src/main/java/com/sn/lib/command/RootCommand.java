@@ -44,6 +44,13 @@ import com.sn.lib.text.SnText;
  * help alone through {@link SubCommandBuilder#helpVisible(boolean) helpVisible(false)},
  * which keeps it tab-completable and listed in its group's usage line.</p>
  *
+ * <p>Every rendered command path echoes the LABEL the sender actually typed rather than the
+ * declared root name: invoking {@code /c help} on a root named {@code clan} with the config
+ * alias {@code c} renders {@code /c create <name>}, while {@code /clan help} renders
+ * {@code /clan create <name>}. The same label drives the usage messages, the
+ * unknown-subcommand paths, the help footer and {@link CommandContext#label()}, so a
+ * consumer subcommand can echo it too.</p>
+ *
  * <p>Messages resolve through the context lang module when declared; without it the
  * shared {@code snlib.*} default templates bundled with the library render directly.</p>
  */
@@ -102,7 +109,8 @@ public final class RootCommand extends Command implements Registrable {
             }
             if (!hasSub(all, "help")) {
                 all.add(Sub.of("help", null, "Shows the available commands",
-                        context -> sendHelp(context.sender(), pageFrom(context.raw(0)))));
+                        context -> sendHelp(context.sender(), context.label(),
+                                pageFrom(context.raw(0)))));
             }
         }
         if (debugCommand && !hasSub(all, "debug")) {
@@ -135,18 +143,20 @@ public final class RootCommand extends Command implements Registrable {
 
     @Override
     public boolean execute(CommandSender sender, String label, String[] args) {
-        Resolution resolution = resolve(sender, rootPermission, subs, "/" + getName(), args);
+        String typed = typedLabel(label, getName());
+        Resolution resolution = resolve(sender, rootPermission, subs, "/" + typed, args);
         switch (resolution) {
             case Empty ignored -> {
                 if (onEmpty != null) {
                     try {
-                        onEmpty.accept(new RootContext(sender, page -> sendHelp(sender, page)));
+                        onEmpty.accept(new RootContext(sender, typed,
+                                page -> sendHelp(sender, typed, page)));
                     } catch (Throwable t) {
                         ctx.plugin().getLogger().log(Level.SEVERE,
                                 "Bare-root handler of '/" + getName() + "' failed", t);
                     }
                 } else {
-                    sendHelp(sender);
+                    sendHelp(sender, typed);
                 }
             }
             case Message message -> send(sender, message.key(), message.phs());
@@ -165,6 +175,36 @@ public final class RootCommand extends Command implements Registrable {
     @Override
     public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
         return tab(sender, rootPermission, subs, args);
+    }
+
+    /**
+     * Normalizes the label Bukkit dispatched with into the token every rendered path echoes:
+     * the {@code plugin:name} form registered alongside each key is stripped to its last
+     * segment and the result is lowercased, so {@code /Clan}, {@code /myclans:clan} and
+     * {@code /c} render as {@code clan}, {@code clan} and {@code c}. Only a label that
+     * resolves to this root ever reaches here; a blank one falls back to {@code rootName}.
+     */
+    static String typedLabel(@Nullable String label, String rootName) {
+        if (label == null) {
+            return rootName;
+        }
+        String token = label.trim();
+        int namespace = token.lastIndexOf(':');
+        if (namespace >= 0) {
+            token = token.substring(namespace + 1);
+        }
+        return token.isEmpty() ? rootName : token.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Root label behind a rendered path: every path grows from the root path, which is
+     * {@code "/" + label} by construction, so the first segment of {@code "/c admin disband"}
+     * is the label {@code c} the sender typed.
+     */
+    static String rootLabelOf(String path) {
+        String body = path.startsWith("/") ? path.substring(1) : path;
+        int space = body.indexOf(' ');
+        return space < 0 ? body : body.substring(0, space);
     }
 
     /**
@@ -257,7 +297,8 @@ public final class RootCommand extends Command implements Registrable {
         if (sub.executor == null) {
             return new Message("snlib.usage", Ph.of("usage", usageOf(sub, path)));
         }
-        return new Run(sub, new CommandContext(sender, values, subArgs), path);
+        return new Run(sub,
+                new CommandContext(sender, values, subArgs, rootLabelOf(path)), path);
     }
 
     /**
@@ -325,18 +366,20 @@ public final class RootCommand extends Command implements Registrable {
         return suggestions == null ? List.of() : suggestions;
     }
 
-    /** Generated help, first page. */
-    void sendHelp(CommandSender sender) {
-        sendHelp(sender, 1);
+    /** Generated help, first page, rendered under the label the sender typed. */
+    void sendHelp(CommandSender sender, String label) {
+        sendHelp(sender, label, 1);
     }
 
     /**
      * Generated help: header plus one entry per reachable leaf (groups are flattened, so a
      * leaf renders with its full path), paginated through {@link Page}; a footer with the
-     * page indicator appears only when the entries span several pages.
+     * page indicator appears only when the entries span several pages. Every entry and the
+     * footer render under {@code label}, the token the sender typed, so an alias help lists
+     * that alias.
      */
-    void sendHelp(CommandSender sender, int pageNumber) {
-        List<HelpLine> lines = collectHelp(sender, subs, "/" + getName(), rootPermission);
+    void sendHelp(CommandSender sender, String label, int pageNumber) {
+        List<HelpLine> lines = collectHelp(sender, subs, "/" + label, rootPermission);
         Page<HelpLine> page = Page.of(lines, HELP_PAGE_SIZE);
         int current = page.clamp(pageNumber);
         send(sender, "snlib.help.header", Ph.of("plugin", ctx.plugin().getName()));
@@ -350,7 +393,7 @@ public final class RootCommand extends Command implements Registrable {
             send(sender, "snlib.help.footer",
                     Ph.of("page", current),
                     Ph.of("total", page.totalPages()),
-                    Ph.of("command", getName()));
+                    Ph.of("command", label));
         }
     }
 
@@ -410,10 +453,15 @@ public final class RootCommand extends Command implements Registrable {
         return null;
     }
 
-    /** Full-path usage of a leaf: its explicit usage, or the path plus its argument hints. */
+    /**
+     * Full-path usage of a leaf: its explicit usage, or the path plus its argument hints.
+     * An explicit usage is a literal, so it opts into the typed label through a
+     * {@code {label}} placeholder ({@code "/{label} reload [plugin]"}); a generated one
+     * already carries it inside {@code fullPath}.
+     */
     static String usageOf(Sub sub, String fullPath) {
         if (sub.usage != null) {
-            return sub.usage;
+            return SnText.applyLocals(sub.usage, Ph.of("label", rootLabelOf(fullPath)));
         }
         StringBuilder out = new StringBuilder(fullPath);
         int index = 0;

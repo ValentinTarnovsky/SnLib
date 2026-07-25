@@ -113,7 +113,12 @@ class NestedCommandTest {
 
     private static List<String> helpUsages(CommandSender sender, List<RootCommand.Sub> subs,
             String inherited) {
-        return RootCommand.collectHelp(sender, subs, "/clan", inherited).stream()
+        return helpUsages(sender, subs, "/clan", inherited);
+    }
+
+    private static List<String> helpUsages(CommandSender sender, List<RootCommand.Sub> subs,
+            String rootPath, String inherited) {
+        return RootCommand.collectHelp(sender, subs, rootPath, inherited).stream()
                 .map(RootCommand.HelpLine::usage).toList();
     }
 
@@ -301,6 +306,87 @@ class NestedCommandTest {
         assertEquals("clan.admin.region", effective.get("/clan admin region clear"));
     }
 
+    // ------------------------------------------------ alias-aware rendering
+
+    @Test
+    void typedLabelNormalizesTheDispatchedToken() {
+        assertEquals("clan", RootCommand.typedLabel("clan", "clan"));
+        assertEquals("c", RootCommand.typedLabel("c", "clan"));
+        assertEquals("c", RootCommand.typedLabel("  C  ", "clan"));
+        assertEquals("clan", RootCommand.typedLabel("myclans:clan", "clan"));
+        assertEquals("c", RootCommand.typedLabel("MyClans:C", "clan"));
+        assertEquals("clan", RootCommand.typedLabel(null, "clan"));
+        assertEquals("clan", RootCommand.typedLabel("   ", "clan"));
+        assertEquals("clan", RootCommand.typedLabel("myclans:", "clan"));
+    }
+
+    @Test
+    void rootLabelOfReadsTheFirstSegmentOfAPath() {
+        assertEquals("c", RootCommand.rootLabelOf("/c"));
+        assertEquals("c", RootCommand.rootLabelOf("/c admin disband"));
+        assertEquals("clan", RootCommand.rootLabelOf("/clan create"));
+    }
+
+    @Test
+    void helpEntriesRenderUnderTheAliasTheSenderTyped() {
+        CommandSender sender =
+                senderWith("clan.admin", "clan.admin.disband", "clan.admin.region");
+        assertEquals(List.of(
+                "/c info [clan]",
+                "/c create <name>",
+                "/c admin disband <clan>",
+                "/c admin promote <player>",
+                "/c admin region clear"), helpUsages(sender, clanSubs(), "/c", null));
+    }
+
+    @Test
+    void usageAndUnknownPathsRenderUnderTheAliasTheSenderTyped() {
+        CommandSender sender = senderWith("clan.admin");
+        RootCommand.Resolution arity = RootCommand.resolve(sender, null, clanSubs(), "/c",
+                new String[] {"create"});
+        assertMessage(arity, "snlib.usage");
+        assertEquals("/c create <name>", firstPh(arity));
+        RootCommand.Resolution group = RootCommand.resolve(sender, null, clanSubs(), "/c",
+                new String[] {"admin"});
+        assertMessage(group, "snlib.usage");
+        assertEquals("/c admin <promote>", firstPh(group));
+        RootCommand.Resolution unknown = RootCommand.resolve(sender, null, clanSubs(), "/c",
+                new String[] {"admin", "nope"});
+        assertMessage(unknown, "snlib.unknown-subcommand");
+        assertEquals("/c admin nope", firstPh(unknown));
+    }
+
+    @Test
+    void contextExposesTheRootLabelTheSenderTyped() {
+        CommandSender sender = senderWith("clan.admin", "clan.admin.disband");
+        assertEquals("c", asRun(RootCommand.resolve(sender, null, clanSubs(), "/c",
+                new String[] {"admin", "disband", "Alpha"})).context().label());
+        assertEquals("clan", asRun(RootCommand.resolve(sender, null, clanSubs(), "/clan",
+                new String[] {"create", "Alpha"})).context().label());
+    }
+
+    @Test
+    void explicitUsagePlaceholderResolvesToTheTypedLabel() {
+        RootCommand.Sub reload = new SubCommandBuilder(null, "reload")
+                .description("Reloads")
+                .usage("/{label} reload [plugin]")
+                .argOptional("plugin", Args.string())
+                .executes(context -> { })
+                .build();
+        assertEquals("/c reload [plugin]", RootCommand.usageOf(reload, "/c reload"));
+        assertEquals("/snlib reload [plugin]", RootCommand.usageOf(reload, "/snlib reload"));
+    }
+
+    @Test
+    void explicitUsageWithoutThePlaceholderStaysLiteral() {
+        RootCommand.Sub legacy = new SubCommandBuilder(null, "reload")
+                .description("Reloads")
+                .usage("/clan reload")
+                .executes(context -> { })
+                .build();
+        assertEquals("/clan reload", RootCommand.usageOf(legacy, "/c reload"));
+    }
+
     // ----------------------------------------------- bare-root onEmpty hook
 
     @Test
@@ -313,8 +399,9 @@ class NestedCommandTest {
     void rootContextHelpTriggersTheRenderer() {
         CommandSender sender = senderWith();
         int[] rendered = {-1};
-        RootContext context = new RootContext(sender, page -> rendered[0] = page);
+        RootContext context = new RootContext(sender, "clan", page -> rendered[0] = page);
         assertSame(sender, context.sender());
+        assertEquals("clan", context.label());
         context.help();
         assertEquals(1, rendered[0]);
         context.help(3);
@@ -330,7 +417,7 @@ class NestedCommandTest {
             ran[0] = true;
             context.help();
         };
-        hook.accept(new RootContext(sender, page -> rendered[0] = page));
+        hook.accept(new RootContext(sender, "clan", page -> rendered[0] = page));
         assertTrue(ran[0]);
         assertEquals(1, rendered[0]);
     }

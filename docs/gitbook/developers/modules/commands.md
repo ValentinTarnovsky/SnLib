@@ -181,6 +181,48 @@ Aliases coming from an authoritative source (the config binding or a supplier) r
 in the first place. Only **static** aliases missing from your `plugin.yml` log the
 `Aliases [...] not declared in the plugin.yml` warning, as a nudge to declare them there.
 
+### Every message follows the alias the sender typed
+
+Usage lines, generated help entries, the help footer and unknown-subcommand paths all render
+under the label the sender actually reached the command through, never under the declared
+root name. On a root named `clan` with the alias `c`:
+
+```
+/clan help  ->  CLAN » /clan create <name> [tag]   Create a clan
+/c help     ->  CLAN » /c create <name> [tag]      Create a clan
+```
+
+Nothing to configure: it follows the invocation. The label is normalized before it renders,
+so `/C` and the namespaced `/myclans:clan` form Bukkit also accepts render as `c` and `clan`.
+
+Your own subcommands get the same label through `context.label()` (and `root.label()` inside
+an [`onEmpty`](#bare-root-behavior-onempty) hook) - the root label without its leading slash.
+Echo it instead of hardcoding the root name whenever a message names the command:
+
+```java
+.sub("create")
+        .arg("name", Args.string())
+        .executes(context -> context.sender().sendMessage(
+                "Created. Use /" + context.label() + " info to see it."))
+        .and()
+```
+
+The one thing that does not follow the label on its own is an **explicit** `usage(...)`
+string, which is a literal by definition. Write `{label}` where the root name would go and it
+resolves the same way:
+
+```java
+.sub("reload")
+        .usage("/{label} reload [plugin]")   // renders as "/c reload [plugin]"
+        .and()
+```
+
+{% hint style="info" %}
+A clickable `<click:run_command>` in a lang value is the exception: keep the real root command
+there, not an alias. `command.aliases` is admin-owned and can disappear on a reload, which
+would leave the click running a command that no longer exists.
+{% endhint %}
+
 ## Arguments
 
 Declare positional arguments in order with `arg(name, Args.xxx())`. Declaration order is
