@@ -28,6 +28,7 @@ import com.sn.lib.command.CommandContext;
 import com.sn.lib.compat.SnVersion;
 import com.sn.lib.hook.SoftDependency;
 import com.sn.lib.text.SnText;
+import com.sn.lib.update.internal.SelfUpdater;
 import com.sn.lib.util.TagIo;
 
 /**
@@ -72,6 +73,11 @@ public final class SnLibCommand {
                         .description("Dumps the PDC tags of the held item")
                         .executes(SnLibCommand::itemInfo)
                         .and()
+                .sub("update")
+                        .permission("snlib.admin.update")
+                        .description("Shows the self-updater state and forces a check")
+                        .executes(context -> update(plugin, context.sender()))
+                        .and()
                 .sub("reload")
                         .permission("snlib.admin.reload")
                         .usage("/{label} reload [plugin]")
@@ -89,6 +95,32 @@ public final class SnLibCommand {
         send(sender, "&7API level: &f" + plugin.apiLevel());
         send(sender, "&7Server: &f" + Bukkit.getBukkitVersion() + " &7(detected: &f"
                 + detected + (SnVersion.isFolia() ? " Folia" : "") + "&7)");
+    }
+
+    /**
+     * State of the SnLib self-updater plus an immediate check. The check itself runs off
+     * the main thread and reports its own outcome back to the sender when it finishes.
+     */
+    private static void update(SnLibPlugin plugin, CommandSender sender) {
+        SelfUpdater updater = SelfUpdater.active();
+        if (updater == null) {
+            send(sender, "&cThe SnLib self-updater is not running.");
+            return;
+        }
+        send(sender, "&7SnLib auto-update: " + (updater.isEnabled()
+                ? "&aenabled &7(every &f" + updater.intervalHours() + "h&7)"
+                : "&cdisabled"));
+        send(sender, "&7Installed: &f" + plugin.getPluginMeta().getVersion());
+        String latest = updater.latestSeen();
+        if (latest != null) {
+            send(sender, "&7Latest seen: &f" + latest);
+        }
+        String pending = updater.pendingVersion();
+        if (pending != null) {
+            send(sender, "&ePending restart: &f" + pending
+                    + " &eis already on disk and activates on the next restart.");
+        }
+        updater.checkNow(sender);
     }
 
     /** Consumers hooked to SnLib, read from the public context registry. */

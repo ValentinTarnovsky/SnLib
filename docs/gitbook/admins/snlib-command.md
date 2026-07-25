@@ -3,7 +3,7 @@
 SnLib has one command of its own, `/snlib`. It is purely diagnostic - it exists so you can inspect what SnLib and its consumer plugins are doing, and so you can reload configuration. It is the only command SnLib registers, and it does not affect gameplay.
 
 ```
-/snlib <version|plugins|integrations|iteminfo|reload>
+/snlib <version|plugins|integrations|iteminfo|update|reload>
 ```
 
 Every subcommand is gated behind its own `snlib.admin.*` permission, all of which default to `op`. See [Permissions and Updates](permissions-and-updates.md) for how the permission scheme works. A subcommand you do not have permission for does not appear in tab-completion or help.
@@ -39,6 +39,21 @@ Dumps the hidden persistent data stored on the item you are currently holding in
 This subcommand is player-only, since it reads the item in your hand.
 
 Permission: `snlib.admin.iteminfo`.
+
+### `/snlib update`
+
+Shows the state of SnLib's self-updater and forces an immediate check instead of waiting for the timer. It reports whether the self-updater is enabled, how often it checks, the installed version, the newest version it has seen, and whether a version is already sitting on disk waiting for a restart.
+
+```
+SnLib auto-update: enabled (every 12h)
+Installed: 1.15.0
+Checking ValentinTarnovsky/SnLib for a newer SnLib...
+SnLib 1.16.0 installed on disk. Restart the server to activate it.
+```
+
+The check itself runs off the main thread, so the result arrives a moment after the command returns. This only ever concerns `SnLib.jar` - it never touches a consumer plugin. See [Permissions and Updates](permissions-and-updates.md#snlib-keeps-its-own-jar-up-to-date) for the full behavior and the `auto-update` config block.
+
+Permission: `snlib.admin.update` (the same permission that receives update notices).
 
 ### `/snlib reload [plugin]`
 

@@ -3743,7 +3743,7 @@ Update-check module FOR THE CONSUMER PLUGINS (not for SnLib itself): each consum
 
 The module's hard contract:
 
-- **STRICT and PERMANENT notify-only**: it never downloads artifacts, never touches the running jar, never does any kind of auto-swap (also incompatible with the reload-never-reloads-classes model). The only outputs are a console INFO on detecting a new version and a chat notice to permissioned players on join.
+- **STRICT and PERMANENT notify-only**: it never downloads artifacts, never touches the running jar, never does any kind of auto-swap (also incompatible with the reload-never-reloads-classes model). The only outputs are a console INFO on detecting a new version and a chat notice to permissioned players on join. This is a guarantee OF THIS MODULE and therefore of every consumer plugin that uses it; SnLib's own jar is kept current by a separate internal component that is not part of this module and is not reachable from any consumer context (see 17.b).
 - **100% opt-in**: a consumer that declares no `SnSpec.builder().updates("owner/repo")` and calls no `watch()`/`checkNow()` generates NO traffic or state (the accessor returns an inert instance).
 - **Two repo modes (v1.4)**: a repo dedicated to one plugin (`updates(ownerRepo)`, polls `releases/latest`), or a repo SHARED by several plugins (`updates(ownerRepo, tagPrefix)`, polls the `releases` list and keeps only tags starting with `tagPrefix`, taking the highest matching version). The shared mode exists so an ecosystem of plugins can publish to ONE public releases repo instead of one public repo per plugin; tags there follow `<pluginId>-vX.Y.Z` (for example `snclans-v1.4.0`, prefix `"snclans-"`).
 
@@ -3764,13 +3764,13 @@ Public API:
 - Shared-mode selection: among `ReleaseTag`s whose `tag()` starts with `tagPrefix`, the prefix is stripped, then `stripTagPrefix`, then the highest version wins via `SemverComparator.compareVersions`. No match -> warn-once "no release tag matching prefix '<prefix>'".
 - Detection: `SemverComparator.compareVersions(latest, current) > 0` against `ctx.plugin().getPluginMeta().getVersion()`. On detection it stores a `Finding(latest, current, url)` in the owner's state, emits the INFO "Version <latest> available, installed <current>." (no URL in console) and sends the chat notice to admins already online holding `<plugin>.admin.update` - ONLY on the first detection or on a new release (no re-INFO every 6h); if there is no longer an update the entry is removed. Joining admins keep receiving the notice through the shared join listener while the finding exists.
 - Multi-tenant state: `private static final TenantRegistry<UpdateState> STATES` (justified server-wide static: the shared listener reads it; keyed by owner with automatic sweep on disable). `UpdateState` holds the ctx, the `<plugin>.admin.update` permission (lowercased plugin name) and the repo -> `Finding` map. The state registers exactly ONCE per instance (compareAndSet) on the first `watch`/`checkNow`.
-- Join notice: the `JoinListener` walks `STATES.forEachOwner`; for each state with pending findings and a player with `state.permission`, it schedules `syncLater(40 ticks)` which re-checks `player.isOnline()` and sends per finding `&e<Plugin> &7has a new version: &a<latest> &7(installed &c<current>&7) &f<url>` via `SnText.color`. A consumer wanting default-op must declare `<plugin>.admin.update` in ITS plugin.yml; without declaring it only those with the explicit permission receive it.
+- Join notice: the `JoinListener` walks `STATES.forEachOwner`; for each state with pending findings and a player with `state.permission`, it schedules `syncLater(40 ticks)` which re-checks `player.isOnline()` and sends per finding `&e<Plugin> &7has a new version: &a<latest> &7(installed &c<current>&7)` via `SnText.color` - versions only, NO url (the `Finding.url` field is stored but no output renders it). A consumer wanting default-op must declare `<plugin>.admin.update` in ITS plugin.yml; without declaring it only those with the explicit permission receive it.
 
 #### Notes and gotchas
 
 - GitHub PATs contain no `%`: `SnYml.getString`'s placeholder pipeline is a no-op over the token.
 - `checkNow` and `watch` share the warn-once: the `warnedRepos` set is per instance (per enable).
-- ManticLib's Versionator (jar download + auto-swap) stands recorded as the anti-example: that capability is forbidden forever in this module.
+- ManticLib's Versionator (jar download + auto-swap of ARBITRARY consumer plugins) stands recorded as the anti-example: that capability is forbidden forever in this module. The narrow, audited exception is SnLib updating its OWN jar, which lives entirely outside this module in `com.sn.lib.update.internal.SelfUpdater` (17.b) and can never act on a consumer's jar.
 
 ### UpdateCheckerJsonTest
 `src/test/java/com/sn/lib/update/UpdateCheckerJsonTest.java`
@@ -3784,6 +3784,55 @@ Public API:
 - `void parseReleaseTagsPairsEachTagWithItsOwnHtmlUrl()` (v1.4, shared-repo mode) - a two-release array, each pairing its `tag_name` with the nearest preceding `html_url`; asserts neither the nested `author.html_url` nor an asset's `url` is picked up.
 - `void parseReleaseTagsHandlesEmptyList()` (v1.4) - `"[]"` and `null` both return an empty list.
 - Handoff consistency note: the handoff mentions "114 tests"; the last count verified in this documentation was 204 tests across 21 suites (see prior revisions for the full step-by-step history). Current verified count (surefire, `mvn test`), including the two `parseReleaseTags` tests added for the v1.4 shared-releases-repo feature, is 213 tests, all green.
+
+## 17.b SelfUpdater (v1.16)
+
+Self-updater OF SnLib.jar ITSELF. Deliberately NOT part of the UpdateChecker module: it lives in `com.sn.lib.update.internal`, is instantiated only by the `SnLibPlugin` bootstrap, is never referenced by `Sn`, and physically cannot act on a consumer jar. The notify-only contract of section 17 is therefore untouched for every consumer.
+
+### SelfUpdater
+`src/main/java/com/sn/lib/update/internal/SelfUpdater.java`
+
+`public final class SelfUpdater implements Reloadable`. Because the whole class sits under `com.sn.lib.**.internal.**` it is outside the japicmp analysis and outside the semver contract: adding it required NO `SnApi.LEVEL` bump (it stayed at 10) and no consumer-visible class gained a member.
+
+The contract:
+
+- **Only ever SnLib.jar.** The repo (`ValentinTarnovsky/SnLib`) and the asset URL prefix (`https://github.com/ValentinTarnovsky/SnLib/releases/download/`) are compile-time constants; nothing is configurable into pointing it elsewhere.
+- **Never a runtime class swap.** It writes a file to disk and says so. The downloaded version becomes active on the next full server restart, which keeps the "a reload never reloads classes" model of section 17 intact. The whole point is that the jar is already in place before a scheduled restart.
+- **Verified before it touches anything.** SHA-256 against the `digest` the GitHub API publishes for the asset, plus a structural check of the downloaded archive's `plugin.yml` (`name: SnLib`, `main: com.sn.lib.SnLibPlugin`, `version` equal to the release being installed), plus a hard size floor and a 128 MB cap streamed during the download.
+
+Config (SnLib's own `plugins/SnLib/config.yml`, arriving by managed merge since the library's own config is exempt from the `update-configs` gate):
+
+```yaml
+auto-update:
+  enabled: true          # master toggle
+  interval-hours: 12     # clamped to 1..168
+  same-major-only: true  # 1.15.0 -> 1.16.0 yes; 1.x -> 2.0.0 only reported
+```
+
+`enabled` and `same-major-only` are re-read on EVERY pass (so `/snlib reload` applies them without a restart); `interval-hours` is applied at arm time and the `reload()` hook re-arms the timer when it changed.
+
+Public surface (all inside the internal package):
+
+- `public SelfUpdater(Sn ctx)` / `public void arm()` - `arm` registers the static `active` reference and the reload hook, purges leftover `.part` files and arms `timerAsync(INITIAL_DELAY_TICKS = 2400, intervalHours * 72000)`. The 2-minute first pass deliberately lands AFTER the notify-only checker's 60-second one, so the console reads "version available" before "installed on disk".
+- `public void shutdown()` - cancels the timer, releases the HttpClient, clears `active`. Invoked from `SnLibPlugin.onDisable`, which is necessary because that bootstrap does NOT call `selfCtx.shutdown()`, so the 13-step `Sn` teardown never runs for the library's own context.
+- `public void checkNow(CommandSender)` - the `/snlib update` path: one immediate pass reporting every outcome back to the sender (the timer path warns once per reason per enable instead).
+- `public static @Nullable SelfUpdater active()` / `public static Listener joinListener()` / `public @Nullable String pendingVersion()` / `public @Nullable String latestSeen()` / `public boolean isEnabled()` / `public int intervalHours()`.
+
+#### Internal logic
+
+- GET `https://api.github.com/repos/ValentinTarnovsky/SnLib/releases/latest`, same headers as the module (`User-Agent: SnLib-SelfUpdater`), anonymous: the repo is public and no token is ever sent, on the API call or the download.
+- `assetsSlice(body)` slices the `"assets": [...]` array with a depth counter that respects strings and escapes, so `browser_download_url` and `digest` are only ever read from INSIDE the asset array and never from the release body prose. The `name` key is deliberately never used for this: it collides with the release name and the uploader name.
+- The download HttpClient is built with `followRedirects(NORMAL)` because GitHub 302s asset downloads to `release-assets.githubusercontent.com`. The allowlist is checked against the URL the API published, NOT the redirect target - validating post-redirect would defeat the check.
+- Install: the new jar is moved in first (`ATOMIC_MOVE`, falling back to `REPLACE_EXISTING`) and the old one deleted after. That order is deliberate: a crash between the two steps leaves two SnLib jars, which Bukkit resolves with an "ambiguous plugin name" warning while still booting, whereas the reverse order could leave the server with NO SnLib and take down every consumer. On Linux the swap is safe with the server running because unlinking an open file keeps the inode alive for the JVM's descriptor.
+- `targetFileName` preserves the installed naming convention: `SnLib-1.15.0.jar` becomes `SnLib-1.16.0.jar`, while a plain `SnLib.jar` (the name the admin docs use) is replaced in place under the same name.
+- Windows fallback: when the filesystem refuses the swap because the running jar is locked, the verified file is moved into `Bukkit.getUpdateFolderFile()` under the running jar's exact file name, which the server applies at the next boot. So the feature degrades to the native update-folder mechanism rather than failing.
+- Staging lives in `plugins/.snlib-update/`. Subdirectories of `plugins/` are never scanned for jars, so a partial download can never be loaded; leftovers are purged on arm.
+- Outputs: console INFO `SnLib <new> installed on disk; restart the server to activate it (running <old>).`, a chat notice to online holders of `snlib.admin.update`, and the same notice to joiners while `pendingVersion` is set (its own `JoinListener`, inscribed in the ListenerHub next to the module's).
+- Reentrancy guarded by an `AtomicBoolean`; every pass early-returns on `ctx.isShuttingDown()`.
+
+### SelfUpdaterTest
+`src/test/java/com/sn/lib/update/internal/SelfUpdaterTest.java`
+16 pure JUnit tests (no Bukkit, no network) over the decision helpers, all of which run before the installed jar is ever touched: the asset-URL allowlist (foreign owner, foreign repo, foreign host and an `http://` downgrade all rejected), the same-major gate, `targetFileName` for versioned and unversioned jars, `expectedSha256` normalization (rejecting non-sha256 algorithms and wrong lengths), `sha256` against a known vector, `assetsSlice` + `jsonString` against a payload whose release body deliberately contains the literal words `digest` and `browser_download_url`, and `verifyJar` accepting a well-formed descriptor while rejecting a wrong plugin name, a wrong main class, a wrong version, a missing `plugin.yml` and a file that is not a zip at all.
 
 ## 18. Region: cuboid selection (v1.1)
 

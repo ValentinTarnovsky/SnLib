@@ -24,6 +24,7 @@ import com.sn.lib.region.internal.SelectionWandListener;
 import com.sn.lib.teleport.internal.TeleportDamageListener;
 import com.sn.lib.teleport.internal.TeleportMoveListener;
 import com.sn.lib.update.UpdateChecker;
+import com.sn.lib.update.internal.SelfUpdater;
 
 /**
  * Single inscription point for every shared listener of the library.
@@ -51,6 +52,7 @@ public final class ListenerHub {
         inscribe(new GuiProtectionListener());
         inscribe(PlayerDataCache.joinListener());
         inscribe(UpdateChecker.joinListener());
+        inscribe(SelfUpdater.joinListener());
         inscribe(new HologramChunkListener());
         inscribe(new SelectionWandListener());
         inscribe(new TeleportMoveListener());

@@ -18,3 +18,18 @@ debug:
 
 # Anonymous usage metrics via bStats (https://bstats.org); set false to opt out.
 bstats: true
+
+# Keeps SnLib.jar itself up to date. SnLib downloads its own newer release from its public
+# GitHub repository, verifies it (SHA-256 published by the API plus the plugin.yml inside
+# the jar), replaces the file on disk and reports that a restart is pending.
+# It NEVER swaps classes at runtime: the downloaded version only becomes active on the next
+# full server restart. This applies to SnLib.jar ONLY; plugins built on SnLib are never
+# downloaded, moved or deleted by it.
+auto-update:
+  # Master toggle of the self-updater.
+  enabled: true
+  # Hours between checks; the first one runs 2 minutes after startup. Clamped to 1-168.
+  interval-hours: 12
+  # Only install releases within the installed major version (1.15.0 -> 1.16.0 yes,
+  # 1.x -> 2.0.0 no). A major jump is only reported, never installed on its own.
+  same-major-only: true

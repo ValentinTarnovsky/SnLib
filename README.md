@@ -393,12 +393,40 @@ sn.updates().checkNow("owner/repo");
 
 - Strict and permanent NOTIFY-ONLY guarantee: it NEVER downloads jars nor
   auto-swaps anything; the only outputs are an INFO in console and a join
-  notice to players with the `<plugin>.admin.update` permission.
+  notice to players with the `<plugin>.admin.update` permission. This holds
+  for every consumer plugin. SnLib's OWN jar is kept current by a separate
+  internal component (see below) that cannot act on a consumer jar.
 - Check on enable (+60s) and every 6 hours with the JDK `HttpClient` (5s/10s
   timeouts); comparison via `SemverComparator`; 403/404/network down =
   WARN-once per repo and then silence.
 - PRIVATE GitHub repos: optional read-only token in the consumer config key
   `update-check.token` (read on every check, never logged).
+
+## Self-updater of SnLib.jar (v1.16, SnLib only)
+
+SnLib keeps its OWN jar current. This is not the module above and is not
+available to consumers: it lives in `com.sn.lib.update.internal.SelfUpdater`,
+is created only by the bootstrap, and its repo and asset URL prefix are
+compile-time constants pointing at SnLib's own public releases.
+
+```yaml
+# plugins/SnLib/config.yml
+auto-update:
+  enabled: true          # master toggle
+  interval-hours: 12     # clamped to 1..168
+  same-major-only: true  # 1.15.0 -> 1.16.0 yes; 1.x -> 2.0.0 only reported
+```
+
+- Checks 2 minutes after startup and then every `interval-hours`, off-main.
+- Verifies the download against the SHA-256 the GitHub API publishes for the
+  asset AND against the `plugin.yml` inside the downloaded jar, before
+  touching anything.
+- Then swaps the file: the new jar is moved into `plugins/` and the old one
+  deleted. On a Windows file lock it falls back to Bukkit's own update folder.
+- It NEVER swaps classes at runtime. The new version activates on the next
+  full server restart - a restart is still required, exactly as before; the
+  point is that the jar is already in place before a scheduled one.
+- `/snlib update` shows the state and forces a check.
 
 ## Region: cuboid selection (v1.1)
 

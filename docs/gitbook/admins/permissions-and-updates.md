@@ -55,16 +55,55 @@ The `<plugin>.admin.update` permission defaults to `op` when the plugin declares
 
 The notice is one-time per detection - you are not nagged every six hours. If the check cannot reach GitHub (network down, or a 403/404 response), the plugin logs a single warning for that repository and then stays quiet rather than spamming the log.
 
-### It never updates anything by itself
+### It never updates a plugin by itself
 
-This is the hard, permanent guarantee, and it is worth being completely clear about:
+This is the hard, permanent guarantee for **plugins**, and it is worth being completely clear about:
 
 {% hint style="danger" %}
-The update-check system is strictly NOTIFY-ONLY. It never downloads a jar, never modifies the running plugin, and never auto-updates anything. All it ever does is tell you that a newer version exists.
+The update-check system is strictly NOTIFY-ONLY for every Sn plugin. It never downloads a plugin jar, never modifies a running plugin, and never auto-updates one. All it ever does is tell you that a newer version exists.
 {% endhint %}
 
-When you are notified, the update is entirely in your hands. You decide whether and when to update. To actually apply it you download the new jar yourself from the link, replace the old jar on disk, and restart the server. Nothing is ever swapped out from under a running server, and no code is fetched and executed automatically. The system's only job is to make sure you know an update is out there.
+When you are notified, the update is entirely in your hands. You decide whether and when to update. To actually apply it you download the new jar yourself, replace the old jar on disk, and restart the server. No plugin is ever swapped out from under a running server, and no plugin code is fetched and executed automatically. The system's only job is to make sure you know an update is out there.
 
-{% hint style="info" %}
-For SnLib itself, remember that replacing `SnLib.jar` always requires a full server restart, never a reload. See [Installation and Requirements](installation.md).
+The one thing that does keep itself current is the shared library, `SnLib.jar`, and only itself - never a plugin. That is a separate mechanism with its own switch, described next.
+
+## SnLib keeps its own jar up to date
+
+SnLib can download and install **its own** newer release. This applies to `SnLib.jar` and nothing else: it can never download, move or delete a plugin jar. It is on by default and configured in `plugins/SnLib/config.yml`:
+
+```yaml
+auto-update:
+  # Master toggle of the self-updater.
+  enabled: true
+  # Hours between checks; the first one runs 2 minutes after startup. Clamped to 1-168.
+  interval-hours: 12
+  # Only install releases within the installed major version (1.15.0 -> 1.16.0 yes,
+  # 1.x -> 2.0.0 no). A major jump is only reported, never installed on its own.
+  same-major-only: true
+```
+
+Set `enabled: false` if you would rather do it by hand. Changes to `enabled` and `same-major-only` take effect on the next check after a `/snlib reload`; a changed `interval-hours` re-arms the timer on reload too.
+
+### What it actually does
+
+Every `interval-hours` (12 by default), off the main thread, SnLib asks its own public GitHub repository whether a newer release exists. If there is one, and it is within the same major version, SnLib downloads it and **checks it before trusting it**: the file must match the SHA-256 checksum GitHub publishes for that asset, and the `plugin.yml` inside the downloaded jar must actually declare SnLib at the expected version. If either check fails, the download is deleted and your installed jar is left untouched.
+
+Only after that does it swap the file: the new jar is written into `plugins/` and the old one is deleted. If the operating system refuses to replace the file because the server has it locked (this is the normal situation on Windows), SnLib instead hands the verified jar to the server's own update folder, which applies it at the next boot. Either way you end up with the new version in place.
+
+You then see one console line and a chat notice to admins holding `snlib.admin.update`:
+
+```
+SnLib 1.16.0 installed on disk; restart the server to activate it (running 1.15.0).
+```
+
+Admins who join later get the same notice while the restart is still pending.
+
+{% hint style="danger" %}
+Installing the file is not the same as running it. The new SnLib only becomes active on the next **full server restart**. Nothing is ever hot-swapped into a running server - see [Installation and Requirements](installation.md) for why that rule can never be relaxed. The purpose of the self-updater is that the new jar is already sitting in place before your next scheduled restart, so there is no manual step between a release and an updated server.
 {% endhint %}
+
+### Checking on it
+
+`/snlib update` reports whether the self-updater is enabled, the interval, the installed version, the latest version it has seen, and whether a version is already on disk waiting for a restart. It also forces an immediate check, so you do not have to wait for the timer. It uses the `snlib.admin.update` permission - the same one that receives the notices.
+
+A major version jump (for example 1.x to 2.0.0) is never installed automatically while `same-major-only` is on, because a new major of the library can change what plugins built against the old one expect. Those you install by hand.

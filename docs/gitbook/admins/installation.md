@@ -59,6 +59,10 @@ Updating `SnLib.jar` always requires a full server restart. Never hot-swap it, a
 
 Reload commands and plugin managers that claim to hot-reload jars do not change this. SnLib is shared by every consumer plugin at once, so a clean full restart is the only supported update path.
 
+{% hint style="info" %}
+SnLib can perform step 2 for you. By default it downloads and installs its own newer releases, so the new `SnLib.jar` is already on disk before your next restart - steps 1 and 3 are still yours, and the restart is still mandatory. See [Permissions and Updates](permissions-and-updates.md#snlib-keeps-its-own-jar-up-to-date) for the switch and what it verifies before replacing anything.
+{% endhint %}
+
 ## The version handshake, in plain terms
 
 Every Sn plugin is built against a specific minimum version of SnLib, which it records internally as an "API level". You never see this number day to day, but it is what keeps mismatches safe.

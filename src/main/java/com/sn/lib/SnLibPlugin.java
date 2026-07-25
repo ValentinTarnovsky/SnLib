@@ -10,6 +10,7 @@ import com.sn.lib.hologram.internal.HologramChunkListener;
 import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
+import com.sn.lib.update.internal.SelfUpdater;
 import com.sn.lib.util.HeadUtil;
 import com.sn.lib.util.PlayerLookup;
 
@@ -31,6 +32,7 @@ public final class SnLibPlugin extends JavaPlugin {
 
     private @Nullable Sn selfCtx;
     private @Nullable Metrics metrics;
+    private @Nullable SelfUpdater selfUpdater;
 
     /**
      * Running SnLib bootstrap. Consumers never call this directly; {@link SnPlugin}
@@ -67,6 +69,9 @@ public final class SnLibPlugin extends JavaPlugin {
         Sn ctx = SnLib.init(this, buildSelfSpec());
         this.selfCtx = ctx;
         SnLibCommand.register(this, ctx);
+        SelfUpdater updater = new SelfUpdater(ctx);
+        this.selfUpdater = updater;
+        updater.arm();
         if (ctx.yml().config().getBoolean("bstats", true)) {
             this.metrics = new Metrics(this, BSTATS_SERVICE_ID);
         }
@@ -77,6 +82,11 @@ public final class SnLibPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        SelfUpdater updater = this.selfUpdater;
+        if (updater != null) {
+            updater.shutdown();
+            this.selfUpdater = null;
+        }
         TenantSweeper.cascadeAll();
         Metrics activeMetrics = this.metrics;
         if (activeMetrics != null) {

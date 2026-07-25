@@ -130,7 +130,7 @@ The token is read from your config on **every single check** (not cached at enab
 
 ## Real-world example: SnLib watches itself
 
-Now that the SnLib repository is public, SnLib uses this exact module **on itself**. Its internal `buildSelfSpec()` wires in the same declarative call every consumer uses:
+Now that the SnLib repository is public, SnLib uses this exact module **on itself** for the notification side. Its internal `buildSelfSpec()` wires in the same declarative call every consumer uses:
 
 ```java
 private static SnSpec buildSelfSpec() {
@@ -142,7 +142,17 @@ private static SnSpec buildSelfSpec() {
 }
 ```
 
-There is no separate, special-cased self-update mechanism to maintain: the library dogfoods the very module it hands to every consumer. When a newer SnLib release is published, the console logs it and admins holding `snlib.admin.update` are notified on join, exactly as they would be for any other plugin. And, like every consumer, it still only notifies: updating `SnLib.jar` remains a manual, restart-required action.
+So the library dogfoods the very module it hands to every consumer: when a newer SnLib release is published, the console logs it and admins holding `snlib.admin.update` are notified on join, exactly as they would be for any other plugin. Through this module, and therefore for you, nothing else happens.
+
+## The one thing that does install a jar, and why it is not here
+
+SnLib additionally keeps its **own** jar current: it can download a newer `SnLib.jar`, verify it and replace the file on disk. That capability deliberately lives **outside this module**, in `com.sn.lib.update.internal.SelfUpdater`, and it is worth understanding why the split exists rather than a config flag on `sn.updates()`.
+
+- It is not reachable from a consumer context. It is not on `Sn`, it is not in `SnSpec`, and its package is internal. There is no call you can make from a plugin that reaches it.
+- It cannot be pointed at anything else. The repository and the allowed asset URL prefix are compile-time constants for SnLib's own releases; there is no configuration that redirects it at a consumer jar or a third-party host.
+- It therefore cannot weaken the guarantee above. The notify-only contract of this module is a property of the module, and the module has no download code in it at all.
+
+The practical consequence for you as a developer: `sn.updates()` behaves exactly as documented on this page and will keep doing so, and you never have to reason about your plugin's jar being touched. Only the shared library maintains itself, only within a major version by default, and even then the new SnLib is merely placed on disk - it becomes active on the next full server restart, never by hot-swap. The admin-facing description of that behavior, including its `auto-update` config block, is in [Permissions and updates](../../admins/permissions-and-updates.md#snlib-keeps-its-own-jar-up-to-date).
 
 ## See also
 
