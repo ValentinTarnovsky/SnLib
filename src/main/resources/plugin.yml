@@ -1,7 +1,7 @@
 name: SnLib
 main: com.sn.lib.SnLibPlugin
 version: ${project.version}
-author: ValentinTarnovsky
+author: Snopeyy
 api-version: '1.20'
 load: STARTUP
 description: Common library core for Sn plugins.
