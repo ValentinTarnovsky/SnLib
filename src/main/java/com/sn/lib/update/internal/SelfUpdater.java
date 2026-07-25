@@ -73,6 +73,12 @@ import com.sn.lib.yml.SnYml;
  * open descriptor. When the filesystem refuses the swap (a Windows file lock), the verified
  * jar is staged into Bukkit's own update folder instead and the server applies it at the
  * next boot.</p>
+ *
+ * <p>The file it swaps is always the INSTALLED jar in the server's plugins folder, which on a
+ * modern Paper server is NOT the jar the running classes were loaded from: Paper 1.20.5+
+ * remaps every plugin at boot and loads the rewritten copy out of {@code plugins/.paper-remapped/}.
+ * Writing into that cache updates nothing, because the cache is rebuilt from the plugins
+ * folder on the next boot. See {@link #ownJar()} for how the installed jar is resolved.</p>
  */
 public final class SelfUpdater implements Reloadable {
 
@@ -86,6 +92,9 @@ public final class SelfUpdater implements Reloadable {
     private static final String PERMISSION = "snlib.admin.update";
     private static final String STAGING_DIR = ".snlib-update";
     private static final String PART_SUFFIX = ".part";
+    private static final String PLUGIN_NAME = "SnLib";
+    private static final String MAIN_CLASS = "com.sn.lib.SnLibPlugin";
+    private static final String JAR_SUFFIX = ".jar";
 
     private static final String KEY_ENABLED = "auto-update.enabled";
     private static final String KEY_INTERVAL = "auto-update.interval-hours";
@@ -519,15 +528,20 @@ public final class SelfUpdater implements Reloadable {
         }
     }
 
-    /** Drops leftover partial downloads from a previous run. */
+    /**
+     * Drops leftover partial downloads from a previous run. Both the installed jar's folder
+     * and the loaded jar's folder are swept: on a remapping server they differ, and versions
+     * before 1.16.2 staged next to the loaded (remapped) jar.
+     */
     private void purgeStaging() {
-        File jar = ownJar();
+        purgeStagingIn(ownJar());
+        purgeStagingIn(codeSourceJar());
+    }
+
+    private static void purgeStagingIn(@Nullable File jar) {
         Path parent = jar == null ? null : jar.toPath().toAbsolutePath().getParent();
-        if (parent == null) {
-            return;
-        }
-        Path staging = parent.resolve(STAGING_DIR);
-        if (!Files.isDirectory(staging)) {
+        Path staging = parent == null ? null : parent.resolve(STAGING_DIR);
+        if (staging == null || !Files.isDirectory(staging)) {
             return;
         }
         try (Stream<Path> files = Files.list(staging)) {
@@ -589,10 +603,42 @@ public final class SelfUpdater implements Reloadable {
     }
 
     /**
-     * Resolves SnLib's own jar from the code source of this class. Same primitive the GUI
-     * seeder uses to reach a consumer jar, pointed at the library instead.
+     * Resolves the INSTALLED SnLib jar: the file in the server's plugins folder that the next
+     * boot will actually read.
+     *
+     * <p>The code source of the plugin class is a HINT, never the answer. Paper 1.20.5+ remaps
+     * every plugin at boot and loads the rewritten copy from {@code plugins/.paper-remapped/},
+     * so on a modern server the code source points inside that cache. Swapping the jar there
+     * silently updates nothing: the cache is regenerated from the plugins folder on the next
+     * boot, the server comes back on the old version, and the console still claims the update
+     * was installed. So the code source is trusted only when it really sits in the plugins
+     * folder; otherwise the installed jar is found by its file name and, failing that, by
+     * scanning the folder for the jar whose descriptor declares this library.</p>
      */
     private @Nullable File ownJar() {
+        File loaded = codeSourceJar();
+        File plugins = pluginsDir();
+        if (plugins == null) {
+            return loaded;
+        }
+        if (loaded != null && isChildOf(loaded, plugins)) {
+            return loaded;
+        }
+        if (loaded != null) {
+            File sameName = new File(plugins, loaded.getName());
+            if (sameName.isFile() && isOwnJar(sameName.toPath())) {
+                return sameName;
+            }
+        }
+        return scanForOwnJar(plugins);
+    }
+
+    /**
+     * Jar the running classes were loaded from - the remapped copy on a Paper server that
+     * rewrites plugins. Same primitive the GUI seeder uses to reach a consumer jar, pointed at
+     * the library instead.
+     */
+    private @Nullable File codeSourceJar() {
         ProtectionDomain domain = ctx.plugin().getClass().getProtectionDomain();
         if (domain == null) {
             return null;
@@ -608,6 +654,46 @@ public final class SelfUpdater implements Reloadable {
         } catch (URISyntaxException | IllegalArgumentException ex) {
             return null;
         }
+    }
+
+    /**
+     * The server's real plugins folder, taken as the parent of Bukkit's own update folder -
+     * the server computes that folder from the plugins directory it was started with, so it
+     * is correct even when the server runs with a non-default plugins path.
+     */
+    private static @Nullable File pluginsDir() {
+        File update = Bukkit.getUpdateFolderFile();
+        File parent = update == null ? null : update.getAbsoluteFile().getParentFile();
+        return parent != null && parent.isDirectory() ? parent : null;
+    }
+
+    /**
+     * Last resort when the loaded jar lives outside the plugins folder and no file of the same
+     * name is there either: the installed jar is the one {@code *.jar} in the folder whose
+     * descriptor declares this library. Ambiguity is reported as unresolved rather than
+     * guessed - swapping the wrong file is worse than not updating at all.
+     */
+    private @Nullable File scanForOwnJar(File plugins) {
+        File[] entries = plugins.listFiles();
+        if (entries == null) {
+            return null;
+        }
+        File found = null;
+        for (File entry : entries) {
+            if (!entry.isFile()
+                    || !entry.getName().toLowerCase(Locale.ROOT).endsWith(JAR_SUFFIX)
+                    || !isOwnJar(entry.toPath())) {
+                continue;
+            }
+            if (found != null) {
+                warnOnce("ambiguous-own-jar", "plugins/ holds more than one SnLib jar ("
+                        + found.getName() + " and " + entry.getName() + "); the self-updater"
+                        + " will not touch any of them until only one is left.");
+                return null;
+            }
+            found = entry;
+        }
+        return found;
     }
 
     // ---------------------------------------------------------------------------------
@@ -695,37 +781,64 @@ public final class SelfUpdater implements Reloadable {
         return hex.toString();
     }
 
+    /** True when {@code file} sits directly inside {@code directory}. */
+    static boolean isChildOf(File file, File directory) {
+        File parent = file.getAbsoluteFile().getParentFile();
+        return parent != null && parent.equals(directory.getAbsoluteFile());
+    }
+
+    /**
+     * {@code plugin.yml} text of a jar, or null when the file is not a readable archive or
+     * carries no descriptor. Read before the file is trusted, so it never parses further.
+     */
+    static @Nullable String descriptorOf(Path jar) {
+        try (JarFile archive = new JarFile(jar.toFile())) {
+            JarEntry entry = archive.getJarEntry("plugin.yml");
+            if (entry == null) {
+                return null;
+            }
+            try (InputStream in = archive.getInputStream(entry)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } catch (IOException notAJar) {
+            return null;
+        }
+    }
+
+    /**
+     * True when a jar on disk is an SnLib jar - identity only, any version. Used to recognise
+     * the installed jar while resolving it, never to accept a download.
+     */
+    static boolean isOwnJar(Path jar) {
+        String descriptor = descriptorOf(jar);
+        return descriptor != null
+                && PLUGIN_NAME.equals(yamlValue(descriptor, "name"))
+                && MAIN_CLASS.equals(yamlValue(descriptor, "main"));
+    }
+
     /**
      * Structural check of a downloaded jar: it must be a readable archive whose plugin.yml
      * declares SnLib, the expected version and the library's own main class. Returns null
      * when valid, otherwise the reason it was rejected.
      */
     static @Nullable String verifyJar(Path jar, String expectedVersion) {
-        try (JarFile archive = new JarFile(jar.toFile())) {
-            JarEntry entry = archive.getJarEntry("plugin.yml");
-            if (entry == null) {
-                return "downloaded jar has no plugin.yml";
-            }
-            String descriptor;
-            try (InputStream in = archive.getInputStream(entry)) {
-                descriptor = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            String name = yamlValue(descriptor, "name");
-            String version = yamlValue(descriptor, "version");
-            String main = yamlValue(descriptor, "main");
-            if (!"SnLib".equals(name)) {
-                return "downloaded jar declares plugin name '" + name + "'";
-            }
-            if (!"com.sn.lib.SnLibPlugin".equals(main)) {
-                return "downloaded jar declares main class '" + main + "'";
-            }
-            if (!expectedVersion.equals(version)) {
-                return "downloaded jar is version '" + version + "', expected " + expectedVersion;
-            }
-            return null;
-        } catch (IOException notAJar) {
-            return "downloaded file is not a readable jar: " + notAJar.getMessage();
+        String descriptor = descriptorOf(jar);
+        if (descriptor == null) {
+            return "downloaded file is not a readable jar carrying a plugin.yml";
         }
+        String name = yamlValue(descriptor, "name");
+        String version = yamlValue(descriptor, "version");
+        String main = yamlValue(descriptor, "main");
+        if (!PLUGIN_NAME.equals(name)) {
+            return "downloaded jar declares plugin name '" + name + "'";
+        }
+        if (!MAIN_CLASS.equals(main)) {
+            return "downloaded jar declares main class '" + main + "'";
+        }
+        if (!expectedVersion.equals(version)) {
+            return "downloaded jar is version '" + version + "', expected " + expectedVersion;
+        }
+        return null;
     }
 
     /**

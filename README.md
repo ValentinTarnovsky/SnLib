@@ -426,6 +426,10 @@ auto-update:
   touching anything.
 - Then swaps the file: the new jar is moved into `plugins/` and the old one
   deleted. On a Windows file lock it falls back to Bukkit's own update folder.
+- The jar it swaps is the INSTALLED one in `plugins/`, which since v1.16.2 is
+  resolved independently of the code source: Paper 1.20.5+ loads a remapped copy
+  from `plugins/.paper-remapped/`, and writing there updates nothing because the
+  cache is rebuilt from `plugins/` on the next boot.
 - It NEVER swaps classes at runtime. The new version activates on the next
   full server restart - a restart is still required, exactly as before; the
   point is that the jar is already in place before a scheduled one.

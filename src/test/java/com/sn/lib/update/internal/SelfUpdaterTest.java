@@ -1,5 +1,6 @@
 package com.sn.lib.update.internal;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -176,6 +177,63 @@ class SelfUpdaterTest {
         Path notAJar = dir.resolve("plain.jar");
         Files.write(notAJar, "this is not a zip".getBytes(StandardCharsets.UTF_8));
         assertNotNull(SelfUpdater.verifyJar(notAJar, "1.16.0"));
+    }
+
+    // --- installed jar resolution --------------------------------------------------
+
+    @Test
+    void recognisesAnSnLibJarByItsDescriptorRegardlessOfVersionOrName(@TempDir Path dir)
+            throws IOException {
+        Path own = jarWith(dir.resolve("whatever-name.jar"),
+                "name: SnLib\nmain: com.sn.lib.SnLibPlugin\nversion: 1.2.3\n");
+        assertTrue(SelfUpdater.isOwnJar(own));
+    }
+
+    @Test
+    void doesNotMistakeAConsumerOrBrokenJarForTheLibrary(@TempDir Path dir) throws IOException {
+        Path consumer = jarWith(dir.resolve("SnClans-1.5.4.jar"),
+                "name: SnClans\nmain: com.sn.clans.SnClansPlugin\nversion: 1.5.4\n");
+        assertFalse(SelfUpdater.isOwnJar(consumer));
+
+        Path impostor = jarWith(dir.resolve("fake.jar"),
+                "name: SnLib\nmain: com.evil.Payload\nversion: 1.16.2\n");
+        assertFalse(SelfUpdater.isOwnJar(impostor));
+
+        assertFalse(SelfUpdater.isOwnJar(jarWith(dir.resolve("bare.jar"), null)));
+        assertFalse(SelfUpdater.isOwnJar(dir.resolve("missing.jar")));
+    }
+
+    @Test
+    void descriptorIsNullForANonJarOrADescriptorlessJar(@TempDir Path dir) throws IOException {
+        assertNull(SelfUpdater.descriptorOf(jarWith(dir.resolve("bare.jar"), null)));
+
+        Path notAJar = dir.resolve("plain.jar");
+        Files.write(notAJar, "this is not a zip".getBytes(StandardCharsets.UTF_8));
+        assertNull(SelfUpdater.descriptorOf(notAJar));
+    }
+
+    /**
+     * The regression behind 1.16.2: on a Paper server that remaps plugins, the loaded jar sits
+     * in {@code plugins/.paper-remapped/} and is NOT a child of the plugins folder, so the
+     * updater must reject it as the swap target instead of writing into the remap cache.
+     */
+    @Test
+    void remappedJarIsNotTakenForTheInstalledJar(@TempDir Path dir) throws IOException {
+        File plugins = Files.createDirectories(dir.resolve("plugins")).toFile();
+        File installed = plugins.toPath().resolve("SnLib-1.16.1.jar").toFile();
+        File remapped = Files.createDirectories(plugins.toPath().resolve(".paper-remapped"))
+                .resolve("SnLib-1.16.1.jar").toFile();
+
+        assertTrue(SelfUpdater.isChildOf(installed, plugins));
+        assertFalse(SelfUpdater.isChildOf(remapped, plugins));
+    }
+
+    @Test
+    void isChildOfComparesTheDirectParentOnly(@TempDir Path dir) {
+        File plugins = dir.resolve("plugins").toFile();
+        assertTrue(SelfUpdater.isChildOf(new File(plugins, "SnLib.jar"), plugins));
+        assertFalse(SelfUpdater.isChildOf(new File(plugins, "nested/SnLib.jar"), plugins));
+        assertFalse(SelfUpdater.isChildOf(dir.resolve("SnLib.jar").toFile(), plugins));
     }
 
     @Test

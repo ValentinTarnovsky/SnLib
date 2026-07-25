@@ -62,6 +62,33 @@ See [Sections that are yours](configuration-files.md) for the full rules, includ
 
 If you want to stop ALL merging in every file, set `update-configs: false` in the plugin's `config.yml`. The plugin will then only warn about missing keys instead of adding them.
 
+## SnLib said an update was installed, but after restarting I still have the old version
+
+**Affects SnLib 1.16.0 and 1.16.1 only, on Paper 1.20.5+ (and forks of it).** Those two versions
+looked up their own jar the wrong way: on a server that remaps plugins, they wrote the new jar into
+the `plugins/.paper-remapped/` cache instead of `plugins/`. The console still printed
+
+```
+SnLib 1.16.1 installed on disk; restart the server to activate it (running 1.16.0).
+```
+
+but the server rebuilds that cache from `plugins/` on every boot, so the update was discarded and
+the old version came back with no error anywhere.
+
+**The fix, once per server:** a broken updater cannot repair itself, so this one update has to be
+done by hand.
+
+1. Download `SnLib-1.16.2.jar` (or newer) from the [releases page](https://github.com/ValentinTarnovsky/SnLib/releases).
+2. Stop the server.
+3. Delete the old `SnLib-*.jar` from `plugins/` and put the new one in its place. Make sure exactly
+   one SnLib jar is left there.
+4. Optionally delete any stray `SnLib-*.jar` and the `.snlib-update` folder inside
+   `plugins/.paper-remapped/` - leftovers from the bug. They are inert, just wasted disk.
+5. Start the server. `/snlib update` should now report the installed version as 1.16.2.
+
+From 1.16.2 onward the self-updater replaces the jar in `plugins/` and updates apply on restart as
+documented.
+
 ## Getting debug output to report a bug
 
 If a plugin developer asks you for detailed logs to diagnose a problem, the source of that detail is the `debug` subcommand. Not every plugin has it - it is present only on plugins that opt into a debug command - but where it exists it lets you raise the log verbosity at runtime without restarting.
