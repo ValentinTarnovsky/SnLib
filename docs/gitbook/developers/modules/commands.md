@@ -172,10 +172,14 @@ command:
 ```
 
 Aliases are reconciled against the server command map on every register pass: aliases that
-appeared since the last pass are added (with a warning when they are not declared in your
-`plugin.yml`), aliases that disappeared are removed, and an alias already owned by another
-command is left in place with a warning. A reload that changed `command.aliases` therefore
-takes effect immediately without leaving ghost aliases behind.
+appeared since the last pass are added, aliases that disappeared are removed, and an alias
+already owned by another command is left in place with a warning. A reload that changed
+`command.aliases` therefore takes effect immediately without leaving ghost aliases behind.
+
+Aliases coming from an authoritative source (the config binding or a supplier) register
+**silently**: the admin owns them at runtime, so they cannot be declared in your `plugin.yml`
+in the first place. Only **static** aliases missing from your `plugin.yml` log the
+`Aliases [...] not declared in the plugin.yml` warning, as a nudge to declare them there.
 
 ## Arguments
 

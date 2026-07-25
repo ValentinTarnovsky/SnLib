@@ -5,6 +5,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -43,6 +44,24 @@ class AliasReconcilerTest {
     void resolveLowercasesAndTrims() {
         assertEquals(List.of("cl", "gang"),
                 AliasReconciler.resolve(List.of("  CL ", "Gang"), List.of(), "clan", List.of()));
+    }
+
+    @Test
+    void staticFallbackAliasesWarnWhenUndeclared() {
+        // supplied == null -> the aliases came from the builder / plugin.yml fallback.
+        assertTrue(AliasReconciler.warnsUndeclared(null, List.of("cl")));
+    }
+
+    @Test
+    void authoritativeSourceAliasesNeverWarn() {
+        // A config binding / supplier owns them at runtime: they CANNOT be in the plugin.yml.
+        assertFalse(AliasReconciler.warnsUndeclared(List.of("gemas"), List.of("gemas")));
+        assertFalse(AliasReconciler.warnsUndeclared(List.of(), List.of("gemas")));
+    }
+
+    @Test
+    void nothingAddedNeverWarns() {
+        assertFalse(AliasReconciler.warnsUndeclared(null, List.of()));
     }
 
     @Test

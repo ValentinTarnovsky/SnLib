@@ -21,6 +21,9 @@ import org.jetbrains.annotations.Nullable;
  * is trimmed, lowercased, de-duplicated in encounter order, and stripped of the root name
  * and of the plugin.yml declared aliases (those are owned by Bukkit, not by this dynamic
  * layer).</p>
+ *
+ * <p>The same policy decides the plugin.yml WARN: it belongs to the FALLBACK path only, see
+ * {@link #warnsUndeclared(Collection, Collection)}.</p>
  */
 final class AliasReconciler {
 
@@ -55,6 +58,19 @@ final class AliasReconciler {
             }
         }
         return new ArrayList<>(out);
+    }
+
+    /**
+     * Whether the aliases just added deserve the "not declared in the plugin.yml" WARN. Only
+     * the FALLBACK path does: when {@code supplied} is non-null an authoritative source (the
+     * config binding or a supplier) OWNS the aliases at runtime, so by construction they
+     * CANNOT live in the plugin.yml and the nudge would be pure noise on every boot. A null
+     * {@code supplied} means the aliases came from the builder / plugin.yml fallback, where
+     * declaring them is the fix the WARN asks for.
+     */
+    static boolean warnsUndeclared(@Nullable Collection<String> supplied,
+            Collection<String> added) {
+        return supplied == null && !added.isEmpty();
     }
 
     /**

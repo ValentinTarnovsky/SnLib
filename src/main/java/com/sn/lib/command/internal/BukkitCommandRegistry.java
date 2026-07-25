@@ -38,9 +38,11 @@ import com.sn.lib.tenant.TenantRegistry;
  *
  * <p>Dynamic aliases are re-sourced on every register pass (the reload flow re-registers
  * the same root instance): the alias supplier is re-evaluated, aliases that appeared are
- * added with {@code putIfAbsent} plus a WARN, and aliases that disappeared are removed from
- * the known commands. The supplier is stored here, alongside the registered root, so the
- * {@link RootCommand} core stays immutable.</p>
+ * added with {@code putIfAbsent}, and aliases that disappeared are removed from the known
+ * commands. The plugin.yml WARN covers the fallback path only - a config binding or a
+ * supplier owns its aliases at runtime, so those are registered silently. The supplier is
+ * stored here, alongside the registered root, so the {@link RootCommand} core stays
+ * immutable.</p>
  */
 public final class BukkitCommandRegistry {
 
@@ -132,8 +134,10 @@ public final class BukkitCommandRegistry {
      * Reconciles the dynamic aliases of a root against the CommandMap. The desired set is
      * the alias supplier's value when it has one (authoritative, config-driven), otherwise
      * the builder / plugin.yml aliases; the root name and the plugin.yml declared aliases
-     * are always excluded. Aliases that appeared are added with {@code putIfAbsent} plus a
-     * WARN; aliases that disappeared since the previous pass are removed.
+     * are always excluded. Aliases that appeared are added with {@code putIfAbsent}; aliases
+     * that disappeared since the previous pass are removed. The "not declared in the
+     * plugin.yml" WARN fires on the fallback path only (see
+     * {@link AliasReconciler#warnsUndeclared}); a collision always WARNs.
      */
     private static void reconcileAliases(JavaPlugin owner, RootCommand command,
             @Nullable PluginCommand declared) {
@@ -166,7 +170,7 @@ public final class BukkitCommandRegistry {
             }
         }
         state.active = desired;
-        if (!added.isEmpty()) {
+        if (AliasReconciler.warnsUndeclared(supplied, added)) {
             owner.getLogger().warning("Aliases " + added + " of '/" + command.getName()
                     + "' not declared in the plugin.yml of " + owner.getName()
                     + "; dynamic registration via CommandMap");
