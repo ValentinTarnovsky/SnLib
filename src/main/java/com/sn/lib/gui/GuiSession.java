@@ -1,5 +1,6 @@
 package com.sn.lib.gui;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,12 @@ import com.sn.lib.util.TagIo;
  * possibly different pages; there is no shared per-GUI inventory.
  *
  * <p>Rendering is per viewer: view requirements, placeholders and the title resolve
- * against this session's player. Update intervals (menu-level and per-item) run through
+ * against this session's player. Several declared items may target the same slot (the
+ * same layout {@code key:} or overlapping {@code slots:}): candidates are tried in
+ * declaration order and the FIRST one whose view requirement passes for this viewer owns
+ * the cell, so mutually exclusive variants of one button need no priority field - declare
+ * the preferred item first. A slot every candidate hides from renders empty. Update
+ * intervals (menu-level and per-item) run through
  * cancelable task handles; the menu tick re-evaluates title and rows and, when they
  * changed, recreates the inventory with the SAME holder and session, preserving page and
  * binds. Every rendered stack is stamped with the owner-namespaced PDC key
@@ -57,9 +63,10 @@ import com.sn.lib.util.TagIo;
  * on programmatic teardown, see {@link #handleClose}).</p>
  *
  * <p><b>View requirements gate interaction, not only rendering</b>: a click resolves what
- * the slot actually shows to this viewer, under the same precedence and the same
- * requirement test the render uses, so an item hidden from a viewer can never be clicked
- * by them - {@code view-requirements} need no duplicate in {@code click-requirements}.</p>
+ * the slot actually shows to this viewer, under the same precedence, the same
+ * declaration-order fallthrough on shared slots and the same requirement test the render
+ * uses, so an item hidden from a viewer can never be clicked by them -
+ * {@code view-requirements} need no duplicate in {@code click-requirements}.</p>
  *
  * <p>As a {@link PageTarget}, page operations are gated by the menu's opt-in
  * {@code pagination} flag: with pagination false, {@link #nextPage()},
@@ -76,7 +83,7 @@ public final class GuiSession implements PageTarget {
     private final GuiDef def;
     private final Player viewer;
     private final SnGuiHolder holder;
-    private final Map<Integer, GuiItemDef> baseSlots = new ConcurrentHashMap<>();
+    private final Map<Integer, List<GuiItemDef>> baseSlots = new ConcurrentHashMap<>();
     private final Map<Integer, Binding> binds = new ConcurrentHashMap<>();
     private final Map<Integer, Ph[]> pagedPhs = new ConcurrentHashMap<>();
     private final List<TaskHandle> tasks = new CopyOnWriteArrayList<>();
@@ -101,7 +108,7 @@ public final class GuiSession implements PageTarget {
         this.holder = new SnGuiHolder(ctx.plugin(), def.id(), this);
         for (GuiItemDef item : def.items()) {
             for (int slot : item.slots()) {
-                baseSlots.put(slot, item);
+                baseSlots.computeIfAbsent(slot, unused -> new ArrayList<>(1)).add(item);
             }
         }
     }
@@ -476,8 +483,9 @@ public final class GuiSession implements PageTarget {
      * What {@code slot} renders for THIS viewer, resolved with the precedence the render
      * phases use: a manual bind first, then the paged bind - which OWNS its slots even
      * when the current page left them empty, so a short page never falls back to the
-     * declared item underneath - then the declared item of the slot. Null when the slot
-     * shows nothing to this viewer, the definition's own local placeholders otherwise.
+     * declared item underneath - then the declared candidates of the slot in declaration
+     * order. Null when the slot shows nothing to this viewer, the definition's own local
+     * placeholders otherwise.
      */
     private @Nullable Rendered renderedAt(int slot) {
         Binding binding = binds.get(slot);
@@ -490,8 +498,32 @@ public final class GuiSession implements PageTarget {
             return bind == null || locals == null ? null
                     : shown(bind.template().item(), locals, slot, false);
         }
-        GuiItemDef item = baseSlots.get(slot);
-        return item == null ? null : shown(item, NO_LOCALS, slot, true);
+        return declaredAt(slot);
+    }
+
+    /**
+     * Declared candidate the slot currently shows to this viewer: the first item of the
+     * slot, in declaration order, whose view requirement passes - the exact rule the
+     * render uses, so the click and the screen can never disagree on shared slots. The
+     * requirement of a disabled navigation item is tested on its {@code nav-disabled}
+     * override, which is what the viewer is actually looking at; the returned definition
+     * is always the declared item, whose actions the disabled-navigation gate of
+     * {@link #handleClick} still skips.
+     */
+    private @Nullable Rendered declaredAt(int slot) {
+        List<GuiItemDef> candidates = baseSlots.get(slot);
+        if (candidates == null) {
+            return null;
+        }
+        for (GuiItemDef candidate : candidates) {
+            if (effectiveNow(candidate).viewRequirement().test(viewer, resolver(NO_LOCALS))) {
+                return new Rendered(candidate, NO_LOCALS, true);
+            }
+            ctx.debug().log(() -> "GUI '" + def.id() + "': slot " + slot + " item '"
+                    + candidate.id() + "' hidden by its view-requirements for "
+                    + viewer.getName());
+        }
+        return null;
     }
 
     /**
@@ -617,9 +649,7 @@ public final class GuiSession implements PageTarget {
             return;
         }
         current.clear();
-        for (GuiItemDef item : def.items()) {
-            renderItem(current, item);
-        }
+        renderDeclared(current, null);
         renderPaged(current);
         for (Map.Entry<Integer, Binding> entry : binds.entrySet()) {
             if (entry.getKey() < current.getSize()) {
@@ -629,29 +659,92 @@ public final class GuiSession implements PageTarget {
     }
 
     /**
-     * Renders a declared item into its slots, swapping in the {@code nav-disabled}
-     * override while its navigation direction has no page to go to; slots taken by a
-     * manual bind or by the paged bind are left to their own render phases.
+     * Renders a declared item by re-resolving the slots it participates in through the
+     * same shared-slot fallthrough the full render uses, so a per-item timer or a landed
+     * skin can never let a hidden candidate overwrite what another candidate owns.
      */
     private void renderItem(Inventory target, GuiItemDef item) {
+        renderDeclared(target, item.slots());
+    }
+
+    /**
+     * Renders the declared items into the given slots ({@code restrict}; null covers
+     * every declared slot), resolving slots shared by several items by declaration-order
+     * fallthrough: the first candidate whose view requirement passes for this viewer owns
+     * the slot, and a slot every candidate hides from is cleared. Requirements and
+     * prototypes resolve ONCE per item and pass, never once per slot; slots taken by a
+     * manual bind or by the paged bind are left to their own render phases.
+     */
+    private void renderDeclared(Inventory target, int @Nullable [] restrict) {
+        boolean[] scope = null;
+        if (restrict != null) {
+            scope = new boolean[target.getSize()];
+            for (int slot : restrict) {
+                if (slot >= 0 && slot < scope.length) {
+                    scope[slot] = true;
+                }
+            }
+        }
+        boolean[] owned = new boolean[target.getSize()];
+        for (GuiItemDef item : def.items()) {
+            renderCandidate(target, item, scope, owned);
+        }
+        for (int slot = 0; slot < owned.length; slot++) {
+            if (owned[slot] || (scope != null && !scope[slot]) || !baseSlots.containsKey(slot)
+                    || binds.containsKey(slot) || pagedSlots.contains(slot)) {
+                continue;
+            }
+            target.setItem(slot, null);
+        }
+    }
+
+    /**
+     * Renders one declared item into the slots of this pass it can still claim: inside
+     * the scope, not owned by an earlier candidate, not taken by a bind or the paged
+     * bind. The {@code nav-disabled} swap, the view requirement and the prototype are
+     * evaluated lazily on the first claimable slot and only once; a hidden item claims
+     * nothing, leaving its slots to the candidates declared after it.
+     */
+    private void renderCandidate(Inventory target, GuiItemDef item, boolean @Nullable [] scope,
+                                 boolean[] owned) {
+        ItemStack prototype = null;
+        boolean evaluated = false;
+        for (int slot : item.slots()) {
+            if (slot >= target.getSize() || owned[slot] || (scope != null && !scope[slot])
+                    || binds.containsKey(slot) || pagedSlots.contains(slot)) {
+                continue;
+            }
+            if (!evaluated) {
+                evaluated = true;
+                noteNavUnknown(item);
+                GuiItemDef effective = effectiveNow(item);
+                if (passes(effective.viewRequirement())) {
+                    prototype = effective.render(viewer, skinHook(() -> reRenderItem(item)));
+                }
+            }
+            if (prototype == null) {
+                return;
+            }
+            target.setItem(slot, stamp(prototype.clone(), slot));
+            owned[slot] = true;
+        }
+    }
+
+    /**
+     * Effective definition the item presents right now: its {@code nav-disabled} override
+     * while its navigation direction has no page to go to, the item itself otherwise.
+     */
+    private GuiItemDef effectiveNow(GuiItemDef item) {
+        return navDisabledNow(item) && item.navDisabled() != null ? item.navDisabled() : item;
+    }
+
+    /** One-time debug note: a next arrow can never self-disable while the total is unknown. */
+    private void noteNavUnknown(GuiItemDef item) {
         if (!navUnknownNoted && def.pagination() && item.navKind() == GuiItemDef.NavKind.NEXT
                 && knownTotalPages() == 0) {
             navUnknownNoted = true;
             ctx.debug().log(() -> "GUI '" + def.id() + "': nav next with an unknown total"
                     + " of pages; next is never disabled (use bindPaged or setTotalPages)");
-        }
-        GuiItemDef effective = item;
-        if (navDisabledNow(item) && item.navDisabled() != null) {
-            effective = item.navDisabled();
-        }
-        ItemStack prototype = passes(effective.viewRequirement())
-                ? effective.render(viewer, skinHook(() -> reRenderItem(item)))
-                : null;
-        for (int slot : item.slots()) {
-            if (slot >= target.getSize() || binds.containsKey(slot) || pagedSlots.contains(slot)) {
-                continue;
-            }
-            target.setItem(slot, prototype == null ? null : stamp(prototype.clone(), slot));
         }
     }
 

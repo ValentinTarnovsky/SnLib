@@ -53,6 +53,8 @@ This is where menus become interactive. For each item you can define, per type o
 
 You can also set `view-requirements` to control whether an item is shown to a player at all. Hiding is total: an item a player cannot see cannot be clicked by them either, so the empty slot fires nothing - you never need to copy the same condition into `click-requirements`. Navigation items (next page, previous page) and their disabled states are configured here too when the menu uses pagination.
 
+Several items may even share the same slot (or the same layout `key:`) with opposite view requirements: the first item in the file whose requirements pass is the one drawn and clicked, so one cell can show a different button per player state - for example an "info" button for members and a "create" button for everyone else. If every candidate is hidden, the cell stays empty. Order matters: put the preferred item first.
+
 The exact syntax for the action and requirement lists is a small mini-language shared across every Sn plugin. It is documented on its own page: see [Actions and Requirements](actions-and-requirements.md).
 
 {% hint style="info" %}

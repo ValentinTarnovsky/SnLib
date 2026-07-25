@@ -198,6 +198,33 @@ A list counts as "declared" only when it is non-empty, so you can declare `right
 
 The requirement is re-evaluated at click time, so a change that hides the item takes effect on the very next click even when the menu declares no `update-interval`; when a stale stack was still on screen, that click also clears the slot so the menu converges with the requirement instead of leaving a ghost item.
 
+### Conditional variants on one slot
+
+Since v1.17.0 several items may declare the same slot (or the same layout `key:`). Candidates resolve in **declaration order**: the first one whose `view-requirements` pass for the viewer owns the cell, and if every candidate is hidden the cell renders empty. There is no priority field - declare the preferred item first. Clicks resolve the same winner, so each variant fires its own `click-actions`.
+
+This is how one cell shows a different button per state, with zero Java:
+
+```yaml
+items:
+  info:
+    material: BEACON
+    key: a
+    view-requirements:
+      - "%snclans_has_clan% == true"
+    click-actions:
+      - "[custom] info"
+  create:
+    material: EMERALD
+    key: a
+    view-requirements:
+      - "%snclans_has_clan% == false"
+    click-actions:
+      - "[player] clan create"
+      - "[close]"
+```
+
+A member sees the info button; a clanless player sees the create button on the same cell. Before v1.17.0 a hidden later candidate wiped the slot of the visible earlier one, so this pattern needed one menu per state.
+
 ### Close actions and sound
 
 `close-actions:` (same grammar as `click-actions`) and `close-sound:` run once per close, on the natural client close (ESC) and on the `[close]` action. They deliberately do NOT run on page changes, on inventory recreations, or when the library closes the session programmatically (reload, owner disable, quit cleanup). Click guards inside close-actions are skipped with a debug note, since there is no click.

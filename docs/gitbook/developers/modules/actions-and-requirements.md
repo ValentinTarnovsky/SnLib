@@ -113,6 +113,8 @@ Requirements are boolean expressions over placeholders, used for `view-requireme
 
 In a menu the two gates are not interchangeable. `view-requirements` decide whether the item exists for that viewer at all: since v1.16.1 a failing view requirement both empties the slot and blocks the click, which fires nothing - no click actions, no deny actions - so hiding an item is enough to make it unusable. `click-requirements` are the gate for an item that IS visible: failing them runs the `deny-actions`, which is where the "you cannot afford this" feedback belongs.
 
+`view-requirements` also drive slot sharing (v1.17.0): when several items declare the same slot or layout key, the first declared item whose view requirements pass owns the cell - render and click alike - so mutually exclusive expressions turn one cell into a per-state button without any priority field.
+
 ### The grammar
 
 ```

@@ -47,6 +47,9 @@ import com.sn.lib.yml.SnYml;
  *       placeholders), attributes, damage
  *     slots (int, list, ranges "0-8", mixed) or key     -> GuiItemDef.parse via SlotParser
  *       (one layout char; declared slots win over key)     or the menu layout map
+ *     N items may share a slot or key (1.17.0): the    -> resolved per slot by GuiSession
+ *       first declared whose view-requirements pass       (render and click use the same
+ *       owns the cell; all hidden -> empty cell            declaration-order fallthrough)
  *     update-interval (per item)                        -> GuiItemDef.parse
  *     view-requirements, click-requirements             -> GuiItemDef.parse via RequirementEngine
  *     click-actions, deny-actions                       -> GuiItemDef.parse; run by ActionEngine

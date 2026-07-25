@@ -103,6 +103,8 @@ Requirements are conditions written as comparisons. They appear under keys such 
 
 {% hint style="info" %}
 **`view-requirements` hide AND block.** An item a player does not meet the view requirements for is not drawn for them, and it cannot be clicked either: the click fires nothing at all, not even the `deny-actions`. You never have to repeat a view requirement inside `click-requirements` to keep a hidden item safe. Use `click-requirements` for the opposite case - the item IS visible and you want to tell the player why the click was refused.
+
+**Items can share a slot.** Two or more items may declare the same slot (or the same layout key) with opposite view requirements: the first item in the file whose requirements pass is the one shown and clicked. That is how one cell shows a different button depending on the player's state; if every candidate is hidden, the cell stays empty.
 {% endhint %}
 
 A requirement compares a placeholder against a value using an operator:

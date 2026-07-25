@@ -326,7 +326,10 @@ PlayerDataCache<Stats> cache = sn.db().playerCache(loader, saver);
   (`'...'`/`"..."`), fail-open policy untouched. In a menu,
   `view-requirements` hide AND block: an item a viewer cannot see fires
   nothing on click, not even the deny actions (v1.16.1), so they never need
-  duplicating into `click-requirements`.
+  duplicating into `click-requirements`. Menu items may share a slot or
+  layout key (v1.17.0): candidates resolve in declaration order and the
+  first whose view-requirements pass owns the cell, render and click alike,
+  so one cell holds mutually exclusive per-state buttons.
 
 ## Cooldowns, Economy and utils
 
