@@ -104,6 +104,13 @@ anchored position, preserving user values, extra keys and comments.
   key itself can arrive via merge).
 - Opt-in prune via `sn.yml().managedPruning(path)`: deletes keys absent from
   the resource; the default merge never deletes.
+- Owner-owned sections: a `# sn:extensible` comment line above a key in the jar
+  resource declares that everything below it is server-owner data, so entries
+  the owner deletes stay deleted and entries they add keep surviving. The key
+  itself stays schema (deleting the whole section restores it; leave it empty
+  to keep zero entries). `# sn:extensible-root` in the file header does the same
+  for the whole top-level keyset. Works in any yml: config, `guis/*.yml`,
+  `lang/`, `items.yml`.
 
 ## text module (SnText: MiniMessage + [small] + [rgb] + [center])
 

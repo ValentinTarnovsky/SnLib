@@ -23,12 +23,16 @@ package com.sn.lib;
  * expose the root label the sender typed, and every generated usage, help entry and help
  * footer renders under it); LEVEL 9 = release 1.14.0 (translatable command help: the
  * descriptions and argument labels of every command are seeded into the lang file under a
- * top-level {@code commands} block; SnLang.rawOrNull and SnCommands.applyLang).</p>
+ * top-level {@code commands} block; SnLang.rawOrNull and SnCommands.applyLang); LEVEL 10 =
+ * release 1.15.0 (owner-owned yml sections: the {@code # sn:extensible} and
+ * {@code # sn:extensible-root} resource markers stop the always-merge updater from
+ * re-inserting entries the server owner deleted; YamlUpdater.EXTENSIBLE_MARKER,
+ * EXTENSIBLE_ROOT_MARKER and markerWarnings).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 9;
+    public static final int LEVEL = 10;
 
     private SnApi() {
     }

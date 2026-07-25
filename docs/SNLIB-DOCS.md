@@ -12,6 +12,12 @@
 > symmetric removal (section 11), `SnYml.setComments`/`setInlineComments` write surface
 > (section 04), and a one-time WARN when a lang value lost the `<click:>`/`<hover:>` tag its
 > jar default carries (section 05).
+> Updated on 2026-07-25 for the 1.15.0 change (API level 10): owner-owned yml sections - a
+> `# sn:extensible` comment line in a jar resource declares that everything below that key is
+> server-owner data, so the always-merge updater neither inserts nor prunes inside it and an
+> entry the owner deleted stays deleted; `# sn:extensible-root` in a file header applies the
+> same rule to the whole top-level keyset. New public surface:
+> `YamlUpdater.EXTENSIBLE_MARKER`, `EXTENSIBLE_ROOT_MARKER` and `markerWarnings` (section 04).
 > Updated on 2026-07-24 for the 1.14.0 change (API level 9): the generated command help is
 > translatable - the description of every command and the visible label of every argument are
 > seeded into `lang/messages_en.yml` under a top-level `commands` block (reserved
@@ -641,11 +647,13 @@ Constants (private): `BACKUP_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmms
 - `public static boolean updateFromLines(JavaPlugin plugin, List<String> referenceLines, File diskFile, @Nullable File gateFile)` - variant whose reference lives in memory instead of the jar (e.g. a translation merged against the on-DISK `messages_en.yml`). Same semantics: seed if missing, backup-N + reseed if corrupt, keep-last-3 pre-merge backup and gate read from `gateFile` (`null` skips the gate). Returns true when the disk file changed (seeded, regenerated or merged). It does not support prune.
 - `static void seedIfMissing(JavaPlugin plugin, String resourcePath, File diskFile)` - (package-private) seeds the file from the jar resource ONLY when it does not exist; never merges.
 - `static boolean readUpdateConfigsGate(@Nullable File gateFile)` - (package-private) reads the master gate by parsing the config straight from DISK before any merge; a null gateFile, missing file, missing key or unreadable content all count as `true`.
-- `public static List<String> prune(List<String> resourceLines, List<String> lines)` - pure entry point of the prune: returns a copy of `lines` with every block whose key-path does not exist in the resource removed, comments included. Opt-in only (via `managedPruning`). No I/O.
+- `public static List<String> prune(List<String> resourceLines, List<String> lines)` - pure entry point of the prune: returns a copy of `lines` with every block whose key-path does not exist in the resource removed, comments included. Opt-in only (via `managedPruning`). No I/O. Stops at any key marked `# sn:extensible`.
+- `public static final String EXTENSIBLE_MARKER = "sn:extensible"` / `EXTENSIBLE_ROOT_MARKER = "sn:extensible-root"` (1.15.0) - the comment tokens that declare a section's entries, or a whole file's top-level keyset, as server-owner data.
+- `public static List<String> markerWarnings(List<String> resourceLines)` (1.15.0) - pure lint of a resource: one human-readable line per `sn:extensible` marker placed on a key that holds a plain value (protects nothing, always an authoring mistake). Empty sections `{}` / `[]` are legitimate and never reported.
 
 #### Internal logic: Node / insertions algorithm
 
-A custom parser (`parse(List<String>)`) builds a tree of `Node` (private inner class: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `children`, and `findChild(String)` that compares normalized keys via `unquoteKey`: a key wrapped in balanced quotes `'...'` or `"..."` counts the same as the unquoted one). It walks line by line with a stack:
+A custom parser (`parse(List<String>)`) builds a tree of `Node` (private inner class: `key`, `indent`, `keyLine`, `blockStart`, `blockEnd`, `inlineValue`, `extensible`, `children`, and `findChild(String)` that compares normalized keys via `unquoteKey`: a key wrapped in balanced quotes `'...'` or `"..."` counts the same as the unquoted one). It walks line by line with a stack:
 
 - Empty or comment lines accumulate `pendingCommentStart`: comments preceding a key belong to its block (`blockStart`), and they also mark the boundary when closing earlier blocks, so a comment "hangs" from the key that follows it, not the previous one.
 - List items (`- ` or lone `-`) are skipped: they are part of the current node's VALUE; comments above them stay attached to whatever they originally headed (typically the parent key).
@@ -660,8 +668,11 @@ Application: insertions sort by `position` descending and, on ties, by `sequence
 
 Prune (`collectRemovals`): mirror of the merge - each DISK child absent from the resource contributes a `[blockStart, blockEnd]` range (comments included); ranges sort by start descending and are removed line by line from back to front, with `end` clamped to the list size.
 
+Owner-owned sections (1.15.0): `Node.extensible` is set at parse time when the node's comment run contains a line that is exactly `# sn:extensible` (leading `#` and whitespace stripped, case-insensitive, the token owning its line), and on the ROOT node when the file header - the lines before the first key - contains `# sn:extensible-root`. Both `collectInsertions` and `collectRemovals` return immediately on an extensible node, so NOTHING below it is inserted or pruned: the whole subtree is server-owner data. The marked key itself is still schema and is re-inserted whole when the disk file lacks it; an empty section (`points: {}`) is preserved as-is. Only the RESOURCE declares this - the parse of the disk file sets the same flag but it is never read, so a marker typed by hand into the disk file does nothing and the owner cannot disable the protection by deleting the comment. `markerWarnings(resourceLines)` (public, pure) returns one line per marker placed on a key that holds a plain value, which protects nothing and is always an authoring mistake; `{}` and `[]` are legitimate empty catalogues and never reported.
+
 #### `update` flow (gate, backups, corruption)
 
+0. `logMarkerWarnings`: every finding of `markerWarnings` over the reference is logged as WARN "[update-configs] <file>: '<path>' is marked sn:extensible but holds a value; the marker only protects the entries of a section". Runs before anything else, so a misplaced marker surfaces even on the first seed.
 1. `readResource`: if the resource is not in the jar -> WARN "[update-configs] Resource <path> missing from the jar; <file> cannot be updated" and return.
 2. Nonexistent disk file -> `seed` (creates parent directories and writes the resource lines UTF-8) and return.
 3. Corruption: the disk is read with `YamlPreprocessor.read` + `preprocess` and validated with `isParseable`; if it does NOT parse -> `backupCorrupt` MOVES the file to `<name>.backup-N` (N = first free integer from 1, never overwrites a previous backup), it reseeds from the jar and logs WARN "[update-configs] <file> does not parse as YAML: backed up at <backup> and regenerated from the jar". It never crashes the caller.
@@ -678,6 +689,9 @@ Prune (`collectRemovals`): mirror of the merge - each DISK child absent from the
 - The own-config exemption exists so the `update-configs` key itself can arrive by merge on the first post-upgrade startup.
 - `findChild` compares keys normalizing quoting (`unquoteKey`): `foo`, `'foo'` and `"foo"` count as the same key both in the insertion plan and in the prune. Normalization is ONLY for comparison: when inserting, the resource's textual form is copied verbatim and existing disk lines are never reformatted.
 - Limitation documented in the Javadoc: indentation is assumed to be spaces and consistent between resource and disk (both come from the same plugin baseline).
+- A `# sn:extensible` marker is what separates "the plugin owns this structure" from "the owner owns these entries". Without it the updater cannot tell the difference and re-inserts every shipped entry the owner deleted, which is the bug it exists to fix. It is additive: a resource with no markers behaves exactly as before 1.15.0.
+- Because a marked subtree is never descended into, a schema sub-key added later inside a shipped entry does NOT reach servers that already have that entry. That is deliberate and costs nothing: entries the owner created themselves could never receive it either, so the reading code must default every sub-key of an entry regardless.
+- The plain `# sn:extensible` token placed in a file's HEADER comment attaches to the first key of the file (normal comment-run semantics), not to the root. Use `# sn:extensible-root` for the root keyset. Files following the canonical config.yml base block never hit this, since their first key is `lang`.
 
 ### YmlManager
 `src/main/java/com/sn/lib/yml/YmlManager.java`

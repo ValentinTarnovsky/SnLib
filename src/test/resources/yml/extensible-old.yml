@@ -1,0 +1,22 @@
+# SnLib golden extensible fixture: disk (owner-edited file from an older version).
+# Settings owned by the plugin.
+settings:
+  # How many entries the leaderboard shows.
+  top-size: 25
+
+# Point types. Each entry is a type clans accumulate.
+# sn:extensible
+points:
+  kills:
+    # Name shown in menus and leaderboards.
+    display: "&#ff7e75Asesinatos"
+    triggers:
+      # Awarded to the killer's clan on a player kill.
+      player-kill: 2
+  raids:
+    display: "&aRaids"
+    triggers:
+      player-kill: 5
+
+messages:
+  prefix: "&7[Clans]"

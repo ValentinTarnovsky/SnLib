@@ -21,6 +21,8 @@ The plugin ships its default menus inside its jar and copies them into this fold
 If a plugin declares that it has menus but the `guis/` folder is empty and nothing loads, it logs a warning pointing at the folder. Normally you never see this, because the plugin's own menus are seeded automatically; it only shows up if the files were deleted or the plugin shipped without any bundled menu.
 {% endhint %}
 
+Being managed also means that deleting a button normally brings it back on the next restart. When a plugin intends for you to add and remove buttons freely, its `items:` block carries a `# sn:extensible` comment line - inside a marked block your deletions are permanent. The same marker appears in item files, usually as `# sn:extensible-root` in the header, when every entry in the file is yours to manage. See [Sections that are yours](configuration-files.md) for the full rules.
+
 Each file describes one menu top to bottom. What you can customize includes:
 
 ### The menu itself

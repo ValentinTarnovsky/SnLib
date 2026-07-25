@@ -46,6 +46,35 @@ The warning reads roughly:
 
 You end up with a working server and a preserved copy of your broken file. Open the `.backup-N` file, find the mistake (comparing it against the freshly regenerated one usually makes it obvious), and reapply your settings. See [Troubleshooting](troubleshooting.md) for the full recovery steps.
 
+## Sections that are yours: `# sn:extensible`
+
+Merging back a key you deleted is the right call for a plugin setting - but not for a section whose **entries you are meant to invent**: the point types a clan can earn, the worlds a random-teleport command offers, a list of rewards. There the entries shipped with the plugin are examples, and you should be free to delete the ones you do not want.
+
+Those sections are marked with a comment line you will see right above them in your file:
+
+```yaml
+# Point types. Each entry is a type clans accumulate.
+# sn:extensible
+points:
+  kills:
+    display: "&#ff7e75Kills"
+  mobkills:
+    display: "&#8354f2Mob Kills"
+```
+
+Inside a marked section the plugin stops managing anything:
+
+- Delete `mobkills` and it **stays deleted**, on every restart, forever.
+- Add your own entries and they survive updates, exactly as before.
+- The rule covers everything nested inside, so deleting a single trigger or field of an entry you kept also sticks.
+
+Two details worth knowing:
+
+- The section heading itself is still part of the plugin's structure. If you delete `points:` entirely, the whole block comes back with its examples. To end up with **no** entries, leave the section empty instead: `points: {}`.
+- Because the plugin stops managing the section, new example entries added in a later version will not appear in your file. That is the trade for keeping your deletions: the section is yours.
+
+Some files are extensible from top to bottom - a file where every top-level entry is an item or a catalogue id. Those carry `# sn:extensible-root` in the header instead, and the same rules apply to the whole file.
+
 ## The `update-configs` master switch
 
 Every Sn plugin's own config contains a master switch that controls this whole merging behavior:

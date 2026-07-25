@@ -1,0 +1,28 @@
+# SnLib golden extensible fixture: resource (new jar baseline).
+# Settings owned by the plugin.
+settings:
+  # How many entries the leaderboard shows.
+  top-size: 10
+  # NEW in this version: seconds between leaderboard refreshes.
+  refresh-seconds: 60
+
+# Point types. Each entry is a type clans accumulate.
+# sn:extensible
+points:
+  kills:
+    # Name shown in menus and leaderboards.
+    display: "&#ff7e75Kills"
+    triggers:
+      # Awarded to the killer's clan on a player kill.
+      player-kill: 1
+      # Removed from the victim's clan on death.
+      death: 1
+  mobkills:
+    # Name shown in menus and leaderboards.
+    display: "&#8354f2Mob Kills"
+    triggers:
+      # Awarded to the killer's clan on a mob kill.
+      mob-kill: 1
+
+messages:
+  prefix: "&7[Clans]"

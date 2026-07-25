@@ -127,6 +127,132 @@ class YamlUpdaterTest {
         assertEquals(disk, YamlUpdater.prune(resource, disk));
     }
 
+    // ------------------------------------------------------------------
+    // Owner-owned sections (# sn:extensible)
+    // ------------------------------------------------------------------
+
+    @Test
+    void extensibleMergeMatchesGoldenExpected() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                fixture("extensible-old.yml"));
+        assertEquals(fixture("extensible-expected.yml"), merged);
+    }
+
+    @Test
+    void entriesTheOwnerDeletedInAMarkedSectionStayDeleted() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                fixture("extensible-old.yml"));
+        // Whole entry deleted by the owner.
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
+        // Deletion deeper in the subtree: one trigger of an entry the owner kept.
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("death: 1")));
+        // What the owner added survives, as it already did before markers existed.
+        assertTrue(merged.stream().anyMatch(line -> line.trim().equals("raids:")));
+    }
+
+    @Test
+    void schemaKeysOutsideAMarkedSectionStillMerge() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                fixture("extensible-old.yml"));
+        int comment = merged.indexOf("  # NEW in this version: seconds between leaderboard refreshes.");
+        int key = merged.indexOf("  refresh-seconds: 60");
+        assertTrue(comment >= 0);
+        assertEquals(comment + 1, key);
+        assertTrue(merged.contains("  top-size: 25"));
+    }
+
+    @Test
+    void withoutTheMarkerTheSameDeletionsAreRestored() throws IOException {
+        List<String> unmarked = new ArrayList<>(fixture("extensible-resource.yml"));
+        unmarked.removeIf(line -> line.trim().equalsIgnoreCase("# " + YamlUpdater.EXTENSIBLE_MARKER));
+        List<String> merged = YamlUpdater.merge(unmarked, fixture("extensible-old.yml"));
+        assertTrue(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
+        assertTrue(merged.stream().anyMatch(line -> line.trim().equals("death: 1")));
+    }
+
+    @Test
+    void deletingTheMarkedSectionHeaderRestoresItWithItsEntries() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                List.of("settings:", "  top-size: 10"));
+        assertTrue(merged.contains("points:"));
+        assertTrue(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
+    }
+
+    @Test
+    void anEmptyMarkedSectionIsLeftEmpty() throws IOException {
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                List.of("points: {}"));
+        assertTrue(merged.contains("points: {}"));
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("kills:")));
+    }
+
+    @Test
+    void pruneKeepsOwnerEntriesInsideAMarkedSection() throws IOException {
+        List<String> resource = fixture("extensible-resource.yml");
+        List<String> disk = fixture("extensible-old.yml");
+        List<String> pruned = YamlUpdater.prune(resource, disk);
+        assertTrue(pruned.stream().anyMatch(line -> line.trim().equals("raids:")));
+        assertEquals(disk, pruned);
+    }
+
+    @Test
+    void extensibleMergeIsIdempotentAndStaysParseable() throws IOException {
+        List<String> expected = fixture("extensible-expected.yml");
+        assertEquals(expected, YamlUpdater.merge(fixture("extensible-resource.yml"), expected));
+        assertTrue(YamlUpdater.isParseable(String.join("\n", expected)));
+    }
+
+    @Test
+    void rootMarkerFreezesTheWholeTopLevelKeyset() {
+        List<String> resource = List.of(
+                "# Items catalogue.",
+                "# " + YamlUpdater.EXTENSIBLE_ROOT_MARKER,
+                "",
+                "sword:",
+                "  material: DIAMOND_SWORD",
+                "shield:",
+                "  material: SHIELD");
+        List<String> disk = List.of("sword:", "  material: NETHERITE_SWORD");
+        assertEquals(disk, YamlUpdater.merge(resource, disk));
+        assertEquals(disk, YamlUpdater.prune(resource, disk));
+    }
+
+    @Test
+    void withoutTheRootMarkerTopLevelKeysStillMerge() {
+        List<String> resource = List.of(
+                "# Items catalogue.",
+                "",
+                "sword:",
+                "  material: DIAMOND_SWORD",
+                "shield:",
+                "  material: SHIELD");
+        List<String> merged = YamlUpdater.merge(resource, List.of("sword:", "  material: NETHERITE_SWORD"));
+        assertTrue(merged.contains("shield:"));
+        assertTrue(merged.contains("  material: NETHERITE_SWORD"));
+    }
+
+    @Test
+    void markerWarningsFlagAMarkerPlacedOnAValue() {
+        List<String> warnings = YamlUpdater.markerWarnings(
+                List.of("# " + YamlUpdater.EXTENSIBLE_MARKER, "max-uses: 10"));
+        assertEquals(1, warnings.size());
+        assertTrue(warnings.get(0).contains("max-uses"));
+    }
+
+    @Test
+    void markerWarningsStayQuietOnRealSections() throws IOException {
+        // An empty section is a legitimate "no entries yet" catalogue, not a mistake.
+        assertTrue(YamlUpdater.markerWarnings(List.of(
+                "# " + YamlUpdater.EXTENSIBLE_MARKER,
+                "cores: {}",
+                "# " + YamlUpdater.EXTENSIBLE_MARKER,
+                "worlds:",
+                "  overworld:",
+                "    enabled: true")).isEmpty());
+        assertTrue(YamlUpdater.markerWarnings(fixture("extensible-resource.yml")).isEmpty());
+        assertTrue(YamlUpdater.markerWarnings(fixture("merge-resource.yml")).isEmpty());
+    }
+
     private static List<String> fixture(String name) throws IOException {
         try (InputStream in = YamlUpdaterTest.class.getResourceAsStream("/yml/" + name)) {
             if (in == null) {

@@ -35,6 +35,16 @@ import org.jetbrains.annotations.Nullable;
  * Indentation is assumed to use spaces and to be consistent between resource and disk
  * (both come from the same plugin baseline).</p>
  *
+ * <p>User-owned sections: a {@code # sn:extensible} comment line in the RESOURCE, inside
+ * the comment block of a key, declares that everything under that key is server-owner
+ * data rather than plugin schema. Nothing below it is ever inserted or pruned, so an
+ * entry the owner deletes stays deleted while entries they add keep surviving. The key
+ * itself remains schema: deleting the whole section restores the block, an empty section
+ * ({@code points: {}}) is preserved as-is. A {@code # sn:extensible-root} line in the
+ * file header applies the same rule to the top-level keyset, for files whose every root
+ * key is an entry id. Only the resource declares this; a marker typed into the disk file
+ * has no effect.</p>
+ *
  * <p>Master gate: the boolean {@code update-configs} is read by parsing the consumer
  * config straight from DISK before any merge; an absent key or file counts as
  * {@code true}. The consumer's own config file is EXEMPT from the gate (it is merged
@@ -56,6 +66,19 @@ public final class YamlUpdater {
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final int BACKUPS_KEPT = 3;
 
+    /**
+     * Comment token declaring that the entries of the key below it belong to the server
+     * owner: nothing under that key is ever inserted or pruned. Written on its own
+     * comment line in the jar resource.
+     */
+    public static final String EXTENSIBLE_MARKER = "sn:extensible";
+
+    /**
+     * Comment token for files whose every top-level key is an entry id (an items file,
+     * a catalogue). Recognized only in the file header, before the first key.
+     */
+    public static final String EXTENSIBLE_ROOT_MARKER = "sn:extensible-root";
+
     private YamlUpdater() {
     }
 
@@ -64,7 +87,8 @@ public final class YamlUpdater {
      * from it (keys plus their attached comments) inserted at its anchored position,
      * right after the nearest preceding sibling shared with the resource, otherwise
      * before the nearest following shared sibling, otherwise at the end of the parent.
-     * User values and extra keys are never touched. No I/O, safe for plain unit tests.
+     * User values and extra keys are never touched, and nothing is inserted below a key
+     * the resource marked {@code # sn:extensible}. No I/O, safe for plain unit tests.
      */
     public static List<String> merge(List<String> resourceLines, List<String> diskLines) {
         List<String> result = new ArrayList<>(diskLines);
@@ -115,6 +139,7 @@ public final class YamlUpdater {
                     + " absent from the jar; " + diskFile.getName() + " cannot be updated");
             return;
         }
+        logMarkerWarnings(plugin.getLogger(), resourceLines, diskFile);
         try {
             if (!diskFile.exists()) {
                 seed(diskFile, resourceLines);
@@ -186,6 +211,7 @@ public final class YamlUpdater {
      */
     public static boolean updateFromLines(Logger logger, List<String> referenceLines,
                                           File diskFile, @Nullable File gateFile) {
+        logMarkerWarnings(logger, referenceLines, diskFile);
         try {
             if (!diskFile.exists()) {
                 seed(diskFile, referenceLines);
@@ -227,6 +253,13 @@ public final class YamlUpdater {
             logger.severe("[update-configs] Parse error merging reference into "
                     + diskFile.getName() + ": " + ex.getMessage());
             return false;
+        }
+    }
+
+    /** Reports every misplaced extensible marker of a reference, one WARN per finding. */
+    private static void logMarkerWarnings(Logger logger, List<String> referenceLines, File diskFile) {
+        for (String warning : markerWarnings(referenceLines)) {
+            logger.warning("[update-configs] " + diskFile.getName() + ": " + warning);
         }
     }
 
@@ -290,6 +323,10 @@ public final class YamlUpdater {
 
     private static void collectInsertions(Node resource, Node disk, List<String> resourceLines,
                                           List<String> diskLines, List<Insertion> out) {
+        if (resource.extensible) {
+            // Everything below belongs to the server owner: what they deleted stays deleted.
+            return;
+        }
         List<Node> rChildren = resource.children;
         for (int idx = 0; idx < rChildren.size(); idx++) {
             Node rChild = rChildren.get(idx);
@@ -344,8 +381,9 @@ public final class YamlUpdater {
     /**
      * Pure prune entry: returns a copy of {@code lines} with every block whose key path
      * does not exist in the resource removed, comments included. Opt-in only, via
-     * {@code managedPruning}; the default merge never deletes user keys. No I/O, safe
-     * for plain unit tests.
+     * {@code managedPruning}; the default merge never deletes user keys. Stops at any key
+     * the resource marked {@code # sn:extensible}, whose entries are owner data rather
+     * than stale keys. No I/O, safe for plain unit tests.
      */
     public static List<String> prune(List<String> resourceLines, List<String> lines) {
         Node resourceRoot = parse(resourceLines);
@@ -364,6 +402,10 @@ public final class YamlUpdater {
     }
 
     private static void collectRemovals(Node resource, Node disk, List<int[]> out) {
+        if (resource.extensible) {
+            // Owner-owned entries are not "stale keys": pruning stops at the marker.
+            return;
+        }
         for (Node dChild : disk.children) {
             Node rChild = resource.findChild(dChild.key);
             if (rChild == null) {
@@ -436,6 +478,7 @@ public final class YamlUpdater {
     private static Node parse(List<String> lines) {
         Node root = new Node();
         root.indent = -1;
+        root.extensible = hasMarker(lines, 0, firstKeyLine(lines), EXTENSIBLE_ROOT_MARKER);
         Deque<Node> stack = new ArrayDeque<>();
         stack.push(root);
         int pendingCommentStart = -1;
@@ -473,6 +516,8 @@ public final class YamlUpdater {
             node.indent = indent;
             node.keyLine = i;
             node.blockStart = pendingCommentStart >= 0 ? pendingCommentStart : i;
+            node.inlineValue = trimmed.substring(colonIdx + 1).trim();
+            node.extensible = hasMarker(lines, node.blockStart, i, EXTENSIBLE_MARKER);
             parent.children.add(node);
             stack.push(node);
             pendingCommentStart = -1;
@@ -483,6 +528,72 @@ public final class YamlUpdater {
             closing.blockEnd = endBoundary - 1;
         }
         return root;
+    }
+
+    /** Index of the first line that is neither blank nor a comment; {@code size} when none. */
+    private static int firstKeyLine(List<String> lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String trimmed = lines.get(i).trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                return i;
+            }
+        }
+        return lines.size();
+    }
+
+    /**
+     * True when one of the comment lines in {@code [from, toExclusive)} is exactly the
+     * given marker. The token must own its line: leading {@code #} and surrounding
+     * whitespace are stripped and the remainder has to match, case-insensitively.
+     */
+    private static boolean hasMarker(List<String> lines, int from, int toExclusive, String marker) {
+        int end = Math.min(toExclusive, lines.size());
+        for (int i = Math.max(0, from); i < end; i++) {
+            String trimmed = lines.get(i).trim();
+            if (!trimmed.startsWith("#")) {
+                continue;
+            }
+            int j = 0;
+            while (j < trimmed.length() && (trimmed.charAt(j) == '#' || trimmed.charAt(j) == ' ')) {
+                j++;
+            }
+            if (trimmed.substring(j).trim().equalsIgnoreCase(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Lists the misplaced {@code sn:extensible} markers of a resource: a marker declares
+     * that the ENTRIES of a section belong to the server owner, so putting it on a key
+     * that holds a plain value protects nothing and is always an authoring mistake. An
+     * empty section ({@code cores: {}}, a section with no entries yet) is legitimate and
+     * never reported. Pure, safe for plain unit tests.
+     *
+     * @return one human-readable line per misplaced marker, empty when the resource is fine
+     */
+    public static List<String> markerWarnings(List<String> resourceLines) {
+        List<String> out = new ArrayList<>();
+        collectMarkerWarnings(parse(resourceLines), "", out);
+        return out;
+    }
+
+    private static void collectMarkerWarnings(Node node, String path, List<String> out) {
+        for (Node child : node.children) {
+            String childPath = path.isEmpty() ? child.key : path + "." + child.key;
+            if (child.extensible && holdsPlainValue(child.inlineValue)) {
+                out.add("'" + childPath + "' is marked " + EXTENSIBLE_MARKER
+                        + " but holds a value; the marker only protects the entries of a section");
+            }
+            collectMarkerWarnings(child, childPath, out);
+        }
+    }
+
+    /** True for a key written as {@code key: value}, excluding the empty map/list forms. */
+    private static boolean holdsPlainValue(String inlineValue) {
+        return inlineValue != null && !inlineValue.isEmpty()
+                && !"{}".equals(inlineValue) && !"[]".equals(inlineValue);
     }
 
     private static int leadingSpaces(String s) {
@@ -569,6 +680,8 @@ public final class YamlUpdater {
         int keyLine;
         int blockStart;
         int blockEnd;
+        String inlineValue = "";
+        boolean extensible;
         final List<Node> children = new ArrayList<>();
 
         Node findChild(String k) {

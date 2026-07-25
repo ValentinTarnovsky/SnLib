@@ -155,6 +155,54 @@ What the merge guarantees:
 - **Comments are preserved.** The merge is line-based, so comments and blank lines survive.
 - **Anchored insertion.** A missing key is inserted right after the nearest preceding sibling that both files share; failing that, right before the nearest following shared sibling; failing that, at the end of the parent section. New keys land where they belong structurally, not appended blindly at the bottom.
 
+### Owner-owned sections (`# sn:extensible`)
+
+The guarantees above are right for keys YOUR plugin owns. They are wrong for a section whose **entries belong to the server owner** - a `points:` map of scoring types, a `worlds:` map of RTP destinations, a catalogue of rewards. There the entries you ship are examples, not schema, and re-inserting one the owner deleted is a bug: additions survive forever but deletions come back on every boot.
+
+Declare those sections with a `# sn:extensible` comment line in the jar resource, on its own line, inside the key's comment block:
+
+```yaml
+# Point types. Each entry is a type clans accumulate.
+# sn:extensible
+points:
+  kills:
+    display: "&#ff7e75Kills"
+    triggers:
+      player-kill: 1
+  mobkills:
+    display: "&#8354f2Mob Kills"
+    triggers:
+      mob-kill: 1
+```
+
+The updater then **never inserts and never prunes anything below that key**:
+
+- An entry the owner deletes (`mobkills`) stays deleted.
+- An entry the owner adds (`raids`) survives, as it already did.
+- The rule covers the whole subtree, so deleting `points.kills.triggers.death` sticks too - one marker per user-owned section is enough.
+- The marked key itself is still schema: deleting `points:` entirely restores the block with its examples. To keep zero entries, leave the section empty (`points: {}`) - that is preserved.
+- `managedPruning` honors it as well: owner entries are data, not stale keys.
+
+For a file whose EVERY top-level key is an entry id (an items file, a catalogue), put `# sn:extensible-root` in the file header instead, before the first key:
+
+```yaml
+# Custom items shipped with the plugin.
+# sn:extensible-root
+
+epic_sword:
+  material: DIAMOND_SWORD
+```
+
+It works in any yml the updater touches: the main config, `managed`/`managedPruning` files, `guis/*.yml`, `lang/`, `items.yml`.
+
+{% hint style="warning" %}
+Only the jar resource declares this. A marker typed by hand into the file on disk does nothing, and the owner cannot disable the protection by deleting the comment.
+
+The flip side of the subtree rule: a sub-key you add later inside a shipped entry does NOT reach servers that already have that entry. That is intentional - entries the owner created themselves could never receive it either - so read every sub-key of an entry with a default, always.
+{% endhint %}
+
+A marker on a key that holds a plain value (`# sn:extensible` above `max-uses: 10`) protects nothing and is always a mistake; SnLib logs one WARN naming the key. An empty section (`cores: {}`) is a legitimate empty catalogue and is never reported.
+
 ### Backups
 
 Before writing a merge (and only when there is something to insert), the disk file is copied to `old-<name>-<timestamp>.yml` next to it. The updater keeps the last 3 such backups per file and deletes older ones.
@@ -186,7 +234,7 @@ The default merge never deletes. To also remove keys that no longer exist in the
 SnYml strictShop = sn.yml().managedPruning("shop.yml");
 ```
 
-Pruning removes each disk key (and its comments) whose path is absent from the resource. Use it only when you want the file to track the jar exactly; for user-facing configs the non-deleting default is almost always what you want.
+Pruning removes each disk key (and its comments) whose path is absent from the resource. Use it only when you want the file to track the jar exactly; for user-facing configs the non-deleting default is almost always what you want. Pruning stops at every `# sn:extensible` key, so a strict file can still hold a section of owner-owned entries.
 
 {% hint style="info" %}
 Config I/O is synchronous by design, but it only runs inside `onEnable` and inside the reload command, never during gameplay. This is the one documented exception to SnLib's async-I/O rule.
