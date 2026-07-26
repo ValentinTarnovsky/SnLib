@@ -23,9 +23,11 @@ import com.sn.lib.yml.SnYml;
 /**
  * One item of a GUI definition: the full appearance section of the golden spec plus
  * slots, per-item update interval, view/click requirements and click/deny action lists.
- * Instead of {@code slots}, an item of the {@code items:} section may declare
- * {@code key:} (one character) resolved against the menu's {@code layout:} mask: the
- * item renders in EVERY layout cell holding that character; declared slots win over key.
+ * Instead of {@code slots}, an item of the {@code items:} or {@code templates:} section
+ * may declare {@code key:} (one character) resolved against the menu's {@code layout:}
+ * mask: the item renders in EVERY layout cell holding that character; declared slots win
+ * over key. Items require a resolved placement; templates may declare none and receive
+ * their slots from session binds.
  *
  * <p>Appearance is NOT pre-built: the definition keeps its yml section and re-reads it on
  * every {@link #render}, so name, lore and every other string resolve per viewer through
@@ -114,11 +116,13 @@ public final class GuiItemDef {
 
     /**
      * Parses the item found at {@code path} inside {@code yml}; warnings go to
-     * {@code warn}. Returns null when the section does not exist, or when a declared
-     * {@code key:} is invalid or absent from the menu layout (the item is ignored).
+     * {@code warn}. Returns null only when the section does not exist. A declared
+     * {@code key:} that is invalid or absent from the menu layout WARNs and leaves the
+     * slots empty: items are then dropped by the caller's has-slots gate, while
+     * templates (whose declared placement is optional) stay usable through slot binds.
      * {@code layout} maps every layout character to its slots: an empty map for a menu
-     * without layout, null for sections where {@code key:} does not apply (templates
-     * and {@code nav-disabled} overrides).
+     * without layout, null for sections where {@code key:} does not apply
+     * ({@code nav-disabled} overrides).
      */
     static @Nullable GuiItemDef parse(SnYml yml, String path, String id,
                                       @Nullable Map<Character, int[]> layout,
@@ -142,16 +146,16 @@ public final class GuiItemDef {
                 String trimmed = keyRaw.trim();
                 if (trimmed.length() != 1) {
                     warn.accept("Item '" + id + "': key '" + keyRaw
-                            + "' is invalid (must be 1 character); item ignored");
-                    return null;
+                            + "' is invalid (must be 1 character); key ignored");
+                } else {
+                    int[] keyed = layout.get(trimmed.charAt(0));
+                    if (keyed == null) {
+                        warn.accept("Item '" + id + "': key '" + trimmed.charAt(0)
+                                + "' does not appear in layout; key ignored");
+                    } else {
+                        slots = keyed.clone();
+                    }
                 }
-                int[] keyed = layout.get(trimmed.charAt(0));
-                if (keyed == null) {
-                    warn.accept("Item '" + id + "': key '" + trimmed.charAt(0)
-                            + "' does not appear in layout; item ignored");
-                    return null;
-                }
-                slots = keyed.clone();
             }
         }
         int updateInterval = Math.max(0, sec.getInt("update-interval", 0));
@@ -274,7 +278,11 @@ public final class GuiItemDef {
         return id;
     }
 
-    /** Slots the item renders into; empty for templates, whose slots come from binds. */
+    /**
+     * Slots the item renders into; for templates these are the yml-declared cells
+     * ({@code slots:} or {@code key:}) consumed by the no-slot
+     * {@link GuiSession#bind(String, Ph...)}, empty when the template declares neither.
+     */
     public int[] slots() {
         return slots.clone();
     }

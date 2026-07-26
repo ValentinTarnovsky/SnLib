@@ -308,10 +308,20 @@ items:
 # ═══════════════════════════════════════════════════════════════════
 # TEMPLATES - Reusable items for plugin developers
 # ═══════════════════════════════════════════════════════════════════
-# Templates are IDENTICAL to items but WITHOUT "slots:".
-# The plugin developer decides dynamically which slot(s) to place them in via Java API.
-# The config user can customize the appearance freely (material, lore, actions, etc).
-# Templates can use custom placeholders defined by the plugin (e.g. %index%, %warp_name%).
+# Templates are IDENTICAL to items, with "slots:"/"key:" OPTIONAL instead of required.
+# The plugin supplies the runtime data (custom placeholders like %index%, %warp_name%)
+# at bind time; the config user customizes appearance and actions freely.
+#
+# Placement, two ways (since 1.18.0):
+#   - CONFIG-DRIVEN: the template declares "slots:" or "key:" (resolved against the
+#     menu "layout:" exactly like an item; declared slots win over key) and the plugin
+#     binds it WITHOUT a slot: session.bind("template-id", phs...). Moving the key in
+#     the layout, or editing slots:, repositions the element - no plugin update needed.
+#     A key covering N cells renders the same bind into every cell.
+#   - PLUGIN-DRIVEN: the template declares neither, and the plugin decides per bind:
+#     session.bind(slot, template, phs...). The explicit slot variant always ignores
+#     the declared cells, so per-entry lists (one template bound N times with
+#     different data) keep working.
 #
 # Usage example (backpack plugin):
 #   - Plugin defines: backpack-slots: [0,1,2,3,4]
@@ -326,7 +336,8 @@ templates:
     custom-model-data: int # default: 0
     item-model: string # 1.21.2+ base ItemModel key # default: ""
     amount: int # default: 1
-    # NO "slots:" - the plugin assigns slots dynamically
+    # slots:/key: OPTIONAL - declared cells feed the no-slot bind("template-id");
+    # without them the plugin assigns slots dynamically via bind(slot, template)
     glow: true/false # default: false
     enchantments: list # default: []
     flags: list # default: []

@@ -193,6 +193,39 @@ public final class GuiSession implements PageTarget {
     }
 
     /**
+     * Binds a template into the cells IT declares in the yml ({@code slots:} or
+     * {@code key:} against the menu {@code layout:}), so the server owner repositions the
+     * element by editing the file instead of the placement living hardcoded in Java. A
+     * key covering N cells renders the same bind (same placeholders) into every cell.
+     * Same lifetime and precedence as {@link #bind(int, GuiTemplate, Ph...)}, which stays
+     * the explicit variant for plugin-computed placement (per-entry lists, etc.) and
+     * ignores the declared cells.
+     *
+     * <p>An unknown template id, or a template that declares neither {@code slots:} nor a
+     * valid {@code key:}, WARNs once per GUI and is ignored.</p>
+     */
+    public void bind(String templateId, Ph... phs) {
+        GuiTemplate template = def.template(templateId);
+        if (template == null) {
+            ctx.guis().warnOnce("bind-template:" + def.id() + ":" + templateId,
+                    "bind on gui '" + def.id() + "' ignored: template '" + templateId
+                            + "' does not exist");
+            return;
+        }
+        int[] slots = template.slots();
+        if (slots.length == 0) {
+            ctx.guis().warnOnce("bind-template-slots:" + def.id() + ":" + templateId,
+                    "bind on gui '" + def.id() + "' ignored: template '" + templateId
+                            + "' declares neither 'slots' nor a valid 'key'; declare one"
+                            + " in the yml or use bind(slot, template)");
+            return;
+        }
+        for (int slot : slots) {
+            bind(slot, template, phs);
+        }
+    }
+
+    /**
      * Binds a template to a slot of THIS session with the given local placeholders and
      * renders it immediately. The bind survives page refreshes and inventory recreations
      * until overwritten; it takes precedence over a declared item on the same slot.

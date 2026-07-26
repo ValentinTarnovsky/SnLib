@@ -7,14 +7,18 @@ import org.jetbrains.annotations.Nullable;
 import com.sn.lib.Ph;
 
 /**
- * Reusable GUI item without slots, declared under the {@code templates:} section of a GUI
- * file: the config user customizes the appearance and actions freely while the plugin
- * decides at runtime which slot each template goes to via
- * {@link GuiSession#bind(int, GuiTemplate, Ph...)}.
+ * Reusable GUI item declared under the {@code templates:} section of a GUI file: the
+ * config user customizes the appearance and actions freely while the plugin supplies the
+ * runtime data at bind time. Placement comes from either side: the template may declare
+ * {@code slots:} or {@code key:} (resolved against the menu {@code layout:} exactly like
+ * an item, since 1.18.0) and be bound with the no-slot
+ * {@link GuiSession#bind(String, Ph...)}, so the server owner repositions it by editing
+ * the file; or the plugin decides the slot in Java via
+ * {@link GuiSession#bind(int, GuiTemplate, Ph...)}, which ignores the declared cells.
  *
- * <p>Templates support the exact same fields as regular items except {@code slots:} and
- * typically use plugin-defined local placeholders (for example {@code %index%}) supplied
- * as {@link Ph} pairs at bind time.</p>
+ * <p>Templates support the exact same fields as regular items ({@code slots:}/{@code key:}
+ * optional instead of required) and typically use plugin-defined local placeholders (for
+ * example {@code %index%}) supplied as {@link Ph} pairs at bind time.</p>
  */
 public final class GuiTemplate {
 
@@ -27,6 +31,20 @@ public final class GuiTemplate {
     /** Template id (its key inside the {@code templates:} section). */
     public String id() {
         return item.id();
+    }
+
+    /**
+     * Cells the template declared in the yml through {@code slots:} or {@code key:}
+     * (declared slots win over key, like items); empty when it declares neither. These
+     * are the target of the no-slot {@link GuiSession#bind(String, Ph...)}.
+     */
+    public int[] slots() {
+        return item.slots();
+    }
+
+    /** True when the template declared a placement ({@code slots:} or a valid {@code key:}). */
+    public boolean hasSlots() {
+        return item.hasSlots();
     }
 
     /** Builds the physical stack for {@code viewer} with the given local placeholders. */

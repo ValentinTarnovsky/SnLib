@@ -69,8 +69,11 @@ import com.sn.lib.yml.SnYml;
  *     previous-page / next-page navigation items        -> GuiItemDef.parse (NavKind detected
  *       with nav-disabled override (same appearance        from the pagination actions of
  *       fields, no slots, no actions)                       every list; nav-disabled recursive)
- *   templates.&lt;id&gt; (same fields, no slots)              -> GuiDef.parse into GuiTemplate;
- *                                                           slots assigned via session binds
+ *   templates.&lt;id&gt; (same fields; slots/key OPTIONAL     -> GuiDef.parse into GuiTemplate;
+ *     since 1.18.0, resolved against the layout like        slots assigned via session binds;
+ *     items - the declared cells feed the no-slot            the no-slot bind(String, Ph...)
+ *     GuiSession.bind(String, Ph...), while the              renders into the yml-declared
+ *     explicit bind(int, ...) keeps deciding in Java)        cells
  *   [small], [rgb], [center] composable in any order    -> SnText pipeline used by every
  *     and MiniMessage mixed with legacy codes               string of the item render
  * </pre>
@@ -166,7 +169,7 @@ public final class GuiDef {
         ConfigurationSection templatesSection = root.getConfigurationSection("templates");
         if (templatesSection != null) {
             for (String key : templatesSection.getKeys(false)) {
-                GuiItemDef item = GuiItemDef.parse(yml, "templates." + key, key, null, warn);
+                GuiItemDef item = GuiItemDef.parse(yml, "templates." + key, key, keySlots, warn);
                 if (item != null) {
                     templates.put(key, new GuiTemplate(item));
                 }

@@ -88,7 +88,26 @@ GuiSession s = shop.session(player);
 s.bind(13, shop.template("offer"), Ph.of("price", 100), Ph.of("item", "Diamond"));
 ```
 
-`bind(slot, template, phs...)` renders immediately and survives page refreshes and inventory recreations until you overwrite it. It takes precedence over a declared item on the same slot. Templates are items declared under `templates:` with no `slots:` - the developer decides where they go.
+`bind(slot, template, phs...)` renders immediately and survives page refreshes and inventory recreations until you overwrite it. It takes precedence over a declared item on the same slot. Templates are items declared under `templates:`; `slots:`/`key:` are optional on them - the developer decides where they go, or the file does (below).
+
+### Config-driven placement (1.18.0)
+
+A template may declare its own placement - `slots:` or a `key:` resolved against the menu `layout:`, exactly like an item - and be bound WITHOUT a slot:
+
+```yaml
+layout:
+  - "ffabcdeff"
+templates:
+  banner:
+    key: a
+    display-name: "&#8354f2&l{clan}"
+```
+
+```java
+s.bind("banner", Ph.of("clan", clan.name()));
+```
+
+The server owner then repositions the element by moving the key in the layout (or editing `slots:`) - no plugin update needed. A key covering N cells renders the same bind into every cell. The explicit `bind(slot, template, phs...)` always ignores the declared cells, so plugin-computed placements (one template bound N times with different data, e.g. one per list entry) keep working. Binding an unknown template id, or a slotless bind of a template that declares neither `slots:` nor a valid `key:`, warns once per menu and is ignored.
 
 ## Paginated content
 
@@ -365,7 +384,9 @@ close-actions:
   - "[message] &7See you soon!"
   - "[sound] UI_BUTTON_CLICK"
 
-# templates: identical fields to items, minus "slots" - the plugin places them via Java
+# templates: identical fields to items; "slots"/"key" optional - with them the plugin
+# binds slotless (bind("id", phs...)) and the file decides the cells; without them the
+# plugin places each bind via Java (bind(slot, template, phs...))
 templates:
   offer-template:
     display-name: "&f%item%"

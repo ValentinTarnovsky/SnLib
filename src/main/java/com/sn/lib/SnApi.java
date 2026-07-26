@@ -27,12 +27,15 @@ package com.sn.lib;
  * release 1.15.0 (owner-owned yml sections: the {@code # sn:extensible} and
  * {@code # sn:extensible-root} resource markers stop the always-merge updater from
  * re-inserting entries the server owner deleted; YamlUpdater.EXTENSIBLE_MARKER,
- * EXTENSIBLE_ROOT_MARKER and markerWarnings).</p>
+ * EXTENSIBLE_ROOT_MARKER and markerWarnings); LEVEL 11 = release 1.18.0 (config-driven
+ * template placement: templates may declare {@code slots:}/{@code key:} against the menu
+ * layout, exposed via GuiTemplate.slots()/hasSlots() and consumed by the no-slot
+ * GuiSession.bind(String, Ph...)).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 10;
+    public static final int LEVEL = 11;
 
     private SnApi() {
     }

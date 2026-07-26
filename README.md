@@ -140,6 +140,8 @@ Gui shop = sn.guis().get("shop");     // guis/shop.yml
 shop.open(player);                    // one GuiSession + Inventory PER VIEWER
 GuiSession s = shop.session(player);
 s.bind(13, shop.template("offer"), Ph.of("price", 100));
+s.bind("banner", Ph.of("clan", name));  // v1.18: slots come from the template's
+                                        // own slots:/key: against the layout
 s.bindPaged("entry", data, slots, (ph, item) -> ...);  // pagination: true
 sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
 ```
@@ -153,6 +155,11 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   the chest grid), `key:` per item as an alternative to `slots:` and
   `paged-key:` as the target of `bindPaged(String templateId, ...)` without an
   `int[]`. `GuiMask` exposes the same geometry via API.
+- Config-driven template placement (v1.18.0): templates may declare `slots:`
+  or `key:` like items, and the no-slot `bind("template-id", phs...)` renders
+  into those yml-declared cells - the owner repositions dynamic elements by
+  editing the layout, no plugin update needed. The explicit `bind(slot, ...)`
+  keeps ignoring declared cells (per-entry lists unaffected).
 - Per-click matrix (v1.1): `right/left/shift-right/shift-left/middle` x
   `*-click-actions` / `*-click-requirements` / `*-click-deny-actions` with
   specific-over-generic resolution and fallback to `click-actions`;
