@@ -146,6 +146,9 @@ GuiSession s = shop.session(player);
 s.bind(13, shop.template("offer"), Ph.of("price", 100));
 s.bind("banner", Ph.of("clan", name));  // v1.18: slots come from the template's
                                         // own slots:/key: against the layout
+s.bindEach("toggles", actions, (a, e) ->  // v1.20: one entry per cell of the
+        e.template(on(a) ? "on" : "off")  // region declared under regions:,
+                .add("action", a));       // template chosen per entry
 s.bindPaged("entry", data, slots, (ph, item) -> ...);  // pagination: true
 sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
 ```
@@ -164,6 +167,18 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   into those yml-declared cells - the owner repositions dynamic elements by
   editing the layout, no plugin update needed. The explicit `bind(slot, ...)`
   keeps ignoring declared cells (per-entry lists unaffected).
+- Runtime layout regions (v1.20.0): a menu declares named groups of cells under
+  `regions:` (a scalar is shorthand for `key:`, the long form takes `slots:` or
+  `key:`) and the plugin fills them with `bindEach(regionId, data, filler)` -
+  one entry per cell, the filler choosing that entry's template AND
+  placeholders, so state variants (allowed/denied) share one region. Entry i
+  goes to cell i, so the owner moves, resizes, splits, reorders and removes the
+  group by editing the layout and NO slot array survives in Java. Ownership is
+  per cell: an unfilled cell, an entry with no template and one hidden by its
+  view-requirements all fall through to the declared item, on render and on
+  click alike. No `pagination:` needed. Cardinality is the owner's and never
+  WARNs; `GuiDef.regionSlots(id)` reports the cell count to a plugin that wants
+  to say something about it in its own words.
 - Per-click matrix (v1.1): `right/left/shift-right/shift-left/middle` x
   `*-click-actions` / `*-click-requirements` / `*-click-deny-actions` with
   specific-over-generic resolution and fallback to `click-actions`;
@@ -635,7 +650,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.4.0`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.20.0`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`
@@ -643,8 +658,8 @@ rolling the jar to production.
 - Public API frozen under semver: additive-only japicmp ACTIVE with an
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
-  every release that adds public Paper API (2 since the 1.1.0 release through
-  1.3.1; 3 since the 1.4.0 release, which added the shared multi-plugin
-  releases-repo mode to UpdateChecker). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
+  every release that adds public Paper API (currently 12, since the 1.20.0
+  release that added runtime layout regions; full history in the `SnApi`
+  javadoc, which is the source of truth). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
   Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
   outside the japicmp gate while it settles.

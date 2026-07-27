@@ -16,6 +16,13 @@ import com.sn.lib.Ph;
  * the file; or the plugin decides the slot in Java via
  * {@link GuiSession#bind(int, GuiTemplate, Ph...)}, which ignores the declared cells.
  *
+ * <p>A template painted by a runtime REGION ({@link GuiSession#bindEach}, since 1.20.0) is
+ * the third case: the cell comes from the region's declaration under {@code regions:} and
+ * the template's own {@code slots:}/{@code key:} are ignored there, only its appearance,
+ * requirements and actions are used. That is what lets several state variants of one button
+ * (allowed/denied, selected/unselected) serve the same region without any of them declaring
+ * a placement - and why a template used only by a region should stay keyless.</p>
+ *
  * <p>Templates support the exact same fields as regular items ({@code slots:}/{@code key:}
  * optional instead of required) and typically use plugin-defined local placeholders (for
  * example {@code %index%}) supplied as {@link Ph} pairs at bind time.</p>

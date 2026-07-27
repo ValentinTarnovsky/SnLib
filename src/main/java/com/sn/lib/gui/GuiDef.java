@@ -1,10 +1,14 @@
 package com.sn.lib.gui;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import org.bukkit.configuration.ConfigurationSection;
@@ -12,6 +16,7 @@ import org.bukkit.event.inventory.InventoryType;
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Sn;
+import com.sn.lib.util.SlotParser;
 import com.sn.lib.yml.SnYml;
 
 /**
@@ -37,6 +42,12 @@ import com.sn.lib.yml.SnYml;
  *     an empty cell; every key char maps to its cells)     derives from the row count)
  *   paged-key (one layout char at menu level: its       -> GuiDef.parse into pagedSlots(),
  *     cells are the target of the no-slots bindPaged)      consumed by GuiSession.bindPaged
+ *   regions.&lt;id&gt; (menu-level named groups of cells:     -> GuiDef.parseRegions into
+ *     a scalar is shorthand for key:, the long form         regionSlots(), consumed by
+ *     takes slots: or key:; entry i renders into cell       GuiSession.bindEach, one entry
+ *     i of the region, so ONE repeated letter is an         per cell with its own template
+ *     ordered region while distinct letters name             and placeholders
+ *     distinct elements bound by name through key:)
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, item-model (1.21.2+),           (re-read per viewer: locals,
@@ -75,7 +86,10 @@ import com.sn.lib.yml.SnYml;
  *     since 1.18.0, resolved against the layout like        slots assigned via session binds;
  *     items - the declared cells feed the no-slot            the no-slot bind(String, Ph...)
  *     GuiSession.bind(String, Ph...), while the              renders into the yml-declared
- *     explicit bind(int, ...) keeps deciding in Java)        cells
+ *     explicit bind(int, ...) keeps deciding in Java;        cells
+ *     a template painted by a region takes its cell
+ *     from the region and its own slots/key are
+ *     ignored there)
  *   [small], [rgb], [center] composable in any order    -> SnText pipeline used by every
  *     and MiniMessage mixed with legacy codes               string of the item render
  * </pre>
@@ -93,13 +107,14 @@ public final class GuiDef {
     private final boolean pagination;
     private final boolean strictClicks;
     private final int[] pagedSlots;
+    private final Map<String, int[]> regions;
     private final List<GuiItemDef> items;
     private final Map<String, GuiTemplate> templates;
 
     private GuiDef(String id, String title, int rows, @Nullable InventoryType inventoryType,
                    String openSound, String closeSound, List<String> closeActions,
                    int updateInterval, boolean pagination, boolean strictClicks,
-                   int[] pagedSlots, List<GuiItemDef> items,
+                   int[] pagedSlots, Map<String, int[]> regions, List<GuiItemDef> items,
                    Map<String, GuiTemplate> templates) {
         this.id = id;
         this.title = title;
@@ -112,6 +127,7 @@ public final class GuiDef {
         this.pagination = pagination;
         this.strictClicks = strictClicks;
         this.pagedSlots = pagedSlots;
+        this.regions = regions;
         this.items = items;
         this.templates = templates;
     }
@@ -124,7 +140,7 @@ public final class GuiDef {
         if (root == null) {
             warn.accept("File is empty or unreadable; using a default gui without items");
             return new GuiDef(id, "Menu", 3, null, "", "", List.of(), 0, false, false,
-                    new int[0], List.of(), Map.of());
+                    new int[0], Map.of(), List.of(), Map.of());
         }
         String title = root.getString("title", "Menu");
         List<String> layoutRows = truncateLayout(root.getStringList("layout"), warn);
@@ -152,6 +168,8 @@ public final class GuiDef {
         boolean pagination = root.getBoolean("pagination", false);
         boolean strictClicks = root.getBoolean("strict-clicks", false);
         int[] pagedSlots = parsePagedKey(root, keySlots, !layoutRows.isEmpty(), pagination, warn);
+        Map<String, int[]> regions = parseRegions(root, keySlots, !layoutRows.isEmpty(),
+                pagedSlots, warn);
         List<GuiItemDef> items = new ArrayList<>();
         ConfigurationSection itemsSection = root.getConfigurationSection("items");
         if (itemsSection != null) {
@@ -182,8 +200,11 @@ public final class GuiDef {
                 }
             }
         }
+        // The regions map keeps its insertion order on purpose (regionIds() renders in file
+        // order), so it is wrapped instead of copied through Map.copyOf, which does not.
         return new GuiDef(id, title, rows, type, openSound, closeSound, closeActions,
-                updateInterval, pagination, strictClicks, pagedSlots, List.copyOf(items),
+                updateInterval, pagination, strictClicks, pagedSlots,
+                Collections.unmodifiableMap(regions), List.copyOf(items),
                 Map.copyOf(templates));
     }
 
@@ -219,7 +240,7 @@ public final class GuiDef {
      * row-major order (same geometry as {@link GuiMask}: slot = row * 9 + column). A key
      * appearing in N cells accumulates the N slots.
      */
-    private static Map<Character, int[]> layoutKeys(List<String> rows) {
+    static Map<Character, int[]> layoutKeys(List<String> rows) {
         if (rows.isEmpty()) {
             return Map.of();
         }
@@ -280,6 +301,139 @@ public final class GuiDef {
                     + " ignored until pagination is enabled");
         }
         return slots.clone();
+    }
+
+    /**
+     * Parses the {@code regions:} section into an insertion-ordered id -&gt; cells map: a
+     * scalar value is shorthand for {@code key:}, a section reads {@code slots:} (which
+     * wins, exactly like an item) or {@code key:}. Every malformed declaration WARNs and
+     * yields a region with no cells, but the region stays DECLARED - that is what separates
+     * "the owner emptied it" from "the plugin named a region that does not exist".
+     *
+     * <p>Turning a region OFF is silent, in both supported forms: a valid single-character
+     * key the layout simply does not contain (mirroring the item key rule) and an explicitly
+     * blanked declaration (an empty value, an empty section or an empty {@code slots:}
+     * list). Only a section that declares other keys and neither real one is a mistake worth
+     * a warning. Cells overlapping the {@code paged-key} or an earlier region WARN once per
+     * region naming the first colliding slot; a live paged bind wins there, and between two
+     * regions the later declaration wins.</p>
+     */
+    static Map<String, int[]> parseRegions(ConfigurationSection root,
+                                           Map<Character, int[]> keySlots, boolean hasLayout,
+                                           int[] pagedSlots, Consumer<String> warn) {
+        if (!root.isSet("regions")) {
+            return new LinkedHashMap<>();
+        }
+        ConfigurationSection section = root.getConfigurationSection("regions");
+        if (section == null) {
+            warn.accept("regions: must be a section of named regions; ignored");
+            return new LinkedHashMap<>();
+        }
+        Set<Integer> paged = new HashSet<>();
+        for (int slot : pagedSlots) {
+            paged.add(slot);
+        }
+        Map<Integer, String> claimed = new HashMap<>();
+        Map<String, int[]> regions = new LinkedHashMap<>();
+        for (String id : section.getKeys(false)) {
+            int[] cells = parseRegionCells(section, id, keySlots, hasLayout, warn);
+            noteRegionCollisions(id, cells, paged, claimed, warn);
+            // Declared even with zero cells: an empty region is the owner turning it off,
+            // which bindEach must tell apart from a region that was never declared.
+            regions.put(id, cells);
+        }
+        return regions;
+    }
+
+    /**
+     * Cells of one {@code regions:} entry: the scalar shorthand and the long form resolve
+     * through the same rules an item uses for {@code slots:}/{@code key:}, so the owner
+     * needs no second vocabulary. Empty when the declaration is malformed (with a WARN) or
+     * when the layout simply lacks the letter (silent, the removal path).
+     */
+    private static int[] parseRegionCells(ConfigurationSection section, String id,
+                                          Map<Character, int[]> keySlots, boolean hasLayout,
+                                          Consumer<String> warn) {
+        String keyRaw = "";
+        int[] slots = new int[0];
+        // Whether the owner WROTE an emptiness rather than leaving the entry malformed: a
+        // blank value, an empty section or an empty slots list all say "no cells here" on
+        // purpose, and saying it must not cost a warning on every boot.
+        boolean emptiedOnPurpose;
+        if (section.isConfigurationSection(id)) {
+            ConfigurationSection region = section.getConfigurationSection(id);
+            boolean declaresSlots = region.isSet("slots");
+            if (declaresSlots) {
+                slots = SlotParser.parse(region.get("slots"),
+                        message -> warn.accept("Region '" + id + "': " + message));
+            }
+            keyRaw = region.getString("key", "");
+            emptiedOnPurpose = region.getKeys(false).isEmpty()
+                    || (declaresSlots && slots.length == 0 && keyRaw.trim().isEmpty());
+        } else {
+            Object raw = section.get(id);
+            keyRaw = raw == null ? "" : String.valueOf(raw);
+            emptiedOnPurpose = keyRaw.trim().isEmpty();
+        }
+        if (slots.length > 0) {
+            if (!keyRaw.isEmpty()) {
+                warn.accept("Region '" + id + "': declares both 'slots' and 'key'; slots"
+                        + " wins and key is ignored");
+            }
+            return slots;
+        }
+        String trimmed = keyRaw.trim();
+        if (trimmed.isEmpty()) {
+            // Blanking the value is the second supported way to turn a region off (the
+            // first is taking its letter out of the layout); both are silent. Only a
+            // section that declares OTHER keys and none of the two real ones is a mistake.
+            if (!emptiedOnPurpose) {
+                warn.accept("Region '" + id + "': declares neither 'slots' nor 'key';"
+                        + " region has no cells");
+            }
+            return new int[0];
+        }
+        if (trimmed.length() != 1) {
+            warn.accept("Region '" + id + "': key '" + keyRaw + "' is invalid (must be"
+                    + " 1 character); region has no cells");
+            return new int[0];
+        }
+        if (!hasLayout) {
+            warn.accept("Region '" + id + "': 'key' declared but the menu has no layout;"
+                    + " region has no cells");
+            return new int[0];
+        }
+        int[] keyed = keySlots.get(trimmed.charAt(0));
+        // A layout that simply lacks the letter is the owner REMOVING the region, the
+        // supported way to turn one off without editing the declaration; silent, exactly
+        // like the item key rule.
+        return keyed == null ? new int[0] : keyed.clone();
+    }
+
+    /**
+     * WARNs once per region about cells it may not actually own: a LIVE paged bind wins over
+     * every region on the {@code paged-key} cells (with no paged bind on the session the
+     * region renders there normally - the parse cannot know), and between two regions the
+     * later declaration wins. Only the FIRST colliding slot is named, never one per cell.
+     */
+    private static void noteRegionCollisions(String id, int[] cells, Set<Integer> paged,
+                                             Map<Integer, String> claimed,
+                                             Consumer<String> warn) {
+        boolean pagedNoted = false;
+        boolean regionNoted = false;
+        for (int slot : cells) {
+            if (!pagedNoted && paged.contains(slot)) {
+                pagedNoted = true;
+                warn.accept("Region '" + id + "' covers paged-key cell " + slot
+                        + "; a live paged bind wins there");
+            }
+            String owner = claimed.put(slot, id);
+            if (owner != null && !regionNoted) {
+                regionNoted = true;
+                warn.accept("Region '" + id + "' overlaps region '" + owner + "' on slot "
+                        + slot + "; '" + id + "' wins");
+            }
+        }
     }
 
     /**
@@ -360,6 +514,40 @@ public final class GuiDef {
      */
     public int[] pagedSlots() {
         return pagedSlots.clone();
+    }
+
+    /**
+     * Cells the menu declares for a runtime region under {@code regions:}, in the order the
+     * file declares them (ascending row-major for a {@code key:}, first-seen order for a
+     * {@code slots:} list), as a defensive copy. Empty both for a region the menu does not
+     * declare and for one whose letter the owner took out of the layout.
+     *
+     * <p>That count is what a plugin reads to say in its OWN words how many entries it can
+     * show, since SnLib never warns about a region the owner sized down:
+     * {@link GuiSession#bindEach} silently drops the entries that do not fit.</p>
+     */
+    public int[] regionSlots(String regionId) {
+        int[] cells = region(regionId);
+        return cells == null ? new int[0] : cells.clone();
+    }
+
+    /**
+     * Declared cells of a region, or null when the menu declares no region under that id -
+     * the distinction {@link GuiSession#bindEach} needs to separate a plugin naming a
+     * region that does not exist (WARN once) from an owner emptying one that does (silent).
+     * Returns the stored array; callers clone before keeping it.
+     */
+    @Nullable int[] region(String regionId) {
+        return regionId == null ? null : regions.get(regionId);
+    }
+
+    /**
+     * Declared region ids in file order, so two regions that were (mis)declared over the
+     * same cells render deterministically: the later declaration wins, matching the WARN
+     * emitted at parse.
+     */
+    Set<String> regionIds() {
+        return regions.keySet();
     }
 
     /** Items of the {@code items:} section, in declaration order. */

@@ -53,6 +53,55 @@ pagination: true/false # default: false
 # paged-key: d
 
 # ═══════════════════════════════════════════════════════════════════
+# RUNTIME REGIONS - named groups of cells the plugin fills (1.20.0)
+# ═══════════════════════════════════════════════════════════════════
+# regions: menu-level named groups of cells. The plugin lays ONE ENTRY PER
+# CELL over a region with bindEach(regionId, data, filler), and the filler
+# picks that entry's template and placeholders. This is how a matrix, a
+# selector or a non-paged list gets its placement from the FILE instead of
+# from an int[] in Java. No pagination needed - a region is the non-paged
+# sibling of paged-key.
+#
+# Short form (a single layout character):
+# regions:
+#   toggles: t
+#
+# Long form - slots: (wins over key:, exactly like an item) or key::
+# regions:
+#   toggles:
+#     slots: ["19-25", "28-30", "32-34"]
+#
+# ORDER: entry i renders into cell i of the region. With key: the cells are
+# ascending row-major (left to right, top to bottom); with slots: they are
+# the order you wrote them, so slots: is how you REORDER a region by hand.
+# Reordering changes the PICTURE only - every entry carries its own id in
+# its placeholders, so a switch can never end up toggling something else.
+#
+# SIZING is yours: fewer cells than entries simply shows the first ones and
+# drops the tail; more cells than entries leaves the spare cells to the
+# items declared on them (declare an item on the region letter and it fills
+# the gaps). Neither warns - it is configuration, not a mistake.
+#
+# TO REMOVE a region: take its letter out of layout:, or blank its value
+# (toggles: "" / an empty slots: list). Both are silent and supported.
+# Do NOT delete the regions: declaration itself - it is re-added on the next
+# restart and the plugin warns that the region is missing. For the same
+# reason regions: must never be marked # sn:extensible.
+#
+# THE RULE: distinct letters name distinct ELEMENTS and are bound BY NAME
+# through key: on an item or template. ONE REPEATED letter is an ordered
+# REGION and is bound BY INDEX through regions: + bindEach. Never express an
+# ordered sequence with distinct letters - "123" cannot be indexed and is
+# just three unrelated cells.
+#
+# Malformed declarations WARN and leave the region declared with no cells:
+# both slots: and key: (slots wins), neither of them, a key longer than one
+# character, a key without any layout:, and cells that overlap the paged-key
+# (the paged bind wins there) or an earlier region (the later one wins).
+# regions:
+#   toggles: t
+
+# ═══════════════════════════════════════════════════════════════════
 # STRICT CLICKS - OPT-IN per menu
 # ═══════════════════════════════════════════════════════════════════
 # strict-clicks: true  -> the generic click-actions list only fires with the
@@ -317,16 +366,22 @@ items:
 # The plugin supplies the runtime data (custom placeholders like %index%, %warp_name%)
 # at bind time; the config user customizes appearance and actions freely.
 #
-# Placement, two ways (since 1.18.0):
+# Placement, three ways:
 #   - CONFIG-DRIVEN: the template declares "slots:" or "key:" (resolved against the
 #     menu "layout:" exactly like an item; declared slots win over key) and the plugin
 #     binds it WITHOUT a slot: session.bind("template-id", phs...). Moving the key in
 #     the layout, or editing slots:, repositions the element - no plugin update needed.
 #     A key covering N cells renders the same bind into every cell.
+#   - REGION-DRIVEN (1.20.0): the template declares NOTHING and the cell comes from a
+#     "regions:" entry the plugin fills with bindEach - the filler picks which template
+#     paints each cell. This is the one to use for state variants of the same button
+#     (allowed/denied, selected/unselected): several templates share one region, so none
+#     of them can own the placement and none should declare a key:.
 #   - PLUGIN-DRIVEN: the template declares neither, and the plugin decides per bind:
 #     session.bind(slot, template, phs...). The explicit slot variant always ignores
 #     the declared cells, so per-entry lists (one template bound N times with
-#     different data) keep working.
+#     different data) keep working. Prefer a region over this whenever the menu is
+#     file-backed: a slot decided in Java is a slot the owner cannot move.
 #
 # Usage example (backpack plugin):
 #   - Plugin defines: backpack-slots: [0,1,2,3,4]
@@ -342,7 +397,8 @@ templates:
     item-model: string # 1.21.2+ base ItemModel key # default: ""
     amount: int # default: 1
     # slots:/key: OPTIONAL - declared cells feed the no-slot bind("template-id");
-    # without them the plugin assigns slots dynamically via bind(slot, template)
+    # without them the plugin assigns slots dynamically via bind(slot, template).
+    # IGNORED when a region paints this template: the region already decided the cell.
     glow: true/false # default: false
     enchantments: list # default: []
     flags: list # default: []

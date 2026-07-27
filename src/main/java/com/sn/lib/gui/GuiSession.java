@@ -1,6 +1,7 @@
 package com.sn.lib.gui;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,14 @@ import com.sn.lib.util.TagIo;
  * {@code close-sound} and schedules its {@code close-actions} (never on page swaps nor
  * on programmatic teardown, see {@link #handleClose}).</p>
  *
+ * <p>Runtime REGIONS enter through {@link #bindEach}: the menu declares a named group of
+ * cells under {@code regions:} and the plugin lays one entry per cell over it, a filler
+ * choosing that entry's template and placeholders on every render. Unlike a paged bind, a
+ * region owns its cells one by one: a cell with no entry, one whose filler picked no
+ * template and one hidden by its view requirement all fall through to the item declared
+ * underneath, on the screen and on the click alike. Precedence over a shared cell is manual
+ * bind, then paged bind, then region, then declared item.</p>
+ *
  * <p><b>View requirements gate interaction, not only rendering</b>: a click resolves what
  * the slot actually shows to this viewer, under the same precedence, the same
  * declaration-order fallthrough on shared slots and the same requirement test the render
@@ -86,6 +95,7 @@ public final class GuiSession implements PageTarget {
     private final Map<Integer, List<GuiItemDef>> baseSlots = new ConcurrentHashMap<>();
     private final Map<Integer, Binding> binds = new ConcurrentHashMap<>();
     private final Map<Integer, Ph[]> pagedPhs = new ConcurrentHashMap<>();
+    private final Map<Integer, Binding> regionCells = new ConcurrentHashMap<>();
     private final List<TaskHandle> tasks = new CopyOnWriteArrayList<>();
 
     private volatile Inventory inventory;
@@ -95,6 +105,7 @@ public final class GuiSession implements PageTarget {
     private volatile boolean closed;
     private volatile @Nullable PagedBind<?> pagedBind;
     private volatile Set<Integer> pagedSlots = Set.of();
+    private volatile Map<String, RegionBind<?>> regionBinds = Map.of();
     private volatile int manualTotalPages;
     private boolean typeWarned;
     private boolean navUnknownNoted;
@@ -183,9 +194,11 @@ public final class GuiSession implements PageTarget {
 
     /**
      * Definition rendered at {@code slot} for this viewer: an API bind takes precedence,
-     * then a paged entry, then the declared item of that slot. Null for an empty slot,
-     * which includes a definition hidden from this viewer by its {@code view-requirements}
-     * and a paged slot the current page left empty.
+     * then a paged entry, then the region entry painted there (1.20.0), then the declared
+     * item of that slot. Null for an empty slot, which includes a definition hidden from
+     * this viewer by its {@code view-requirements}, a paged slot the current page left empty
+     * and a region cell no entry filled - the last one falls through to the declared item
+     * rather than reading as empty, since a region owns its cells one by one.
      */
     public @Nullable GuiItemDef itemAt(int slot) {
         Rendered rendered = renderedAt(slot);
@@ -203,6 +216,10 @@ public final class GuiSession implements PageTarget {
      *
      * <p>An unknown template id, or a template that declares neither {@code slots:} nor a
      * valid {@code key:}, WARNs once per GUI and is ignored.</p>
+     *
+     * <p>This is the ONE-element form: every cell of the key shows the same thing. A group
+     * of cells that needs one DISTINCT entry each (a matrix, a selector, a non-paged list)
+     * is a region - see {@link #bindEach}.</p>
      */
     public void bind(String templateId, Ph... phs) {
         GuiTemplate template = def.template(templateId);
@@ -240,6 +257,82 @@ public final class GuiSession implements PageTarget {
         if (current != null && slot < current.getSize()) {
             renderBinding(current, slot, binding);
         }
+    }
+
+    /**
+     * Fills a runtime REGION of this session: an immutable snapshot of {@code data} is laid
+     * over the cells the menu declares for {@code regionId} under {@code regions:}, one
+     * entry per cell in the order the file declares them, and {@code filler} runs once per
+     * entry on EVERY render to pick the template that paints it
+     * ({@link GuiEntry#template(String)}) and fill its local placeholders. Which cells, how
+     * many, in which order and whether the region exists at all live entirely in the yml,
+     * so the server owner repositions, resizes, splits, reorders or removes the region by
+     * editing the file and the plugin never names a slot. An entry's identity travels in
+     * the placeholders the filler adds, never in its index, so reordering the cells
+     * reorders the picture and never the data.
+     *
+     * <p>Cardinality belongs to the owner: more entries than cells renders the first cells
+     * worth and drops the tail, more cells than entries leaves the spare cells to the items
+     * declared on them, and both are silent with a debug note - a region sized down is
+     * configuration, not a mistake. Ownership is per CELL, not per region: a cell with no
+     * entry, an entry whose filler picked no template and an entry hidden by its own
+     * {@code view-requirements} all fall through to the declared item underneath, on the
+     * screen and on the click alike. Re-binding replaces the whole region, so a shorter list
+     * releases its tail on the same repaint - a region leaves no stale entry to clear by
+     * hand.</p>
+     *
+     * <p>Unlike {@link #bind(String, Ph...)}, which renders the SAME bind into every cell of
+     * a template's declared key, every cell here gets its own entry; unlike
+     * {@link #bindPaged}, a region needs no {@code pagination: true}, never touches the page
+     * and shows the same entries on every page. A manual {@link #bind(int, GuiTemplate,
+     * Ph...)} and the paged bind both outrank a region on a cell they share. The bind
+     * survives page changes, refreshes and inventory recreations until rebound, and the
+     * filler re-runs on each of them, so entry values stay live under
+     * {@code update-interval:} instead of freezing at bind time.</p>
+     *
+     * <p>A region id the menu does not declare WARNs once per GUI and is ignored; a declared
+     * region whose letter the owner took out of the layout binds nothing, silently, which is
+     * how a region is turned off. A null {@code data} clears the region; a null filler
+     * throws. Main-thread only, like the whole GUI module: the filler runs inside the
+     * render, so it must stay cheap and must never block - call it from a scheduler hop, not
+     * from a database continuation.</p>
+     */
+    public <T> void bindEach(String regionId, List<T> data, BiConsumer<T, GuiEntry> filler) {
+        Objects.requireNonNull(filler, "filler");
+        int[] declared = def.region(regionId);
+        if (declared == null) {
+            ctx.guis().warnOnce("bind-each:" + def.id() + ":" + regionId,
+                    "bindEach on gui '" + def.id() + "' ignored: the menu declares no region"
+                            + " '" + regionId + "' under 'regions:'; to REMOVE a region keep"
+                            + " the declaration and take its letter out of the layout");
+            return;
+        }
+        List<T> snapshot = data == null ? List.of() : List.copyOf(data);
+        noteRegionFit(regionId, declared.length, snapshot.size());
+        Map<String, RegionBind<?>> updated = new HashMap<>(regionBinds);
+        updated.put(regionId, new RegionBind<>(declared.clone(), snapshot, filler));
+        this.regionBinds = Map.copyOf(updated);
+        if (!closed && inventory != null) {
+            renderContents();
+        }
+    }
+
+    /**
+     * ONE debug note per bind (never per render) when the owner's cell count and the
+     * plugin's entry count disagree. Never a WARN: how many cells a region has is
+     * owner-authored configuration the plugin cannot resolve, so under the 1.19.1 rule it
+     * is a note. A plugin that must not truncate silently reads
+     * {@link GuiDef#regionSlots(String)} and says so in its own words.
+     */
+    private void noteRegionFit(String regionId, int cells, int entries) {
+        if (cells == entries) {
+            return;
+        }
+        String tail = cells < entries
+                ? (entries - cells) + " not shown"
+                : (cells - entries) + " cell(s) left to the declared items";
+        ctx.debug().log(() -> "GUI '" + def.id() + "': region '" + regionId + "' has " + cells
+                + " cell(s) for " + entries + " entr(ies); " + tail);
     }
 
     /**
@@ -516,9 +609,14 @@ public final class GuiSession implements PageTarget {
      * What {@code slot} renders for THIS viewer, resolved with the precedence the render
      * phases use: a manual bind first, then the paged bind - which OWNS its slots even
      * when the current page left them empty, so a short page never falls back to the
-     * declared item underneath - then the declared candidates of the slot in declaration
-     * order. Null when the slot shows nothing to this viewer, the definition's own local
-     * placeholders otherwise.
+     * declared item underneath - then the region entry the last render painted there, and
+     * finally the declared candidates of the slot in declaration order. Null when the slot
+     * shows nothing to this viewer, the definition's own local placeholders otherwise.
+     *
+     * <p>A region owns a cell only while it actually fills it: a cell with no entry, one
+     * whose filler picked no template and one hidden by its view requirement are absent
+     * from {@code regionCells} and fall through to the declared item, which is the
+     * click-side twin of the render-side fallthrough.</p>
      */
     private @Nullable Rendered renderedAt(int slot) {
         Binding binding = binds.get(slot);
@@ -530,6 +628,10 @@ public final class GuiSession implements PageTarget {
             Ph[] locals = pagedPhs.get(slot);
             return bind == null || locals == null ? null
                     : shown(bind.template().item(), locals, slot, false);
+        }
+        Binding cell = regionCells.get(slot);
+        if (cell != null) {
+            return shown(cell.template().item(), cell.phs(), slot, false);
         }
         return declaredAt(slot);
     }
@@ -579,6 +681,13 @@ public final class GuiSession implements PageTarget {
      * any more - its definition is hidden now, or its paged entry is gone - so clicking a
      * ghost item makes the screen converge with the requirement state instead of looking
      * unresponsive. Slots no render phase owns are never touched.
+     *
+     * <p>Dropping a region cell hands the slot back to the items declared on it, so the
+     * declared candidates are re-resolved immediately: without that repaint the cell would
+     * sit visually empty while the click already resolved to the declared item underneath,
+     * which is the one state where the screen and the click could disagree. The re-render is
+     * a no-op for a bind or paged slot (those keep owning the cell through their own guards)
+     * and for a slot every declared candidate hides from.</p>
      */
     private void clearGhost(int slot) {
         Inventory current = inventory;
@@ -586,11 +695,15 @@ public final class GuiSession implements PageTarget {
             return;
         }
         if (!binds.containsKey(slot) && !pagedSlots.contains(slot)
-                && !baseSlots.containsKey(slot)) {
+                && !regionCells.containsKey(slot) && !baseSlots.containsKey(slot)) {
             return;
         }
         pagedPhs.remove(slot);
+        regionCells.remove(slot);
         current.setItem(slot, null);
+        if (baseSlots.containsKey(slot)) {
+            renderDeclared(current, new int[] {slot});
+        }
     }
 
     /**
@@ -682,8 +795,12 @@ public final class GuiSession implements PageTarget {
             return;
         }
         current.clear();
+        // Cleared BEFORE renderDeclared so the declared items repaint into the cells a
+        // shrunk region just released; the regions then reclaim only what they still fill.
+        regionCells.clear();
         renderDeclared(current, null);
         renderPaged(current);
+        renderRegions(current);
         for (Map.Entry<Integer, Binding> entry : binds.entrySet()) {
             if (entry.getKey() < current.getSize()) {
                 renderBinding(current, entry.getKey(), entry.getValue());
@@ -724,7 +841,8 @@ public final class GuiSession implements PageTarget {
         }
         for (int slot = 0; slot < owned.length; slot++) {
             if (owned[slot] || (scope != null && !scope[slot]) || !baseSlots.containsKey(slot)
-                    || binds.containsKey(slot) || pagedSlots.contains(slot)) {
+                    || binds.containsKey(slot) || pagedSlots.contains(slot)
+                    || regionCells.containsKey(slot)) {
                 continue;
             }
             target.setItem(slot, null);
@@ -744,7 +862,8 @@ public final class GuiSession implements PageTarget {
         boolean evaluated = false;
         for (int slot : item.slots()) {
             if (slot >= target.getSize() || owned[slot] || (scope != null && !scope[slot])
-                    || binds.containsKey(slot) || pagedSlots.contains(slot)) {
+                    || binds.containsKey(slot) || pagedSlots.contains(slot)
+                    || regionCells.containsKey(slot)) {
                 continue;
             }
             if (!evaluated) {
@@ -860,6 +979,93 @@ public final class GuiSession implements PageTarget {
 
     private <T> void renderPagedSlotAt(Inventory target, PagedBind<T> bind, int index) {
         renderPagedSlot(target, bind, bind.pagination().page(page), index);
+    }
+
+    /**
+     * Renders every live region, walking the menu's DECLARED region order rather than the
+     * order the plugin bound them, so two regions the owner (mis)declared over the same
+     * cells resolve exactly the way the file reads and the parse WARN predicted.
+     */
+    private void renderRegions(Inventory target) {
+        Map<String, RegionBind<?>> live = regionBinds;
+        if (live.isEmpty()) {
+            return;
+        }
+        for (String regionId : def.regionIds()) {
+            RegionBind<?> bind = live.get(regionId);
+            if (bind != null) {
+                renderRegion(target, regionId, bind);
+            }
+        }
+    }
+
+    /** Renders the entries of one region that fit its cells; the tail of either side is left alone. */
+    private <T> void renderRegion(Inventory target, String regionId, RegionBind<T> bind) {
+        int count = Math.min(bind.cells().length, bind.data().size());
+        for (int index = 0; index < count; index++) {
+            renderRegionCell(target, regionId, bind, index);
+        }
+    }
+
+    /**
+     * Renders entry {@code index} of a region into its cell, running the filler to resolve
+     * the template and the entry's local placeholders. WRITES ONLY when it has something to
+     * show: a slot outside the inventory, one owned by a manual bind or the paged bind, a
+     * filler that picked no template, an unknown template id and a failed view requirement
+     * all return WITHOUT touching the cell, so the declared paint underneath survives and
+     * {@link #renderedAt(int)} resolves the click to that same item.
+     */
+    private <T> void renderRegionCell(Inventory target, String regionId, RegionBind<T> bind,
+                                      int index) {
+        int[] cells = bind.cells();
+        if (index < 0 || index >= cells.length || index >= bind.data().size()) {
+            return;
+        }
+        int slot = cells[index];
+        if (slot < 0 || slot >= target.getSize() || binds.containsKey(slot)
+                || pagedSlots.contains(slot)) {
+            return;
+        }
+        GuiEntry entry = new GuiEntry();
+        bind.filler().accept(bind.data().get(index), entry);
+        String templateId = entry.templateId();
+        if (templateId.isEmpty()) {
+            // The supported way to skip ONE entry without punching a hole: the cell keeps
+            // whatever the declared items painted there.
+            return;
+        }
+        GuiTemplate template = def.template(templateId);
+        if (template == null) {
+            ctx.guis().warnOnce(
+                    "bind-each-template:" + def.id() + ":" + regionId + ":" + templateId,
+                    "bindEach on gui '" + def.id() + "' region '" + regionId + "': template '"
+                            + templateId + "' does not exist; entry not rendered");
+            return;
+        }
+        Ph[] phs = entry.toArray();
+        GuiItemDef item = template.item();
+        if (!item.viewRequirement().test(viewer, resolver(phs))) {
+            ctx.debug().log(() -> "GUI '" + def.id() + "': region '" + regionId + "' entry "
+                    + index + " hidden by its view-requirements for " + viewer.getName());
+            return;
+        }
+        target.setItem(slot, stamp(item.render(viewer,
+                skinHook(() -> reRenderRegionCell(regionId, bind, index)), phs), slot));
+        regionCells.put(slot, new Binding(template, phs));
+    }
+
+    /**
+     * Re-renders one region cell after an async skin fetch landed. The guard is the bind
+     * IDENTITY, never the index: a rebind between the request and the landing replaces the
+     * whole region, and repainting index {@code i} of a stale bind would paint an entry that
+     * no longer exists.
+     */
+    private void reRenderRegionCell(String regionId, RegionBind<?> bind, int index) {
+        Inventory current = inventory;
+        if (closed || current == null || regionBinds.get(regionId) != bind) {
+            return;
+        }
+        renderRegionCell(current, regionId, bind, index);
     }
 
     private void renderBinding(Inventory target, int slot, Binding binding) {
@@ -997,5 +1203,12 @@ public final class GuiSession implements PageTarget {
     /** Live paged bind: template, immutable pagination snapshot, target slots and mapper. */
     private record PagedBind<T>(GuiTemplate template, Pagination<T> pagination, int[] slots,
                                 BiConsumer<T, PhCollector> mapper) {
+    }
+
+    /**
+     * Live region bind: the cells the yml declared, an immutable snapshot of the data and
+     * the filler that resolves the template and placeholders of each entry on every render.
+     */
+    private record RegionBind<T>(int[] cells, List<T> data, BiConsumer<T, GuiEntry> filler) {
     }
 }

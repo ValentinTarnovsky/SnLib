@@ -37,6 +37,7 @@ Each file describes one menu top to bottom. What you can customize includes:
 - `open-sound` and `close-sound` - sounds played when the menu opens and closes.
 - `open` actions and `close-actions` - things that happen when the menu opens and when it closes.
 - `pagination` - turn on real per-player paging so one menu can show many pages of content, each player on their own page.
+- `regions` - named groups of cells the plugin fills at runtime, one entry per cell (a permission matrix, a role selector, a list). Each region points at a letter of your `layout`, so moving, resizing or splitting it is just an edit to the drawing: `toggles: t` means "every `t` cell, left to right and top to bottom". Fewer cells simply shows fewer entries and more cells leaves the spare ones to whatever item you declared there - neither is an error. To reorder the cells by hand, replace the letter with a slot list (`toggles: {slots: ["19-25", "28-30"]}`); reordering changes only the picture, since every entry carries its own identity and can never end up doing something else. To turn a region off, take its letter out of the `layout` or leave its value blank (`toggles: ""`) - either way it goes quiet with no warning. But do NOT delete the `regions` lines themselves: they come back on the next restart and the plugin logs a warning until they do.
 
 ### Each item in the menu
 
@@ -45,7 +46,7 @@ Each file describes one menu top to bottom. What you can customize includes:
 - `lore` - the description lines under the name.
 - `enchantments` and `glow` - real enchantments, or just the enchanted shimmer without any effect.
 - `amount`, `custom-model-data`, `item-model` (1.21.2+ resource-pack model key like `nexo:2d_player_head`), `flags`, `color`, potion effects, and armor trim - the rest of the item's appearance.
-- `slots` or `key` - where the item goes, either by slot number or by the letter you used in the `layout`.
+- `slots` or `key` - where the item goes, either by slot number or by the letter you used in the `layout`. Removing the letter from the `layout` is how you hide a button you do not want. An item declared on a region's letter shows in whatever cells that region does not fill.
 
 ### What happens when an item is clicked
 

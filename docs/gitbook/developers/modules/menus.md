@@ -109,6 +109,55 @@ s.bind("banner", Ph.of("clan", clan.name()));
 
 The server owner then repositions the element by moving the key in the layout (or editing `slots:`) - no plugin update needed. A key covering N cells renders the same bind into every cell. The explicit `bind(slot, template, phs...)` always ignores the declared cells, so plugin-computed placements (one template bound N times with different data, e.g. one per list entry) keep working. Binding an unknown template id, or a slotless bind of a template that declares neither `slots:` nor a valid `key:`, warns once per menu and is ignored.
 
+### Runtime regions (1.20.0)
+
+`bind("id", ...)` renders the SAME thing into every cell of a key. When a group of cells needs one DISTINCT entry each - a permission matrix, a role selector, any non-paged list - declare a **region** and fill it with `bindEach`. This is what replaces the `private static final int[] SLOTS = {19,20,...}` that used to live in plugin code: the placement, the cell count and the order all come from the file.
+
+```yaml
+layout:
+  - "fffffffff"
+  - "fffrrrfff"
+  - "ftttttttf"
+  - "ftttftttf"
+  - "ffffxffff"
+
+regions:
+  roles: r
+  toggles: t
+
+templates:
+  # Keyless on purpose: the region owns the cell, these two only own the look.
+  toggle-allowed:
+    material: LIME_DYE
+    display-name: "&a{action}"
+  toggle-denied:
+    material: GRAY_DYE
+    display-name: "&7{action}"
+```
+
+```java
+s.bindEach("toggles", perms.gatedActions(), (action, entry) -> entry
+        .template(perms.isAllowed(clan, role, action) ? "toggle-allowed" : "toggle-denied")
+        .add("action", labels.action(action))
+        .add("action_id", action));
+```
+
+Entry `i` renders into cell `i` of the region: ascending row-major for a `key:`, the order you wrote for a `slots:` list. The filler runs once per entry on EVERY render, so values stay live under `update-interval:` instead of freezing at bind time, and it picks the template per entry - which is why several state variants of one button can share a region.
+
+Ownership is per CELL, not per region: a cell with no entry, an entry whose filler picked no template and an entry hidden by its own `view-requirements` all fall through to the item declared underneath, on the screen and on the click alike. Declare an item on the region letter and it fills the spare cells. Precedence on a shared cell is `bind(slot, ...)` > `bindPaged` > region > declared item.
+
+Cardinality belongs to the owner and never warns: fewer cells than entries shows the first ones and drops the tail, more cells than entries leaves the rest to the declared items. If your plugin must not truncate silently, read the count yourself and say so in your own lang file:
+
+```java
+int cells = gui.def().regionSlots("toggles").length;
+```
+
+Removing a region is a layout edit - take the letter out and the region binds nothing, silently; blanking its value (`toggles: ""`, or an empty `slots:` list) does the same. The `regions:` declaration itself must stay (the always-merge updater re-adds it, and `bindEach` warns once about a region the menu does not declare), so never mark `regions:` as `# sn:extensible`.
+
+> **The rule**: distinct letters name distinct ELEMENTS, bound BY NAME through `key:`. ONE repeated letter is an ordered REGION, bound BY INDEX through `regions:` + `bindEach`. Never express an ordered sequence with distinct letters - `"123"` cannot be indexed, it is just three unrelated cells.
+
+Unlike `bindPaged`, a region needs no `pagination: true`, never touches the page and shows the same entries on every page.
+
 ## Paginated content
 
 Pagination is OPT-IN per menu with `pagination: true`. With it on, each viewer has real per-player page state, and you fill the paged slots with `bindPaged`:
@@ -163,7 +212,7 @@ paged-key: d
 s.bindPaged("warp-entry", warps, (warp, ph) -> ph.add("name", warp.name()));
 ```
 
-If the menu declares no `paged-key`, this overload warns once and is ignored.
+If the menu declares no `paged-key`, this overload warns once and is ignored. For a group of cells that is NOT paginated, `regions:` + `bindEach` is the same idea without the page machinery - see [Runtime regions](#runtime-regions-1200).
 
 ## Custom action tags
 
@@ -191,7 +240,7 @@ A large part of the menu system is config-only. Knowing it exists tells you what
 
 ### ASCII layout mode
 
-Instead of explicit slot numbers, a menu can define a `layout:` of 1-6 strings of up to 9 characters each, read top to bottom over the 9-column chest grid (cell at row `i`, column `j` is slot `i*9+j`, space is always an empty cell). Items then reference a layout character with `key:` (one character) instead of `slots:`. The same geometry is exposed to Java through `GuiMask.slots(char, rows...)` when you want to compute slot arrays in code.
+Instead of explicit slot numbers, a menu can define a `layout:` of 1-6 strings of up to 9 characters each, read top to bottom over the 9-column chest grid (cell at row `i`, column `j` is slot `i*9+j`, space is always an empty cell). Items then reference a layout character with `key:` (one character) instead of `slots:`. The same geometry is exposed to Java through `GuiMask.slots(char, rows...)` when you want to compute slot arrays in code - that helper is for menus you BUILD in code, with no yml behind them. A file-backed menu never needs a computed `int[]`: use `key:` for one element, `paged-key:` for a paged block and `regions:` for an ordered group.
 
 ```java
 int[] border = GuiMask.slots('f', "fffffffff", "f       f", "fffffffff");

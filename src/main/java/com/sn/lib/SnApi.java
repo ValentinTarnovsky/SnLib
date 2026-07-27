@@ -30,12 +30,16 @@ package com.sn.lib;
  * EXTENSIBLE_ROOT_MARKER and markerWarnings); LEVEL 11 = release 1.18.0 (config-driven
  * template placement: templates may declare {@code slots:}/{@code key:} against the menu
  * layout, exposed via GuiTemplate.slots()/hasSlots() and consumed by the no-slot
- * GuiSession.bind(String, Ph...)).</p>
+ * GuiSession.bind(String, Ph...)); LEVEL 12 = release 1.20.0 (runtime layout regions: a menu
+ * declares named groups of cells under {@code regions:} and
+ * GuiSession.bindEach(String, List, BiConsumer) fills one entry per cell, choosing the
+ * template and the local placeholders per entry through the new GuiEntry;
+ * GuiDef.regionSlots(String) reports the owner-declared cell count).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 11;
+    public static final int LEVEL = 12;
 
     private SnApi() {
     }

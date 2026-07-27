@@ -114,11 +114,21 @@ surface (new public methods or classes). Its history:
 
 - LEVEL 1 = release 1.0.0
 - LEVEL 2 = release 1.1.0
+- LEVEL 3 = release 1.4.0 - shared multi-plugin releases repo support in the UpdateChecker
+- LEVEL 4 = release 1.8.0 - `ItemRegistry.take`/`removeAll`, the SnYml comment write surface
+- LEVEL 5 = release 1.10.0 - `SubCommandBuilder.helpVisible`
+- LEVEL 6 = release 1.11.0 - `SnItem.itemModel` (1.21.2+ `item_model` component)
+- LEVEL 7 = release 1.12.0 - redeemable items, `Args.intMin`/`doubleMin`, k/m/b suffixes
+- LEVEL 8 = release 1.13.0 - alias-aware command rendering (`CommandContext.label()`)
+- LEVEL 9 = release 1.14.0 - translatable command help (the `commands` lang block)
+- LEVEL 10 = release 1.15.0 - owner-owned yml sections (`# sn:extensible`)
+- LEVEL 11 = release 1.18.0 - config-driven template placement (`GuiSession.bind(String, Ph...)`)
+- LEVEL 12 = release 1.20.0 - runtime layout regions (`regions:` + `GuiSession.bindEach`)
 
-The current value is 2, and it has stayed at 2 through releases up to 1.3.0
-because those releases did not grow the public Paper API surface (1.3.0 removed
-the experimental SnBridge and added the separate Velocity base, neither of which
-touches the Paper handshake).
+The current value is 12. Releases that change only behaviour do not bump it:
+1.3.0 removed the experimental SnBridge and added the separate Velocity base, and
+1.19.0/1.19.1 changed marker and warning behaviour, none of which grows the Paper
+handshake surface. The source of truth is the history javadoc on `SnApi` itself.
 
 Because `SnApi.LEVEL` is a compile-time constant, javac inlines its literal value
 into each consumer's bytecode. A consumer's `requiredApiLevel()` therefore records
