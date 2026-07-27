@@ -93,12 +93,14 @@ public final class GuiItemDef {
     private final Map<ClickKey, PerClick> perClick;
     private final NavKind navKind;
     private final @Nullable GuiItemDef navDisabled;
+    private final boolean keyAbsentFromLayout;
 
     private GuiItemDef(String id, SnYml yml, String path, int[] slots, int updateInterval,
                        Requirement viewRequirement, Requirement clickRequirement,
                        List<String> clickActions, List<String> denyActions,
                        Map<ClickKey, PerClick> perClick,
-                       NavKind navKind, @Nullable GuiItemDef navDisabled) {
+                       NavKind navKind, @Nullable GuiItemDef navDisabled,
+                       boolean keyAbsentFromLayout) {
         this.id = id;
         this.yml = yml;
         this.path = path;
@@ -112,17 +114,32 @@ public final class GuiItemDef {
                 : Collections.unmodifiableMap(new EnumMap<>(perClick));
         this.navKind = navKind;
         this.navDisabled = navDisabled;
+        this.keyAbsentFromLayout = keyAbsentFromLayout;
+    }
+
+    /**
+     * True when the item declared a valid single-character {@code key:} that the menu layout
+     * does not contain: the owner removed that letter to HIDE the button. Deliberate
+     * configuration rather than a broken item, so the caller skips its has-slots warning.
+     */
+    boolean hiddenByLayout() {
+        return keyAbsentFromLayout;
     }
 
     /**
      * Parses the item found at {@code path} inside {@code yml}; warnings go to
      * {@code warn}. Returns null only when the section does not exist. A declared
-     * {@code key:} that is invalid or absent from the menu layout WARNs and leaves the
-     * slots empty: items are then dropped by the caller's has-slots gate, while
-     * templates (whose declared placement is optional) stay usable through slot binds.
-     * {@code layout} maps every layout character to its slots: an empty map for a menu
-     * without layout, null for sections where {@code key:} does not apply
-     * ({@code nav-disabled} overrides).
+     * {@code key:} that cannot be resolved leaves the slots empty: items are then dropped
+     * by the caller's has-slots gate, while templates (whose declared placement is
+     * optional) stay usable through slot binds. {@code layout} maps every layout character
+     * to its slots: an empty map for a menu without layout, null for sections where
+     * {@code key:} does not apply ({@code nav-disabled} overrides).
+     *
+     * <p>An unresolved key WARNs except in one case: a menu that HAS a layout which simply
+     * does not contain the letter. That is the owner hiding the button, the supported way
+     * to remove one, so it is silent and {@link #hiddenByLayout()} reports it to the caller.
+     * A {@code key:} declared in a menu with no layout at all, or one that is not a single
+     * character, is meaningless config and still warns.</p>
      */
     static @Nullable GuiItemDef parse(SnYml yml, String path, String id,
                                       @Nullable Map<Character, int[]> layout,
@@ -135,6 +152,7 @@ public final class GuiItemDef {
         }
         int[] slots = SlotParser.parse(sec.get("slots"),
                 sec.isSet("slots") ? message -> warn.accept("Item '" + id + "': " + message) : null);
+        boolean keyAbsentFromLayout = false;
         String keyRaw = sec.getString("key", "");
         if (!keyRaw.isEmpty()) {
             if (layout == null) {
@@ -147,11 +165,17 @@ public final class GuiItemDef {
                 if (trimmed.length() != 1) {
                     warn.accept("Item '" + id + "': key '" + keyRaw
                             + "' is invalid (must be 1 character); key ignored");
+                } else if (layout.isEmpty()) {
+                    warn.accept("Item '" + id + "': 'key' declared but the menu has no"
+                            + " layout; ignored");
                 } else {
                     int[] keyed = layout.get(trimmed.charAt(0));
                     if (keyed == null) {
-                        warn.accept("Item '" + id + "': key '" + trimmed.charAt(0)
-                                + "' does not appear in layout; key ignored");
+                        // A layout that simply lacks the letter is the owner HIDING the
+                        // button - the supported way to remove one without editing items:.
+                        // Valid configuration, so it is silent; the caller skips its own
+                        // has-slots warning through hiddenByLayout().
+                        keyAbsentFromLayout = true;
                     } else {
                         slots = keyed.clone();
                     }
@@ -172,7 +196,7 @@ public final class GuiItemDef {
             navDisabled = parse(yml, path + ".nav-disabled", id + ".nav-disabled", null, warn);
         }
         return new GuiItemDef(id, yml, path, slots, updateInterval, viewReq, clickReq,
-                clickActions, denyActions, perClick, navKind, navDisabled);
+                clickActions, denyActions, perClick, navKind, navDisabled, keyAbsentFromLayout);
     }
 
     /**

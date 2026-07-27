@@ -210,13 +210,9 @@ Both sides may, and the two only ever **add** protection:
 
 There is no way to *remove* protection, only to add it, so an author-declared section stays declared no matter what the disk file says. Before 1.19.0 only the resource counted and a marker typed on disk was inert.
 
-The owner-declared case is reported so a frozen section never fails silently:
+What an owner-declared marker withheld is recorded at `FINE`, so it never reaches the console by default. It was a `WARNING` in 1.19.0 and that was a mistake: freezing a section in order to delete entries permanently is the whole point of the marker, and your resource keeps shipping those entries forever, so the condition never clears - the warning repeated on every boot for a deliberate choice with nothing to act on. Raise the log level if you ever need to see it.
 
-```
-[update-configs] main.yml: 3 key(s) not inserted because the file declares sn:extensible at 'items'
-```
-
-It fires only while keys are actually being withheld, so a file the owner froze after it was already complete logs nothing. Design consequence for you: **read every key with a default anyway**. An owner can freeze any section of any file, so "the merge guarantees this key exists" was never a safe assumption, and it is now clearly not one.
+Design consequence for you: **read every key with a default anyway**. An owner can freeze any section of any file, so "the merge guarantees this key exists" was never a safe assumption, and it is now clearly not one.
 
 A marker on a key that holds a plain value (`# sn:extensible` above `max-uses: 10`) protects nothing and is always a mistake; SnLib logs one WARN naming the key, for the resource and for the disk file alike (a finding present in both is reported once, not twice). An empty section (`cores: {}`) is a legitimate empty catalogue and is never reported.
 

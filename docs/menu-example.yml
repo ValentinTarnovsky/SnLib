@@ -246,9 +246,14 @@ items:
   # key: exactly ONE character of the menu layout. The item renders in
   # EVERY layout cell holding that character (a filler key appearing in N
   # cells renders in the N slots). If both key and slots are declared,
-  # slots wins with a WARN and key is ignored. A key that does not appear
-  # in the layout (or an invalid multi-character key) ignores the item
-  # with a WARN. Templates and nav-disabled sections do not support key.
+  # slots wins with a WARN and key is ignored. An invalid multi-character
+  # key, or a key declared in a menu with no layout at all, ignores the
+  # item with a WARN.
+  # REMOVING A BUTTON: delete its character from the layout above. The
+  # item stays declared here but is not rendered, and nothing is logged -
+  # this is the intended way to remove a button without editing items:.
+  # Templates resolve key: the same way since 1.18.0; nav-disabled
+  # override sections do not support key.
   example-layout-item:
     display-name: "&7Filler"
     material: GRAY_STAINED_GLASS_PANE

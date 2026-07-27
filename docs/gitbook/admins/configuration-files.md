@@ -87,13 +87,7 @@ items:
 
 From then on, the entries you delete under `items:` stay deleted. Use `# sn:extensible-root` in the header to freeze a whole file the same way.
 
-Because you are freezing a section the plugin still considers its own, it tells you what it withheld:
-
-```
-[update-configs] main.yml: 3 key(s) not inserted because the file declares sn:extensible at 'items'
-```
-
-That line is informational, not an error. It appears only while there really are keys being held back, so once your file has everything it needs it goes quiet. Worth knowing before you use it:
+Freezing a section is silent. Nothing is logged to your console for it, because you asked for it on purpose and there would be nothing to act on. Worth knowing before you use it:
 
 - **Freezing is one-way.** A marker the plugin shipped cannot be turned off by deleting the comment - those sections are yours by the author's decision, and removing the line changes nothing.
 - **You stop receiving new keys there.** If a later version adds a button, a field or a setting inside the section you froze, it will not arrive. That is the whole point, but it does mean a feature that needs a new key will not work until you add it or remove the marker.

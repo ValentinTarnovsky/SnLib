@@ -113,8 +113,8 @@ anchored position, preserving user values, extra keys and comments.
   Either side may declare it: in the jar resource the AUTHOR states the entries
   are the owner's (binding - deleting the comment on disk does not switch merging
   back on), and on disk the OWNER freezes a subtree the author still manages
-  (reported once per boot, naming the file and the key). Protection only ever
-  adds, never subtracts.
+  (silent: recorded at FINE, never warned about, since the owner asked for it and
+  the condition never clears). Protection only ever adds, never subtracts.
 
 ## text module (SnText: MiniMessage + [small] + [rgb] + [center])
 

@@ -52,12 +52,13 @@ import org.jetbrains.annotations.Nullable;
  *       merge back on, so an owner cannot un-declare an author-owned section.</li>
  *   <li>The DISK file declaring it is the server owner freezing that subtree in their own
  *       file, for a section the author still manages. Keys the plugin would have inserted
- *       there are withheld and reported once per boot, naming the file and the key.</li>
+ *       there are withheld, recorded at FINE and never warned about: the owner asked for
+ *       this, and because the resource keeps shipping those entries the condition never
+ *       clears, so a warning would repeat forever with nothing to act on.</li>
  * </ul>
  *
  * <p>The flip side of freezing a section the author still owns is that schema keys added in
- * a later version never reach it. That is the owner's call to make, which is why it is
- * reported rather than silently honored.</p>
+ * a later version never reach it. That is the owner's call to make.</p>
  *
  * <p>Master gate: the boolean {@code update-configs} is read by parsing the consumer
  * config straight from DISK before any merge; an absent key or file counts as
@@ -303,9 +304,15 @@ public final class YamlUpdater {
     }
 
     /**
-     * Reports the owner-declared markers that actually withheld keys, one WARN per marker.
-     * Silent when a marker kept nothing out, so this fires only while the file is genuinely
-     * missing keys the plugin ships - the same cadence as the {@code update-configs} gate.
+     * Records what an owner-declared marker withheld, at FINE so it never reaches the console
+     * by default.
+     *
+     * <p>This was a WARNING in 1.19.0 and that was wrong: freezing a section in order to
+     * delete entries permanently is the whole point of the marker, and the resource keeps
+     * shipping those entries forever, so the condition never clears and the warning would
+     * repeat on every boot for a configuration the owner chose deliberately. A deliberate
+     * choice is not a defect, and a warning that can never be resolved is noise. The record
+     * stays available for diagnosis by raising the log level.</p>
      */
     private static void logFrozenByDiskMarker(Logger logger, File diskFile,
                                               Map<String, Integer> frozen) {
@@ -313,7 +320,7 @@ public final class YamlUpdater {
             String where = entry.getKey().isEmpty()
                     ? "the file header declares " + EXTENSIBLE_ROOT_MARKER
                     : "the file declares " + EXTENSIBLE_MARKER + " at '" + entry.getKey() + "'";
-            logger.warning("[update-configs] " + diskFile.getName() + ": " + entry.getValue()
+            logger.fine("[update-configs] " + diskFile.getName() + ": " + entry.getValue()
                     + " key(s) not inserted because " + where);
         }
     }

@@ -46,7 +46,9 @@ import com.sn.lib.yml.SnYml;
  *       potion-effects, skull-owner (per-viewer
  *       placeholders), attributes, damage
  *     slots (int, list, ranges "0-8", mixed) or key     -> GuiItemDef.parse via SlotParser
- *       (one layout char; declared slots win over key)     or the menu layout map
+ *       (one layout char; declared slots win over key;     or the menu layout map
+ *       a key the layout lacks HIDES the item, with
+ *       no warning: that is how a button is removed)
  *     N items may share a slot or key (1.17.0): the    -> resolved per slot by GuiSession
  *       first declared whose view-requirements pass       (render and click use the same
  *       owns the cell; all hidden -> empty cell            declaration-order fallthrough)
@@ -159,7 +161,12 @@ public final class GuiDef {
                     continue;
                 }
                 if (!item.hasSlots()) {
-                    warn.accept("Item '" + key + "' has no valid slots; not rendered");
+                    // Silent when the owner hid the button by removing its letter from the
+                    // layout: that is how a button is meant to be removed, and warning about
+                    // it would fire on every boot for a configuration that is working.
+                    if (!item.hiddenByLayout()) {
+                        warn.accept("Item '" + key + "' has no valid slots; not rendered");
+                    }
                     continue;
                 }
                 items.add(item);
