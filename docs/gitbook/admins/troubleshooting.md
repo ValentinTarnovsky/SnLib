@@ -56,7 +56,7 @@ That is the auto-updater doing its job: it compares your file against the defaul
 Whether a deletion should stick depends on what you deleted:
 
 - **A plugin setting** (a number, a toggle, a message). It is part of the plugin's structure and will always come back. If you want it inactive, set it to the value that disables it rather than deleting the line.
-- **An entry in a section you are meant to fill yourself** - a point type, a world, a reward. Those sections are marked with a `# sn:extensible` comment line above them, and inside a marked section your deletions ARE permanent. If your deletion keeps reverting and the section has no marker, the plugin does not consider those entries yours; report it to the plugin author rather than fighting the file.
+- **An entry in a section you are meant to fill yourself** - a point type, a world, a reward. Those sections are marked with a `# sn:extensible` comment line above them, and inside a marked section your deletions ARE permanent. If your deletion keeps reverting and the section has no marker, the plugin does not consider those entries yours - but you can add the marker line yourself above that section and it will be honored from the next restart. Read [Marking a section yourself](configuration-files.md) first: the trade is that new keys the plugin adds there in a later version stop arriving.
 
 See [Sections that are yours](configuration-files.md) for the full rules, including how to end up with zero entries in a marked section.
 

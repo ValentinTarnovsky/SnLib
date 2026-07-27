@@ -163,9 +163,10 @@ class YamlUpdaterTest {
 
     @Test
     void withoutTheMarkerTheSameDeletionsAreRestored() throws IOException {
-        List<String> unmarked = new ArrayList<>(fixture("extensible-resource.yml"));
-        unmarked.removeIf(line -> line.trim().equalsIgnoreCase("# " + YamlUpdater.EXTENSIBLE_MARKER));
-        List<String> merged = YamlUpdater.merge(unmarked, fixture("extensible-old.yml"));
+        // Unmarked on BOTH sides: the disk fixture was seeded from a marked resource and so
+        // carries the marker itself, and since 1.19.0 that copy declares the section too.
+        List<String> merged = YamlUpdater.merge(unmarked("extensible-resource.yml"),
+                unmarked("extensible-old.yml"));
         assertTrue(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
         assertTrue(merged.stream().anyMatch(line -> line.trim().equals("death: 1")));
     }
@@ -231,6 +232,68 @@ class YamlUpdaterTest {
         assertTrue(merged.contains("  material: NETHERITE_SWORD"));
     }
 
+    // ------------------------------------------------------------------
+    // Owner-declared markers: the marker typed into the DISK file (1.19.0)
+    // ------------------------------------------------------------------
+
+    @Test
+    void aMarkerTypedIntoTheDiskFileFreezesTheSection() throws IOException {
+        // The author does NOT declare the section owner-owned; the owner does, in their file.
+        List<String> merged = YamlUpdater.merge(unmarked("extensible-resource.yml"),
+                fixture("extensible-old.yml"));
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("death: 1")));
+        assertTrue(merged.stream().anyMatch(line -> line.trim().equals("raids:")));
+    }
+
+    @Test
+    void aDiskMarkerFreezesOnlyItsOwnSubtree() throws IOException {
+        List<String> merged = YamlUpdater.merge(unmarked("extensible-resource.yml"),
+                fixture("extensible-old.yml"));
+        // Schema outside the marked section keeps merging normally, with its comment.
+        int comment = merged.indexOf("  # NEW in this version: seconds between leaderboard refreshes.");
+        assertTrue(comment >= 0);
+        assertEquals(comment + 1, merged.indexOf("  refresh-seconds: 60"));
+        assertTrue(YamlUpdater.isParseable(String.join("\n", merged)));
+    }
+
+    @Test
+    void aResourceMarkerStillWinsWhenTheOwnerDeletesTheComment() throws IOException {
+        // The anti-tamper property the OR semantics must preserve: an author-declared section
+        // stays declared even with the comment stripped from the disk copy.
+        List<String> merged = YamlUpdater.merge(fixture("extensible-resource.yml"),
+                unmarked("extensible-old.yml"));
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("mobkills:")));
+        assertFalse(merged.stream().anyMatch(line -> line.trim().equals("death: 1")));
+    }
+
+    @Test
+    void aRootMarkerTypedIntoTheDiskHeaderFreezesTheWholeFile() {
+        List<String> resource = List.of(
+                "# Items catalogue.",
+                "sword:",
+                "  material: DIAMOND_SWORD",
+                "shield:",
+                "  material: SHIELD");
+        List<String> disk = List.of(
+                "# Items catalogue.",
+                "# " + YamlUpdater.EXTENSIBLE_ROOT_MARKER,
+                "",
+                "sword:",
+                "  material: NETHERITE_SWORD");
+        assertEquals(disk, YamlUpdater.merge(resource, disk));
+        assertEquals(disk, YamlUpdater.prune(resource, disk));
+    }
+
+    @Test
+    void pruneHonorsAMarkerTypedIntoTheDiskFile() throws IOException {
+        List<String> disk = fixture("extensible-old.yml");
+        List<String> pruned = YamlUpdater.prune(unmarked("extensible-resource.yml"), disk);
+        // 'raids' exists in no resource, marked or not: only the disk marker saves it here.
+        assertTrue(pruned.stream().anyMatch(line -> line.trim().equals("raids:")));
+        assertEquals(disk, pruned);
+    }
+
     @Test
     void markerWarningsFlagAMarkerPlacedOnAValue() {
         List<String> warnings = YamlUpdater.markerWarnings(
@@ -251,6 +314,13 @@ class YamlUpdaterTest {
                 "    enabled: true")).isEmpty());
         assertTrue(YamlUpdater.markerWarnings(fixture("extensible-resource.yml")).isEmpty());
         assertTrue(YamlUpdater.markerWarnings(fixture("merge-resource.yml")).isEmpty());
+    }
+
+    /** The fixture with every {@code # sn:extensible} comment line stripped out. */
+    private static List<String> unmarked(String name) throws IOException {
+        List<String> lines = new ArrayList<>(fixture(name));
+        lines.removeIf(line -> line.trim().equalsIgnoreCase("# " + YamlUpdater.EXTENSIBLE_MARKER));
+        return lines;
     }
 
     private static List<String> fixture(String name) throws IOException {

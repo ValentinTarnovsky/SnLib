@@ -16,7 +16,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -35,15 +37,27 @@ import org.jetbrains.annotations.Nullable;
  * Indentation is assumed to use spaces and to be consistent between resource and disk
  * (both come from the same plugin baseline).</p>
  *
- * <p>User-owned sections: a {@code # sn:extensible} comment line in the RESOURCE, inside
- * the comment block of a key, declares that everything under that key is server-owner
- * data rather than plugin schema. Nothing below it is ever inserted or pruned, so an
- * entry the owner deletes stays deleted while entries they add keep surviving. The key
- * itself remains schema: deleting the whole section restores the block, an empty section
- * ({@code points: {}}) is preserved as-is. A {@code # sn:extensible-root} line in the
- * file header applies the same rule to the top-level keyset, for files whose every root
- * key is an entry id. Only the resource declares this; a marker typed into the disk file
- * has no effect.</p>
+ * <p>User-owned sections: a {@code # sn:extensible} comment line inside the comment block
+ * of a key declares that everything under that key is server-owner data rather than plugin
+ * schema. Nothing below it is ever inserted or pruned, so an entry the owner deletes stays
+ * deleted while entries they add keep surviving. The key itself remains schema: deleting the
+ * whole section restores the block, an empty section ({@code points: {}}) is preserved as-is.
+ * A {@code # sn:extensible-root} line in the file header applies the same rule to the
+ * top-level keyset, for files whose every root key is an entry id.</p>
+ *
+ * <p>EITHER side may declare it, and the two only ever ADD protection (since 1.19.0):</p>
+ * <ul>
+ *   <li>The RESOURCE declaring it is the plugin author stating that those entries belong to
+ *       the owner. It is binding: deleting the comment from the disk file does NOT switch the
+ *       merge back on, so an owner cannot un-declare an author-owned section.</li>
+ *   <li>The DISK file declaring it is the server owner freezing that subtree in their own
+ *       file, for a section the author still manages. Keys the plugin would have inserted
+ *       there are withheld and reported once per boot, naming the file and the key.</li>
+ * </ul>
+ *
+ * <p>The flip side of freezing a section the author still owns is that schema keys added in
+ * a later version never reach it. That is the owner's call to make, which is why it is
+ * reported rather than silently honored.</p>
  *
  * <p>Master gate: the boolean {@code update-configs} is read by parsing the consumer
  * config straight from DISK before any merge; an absent key or file counts as
@@ -68,14 +82,16 @@ public final class YamlUpdater {
 
     /**
      * Comment token declaring that the entries of the key below it belong to the server
-     * owner: nothing under that key is ever inserted or pruned. Written on its own
-     * comment line in the jar resource.
+     * owner: nothing under that key is ever inserted or pruned. Written on its own comment
+     * line, either in the jar resource (the author declares the section owner-owned) or in
+     * the disk file (the owner freezes that subtree in their own copy).
      */
     public static final String EXTENSIBLE_MARKER = "sn:extensible";
 
     /**
      * Comment token for files whose every top-level key is an entry id (an items file,
-     * a catalogue). Recognized only in the file header, before the first key.
+     * a catalogue). Recognized only in the file header, before the first key, on either
+     * side like {@link #EXTENSIBLE_MARKER}.
      */
     public static final String EXTENSIBLE_ROOT_MARKER = "sn:extensible-root";
 
@@ -88,7 +104,7 @@ public final class YamlUpdater {
      * right after the nearest preceding sibling shared with the resource, otherwise
      * before the nearest following shared sibling, otherwise at the end of the parent.
      * User values and extra keys are never touched, and nothing is inserted below a key
-     * the resource marked {@code # sn:extensible}. No I/O, safe for plain unit tests.
+     * EITHER side marked {@code # sn:extensible}. No I/O, safe for plain unit tests.
      */
     public static List<String> merge(List<String> resourceLines, List<String> diskLines) {
         List<String> result = new ArrayList<>(diskLines);
@@ -156,7 +172,10 @@ public final class YamlUpdater {
             }
             List<String> diskLines = new ArrayList<>(
                     Files.readAllLines(diskFile.toPath(), StandardCharsets.UTF_8));
-            List<Insertion> insertions = planInsertions(resourceLines, diskLines);
+            logDiskMarkerWarnings(plugin.getLogger(), resourceLines, diskLines, diskFile);
+            Map<String, Integer> frozen = new LinkedHashMap<>();
+            List<Insertion> insertions = planInsertions(resourceLines, diskLines, frozen);
+            logFrozenByDiskMarker(plugin.getLogger(), diskFile, frozen);
             List<String> result = new ArrayList<>(diskLines);
             applyInsertions(result, insertions);
             if (prune) {
@@ -228,7 +247,12 @@ public final class YamlUpdater {
             }
             List<String> diskLines = new ArrayList<>(
                     Files.readAllLines(diskFile.toPath(), StandardCharsets.UTF_8));
-            List<Insertion> insertions = planInsertions(referenceLines, diskLines);
+            logDiskMarkerWarnings(logger, referenceLines, diskLines, diskFile);
+            Map<String, Integer> frozen = new LinkedHashMap<>();
+            List<Insertion> insertions = planInsertions(referenceLines, diskLines, frozen);
+            // Report BEFORE the early return: a marker that withheld everything leaves no
+            // insertions, and that is exactly the case worth reporting.
+            logFrozenByDiskMarker(logger, diskFile, frozen);
             if (insertions.isEmpty()) {
                 return false;
             }
@@ -260,6 +284,37 @@ public final class YamlUpdater {
     private static void logMarkerWarnings(Logger logger, List<String> referenceLines, File diskFile) {
         for (String warning : markerWarnings(referenceLines)) {
             logger.warning("[update-configs] " + diskFile.getName() + ": " + warning);
+        }
+    }
+
+    /**
+     * Reports the misplaced markers the OWNER typed into the disk file, so a marker that
+     * protects nothing is as visible to them as it is to the plugin author. Findings the
+     * reference already carries are dropped: the disk file was seeded from it, so reporting
+     * both would log the same authoring mistake twice per file.
+     */
+    private static void logDiskMarkerWarnings(Logger logger, List<String> referenceLines,
+                                              List<String> diskLines, File diskFile) {
+        List<String> warnings = new ArrayList<>(markerWarnings(diskLines));
+        warnings.removeAll(markerWarnings(referenceLines));
+        for (String warning : warnings) {
+            logger.warning("[update-configs] " + diskFile.getName() + ": " + warning);
+        }
+    }
+
+    /**
+     * Reports the owner-declared markers that actually withheld keys, one WARN per marker.
+     * Silent when a marker kept nothing out, so this fires only while the file is genuinely
+     * missing keys the plugin ships - the same cadence as the {@code update-configs} gate.
+     */
+    private static void logFrozenByDiskMarker(Logger logger, File diskFile,
+                                              Map<String, Integer> frozen) {
+        for (Map.Entry<String, Integer> entry : frozen.entrySet()) {
+            String where = entry.getKey().isEmpty()
+                    ? "the file header declares " + EXTENSIBLE_ROOT_MARKER
+                    : "the file declares " + EXTENSIBLE_MARKER + " at '" + entry.getKey() + "'";
+            logger.warning("[update-configs] " + diskFile.getName() + ": " + entry.getValue()
+                    + " key(s) not inserted because " + where);
         }
     }
 
@@ -305,10 +360,23 @@ public final class YamlUpdater {
     // ------------------------------------------------------------------
 
     private static List<Insertion> planInsertions(List<String> resourceLines, List<String> diskLines) {
+        return planInsertions(resourceLines, diskLines, new LinkedHashMap<>());
+    }
+
+    /**
+     * Plans the insertions and records what an OWNER-declared marker kept out: {@code frozen}
+     * maps the path of a {@code # sn:extensible} declared on DISK (the empty string for a
+     * {@code # sn:extensible-root} header) to the number of resource blocks it withheld. A
+     * marker declared in the resource is the documented contract and is never recorded, and a
+     * disk marker that withholds nothing leaves no entry, so a steady-state boot reports
+     * nothing.
+     */
+    private static List<Insertion> planInsertions(List<String> resourceLines, List<String> diskLines,
+                                                  Map<String, Integer> frozen) {
         Node resourceRoot = parse(resourceLines);
         Node diskRoot = parse(diskLines);
         List<Insertion> insertions = new ArrayList<>();
-        collectInsertions(resourceRoot, diskRoot, resourceLines, diskLines, insertions);
+        collectInsertions(resourceRoot, diskRoot, resourceLines, diskLines, insertions, "", null, frozen);
         insertions.sort(Comparator.comparingInt((Insertion i) -> i.position).reversed()
                 .thenComparing(Comparator.comparingInt((Insertion i) -> i.sequence).reversed()));
         return insertions;
@@ -322,16 +390,29 @@ public final class YamlUpdater {
     }
 
     private static void collectInsertions(Node resource, Node disk, List<String> resourceLines,
-                                          List<String> diskLines, List<Insertion> out) {
+                                          List<String> diskLines, List<Insertion> out,
+                                          String path, @Nullable String frozenAt,
+                                          Map<String, Integer> frozen) {
         if (resource.extensible) {
-            // Everything below belongs to the server owner: what they deleted stays deleted.
+            // The AUTHOR declared these entries the owner's: what they deleted stays deleted.
+            // Binding and silent - this is the contract the resource ships with.
             return;
+        }
+        if (frozenAt == null && disk.extensible) {
+            // The OWNER declared it in their own file. Keep walking rather than returning, so
+            // what the marker withholds can be counted and reported; the outermost marker owns
+            // the report, which is the one the owner actually typed.
+            frozenAt = path;
         }
         List<Node> rChildren = resource.children;
         for (int idx = 0; idx < rChildren.size(); idx++) {
             Node rChild = rChildren.get(idx);
             Node dChild = disk.findChild(rChild.key);
             if (dChild == null) {
+                if (frozenAt != null) {
+                    frozen.merge(frozenAt, 1, Integer::sum);
+                    continue;
+                }
                 int insertAt = computeInsertPosition(resource, idx, disk, diskLines);
                 List<String> block = new ArrayList<>();
                 for (int li = rChild.blockStart; li <= rChild.blockEnd; li++) {
@@ -339,7 +420,9 @@ public final class YamlUpdater {
                 }
                 out.add(new Insertion(insertAt, rChild.blockStart, block));
             } else {
-                collectInsertions(rChild, dChild, resourceLines, diskLines, out);
+                String childPath = path.isEmpty() ? rChild.key : path + "." + rChild.key;
+                collectInsertions(rChild, dChild, resourceLines, diskLines, out,
+                        childPath, frozenAt, frozen);
             }
         }
     }
@@ -382,7 +465,7 @@ public final class YamlUpdater {
      * Pure prune entry: returns a copy of {@code lines} with every block whose key path
      * does not exist in the resource removed, comments included. Opt-in only, via
      * {@code managedPruning}; the default merge never deletes user keys. Stops at any key
-     * the resource marked {@code # sn:extensible}, whose entries are owner data rather
+     * EITHER side marked {@code # sn:extensible}, whose entries are owner data rather
      * than stale keys. No I/O, safe for plain unit tests.
      */
     public static List<String> prune(List<String> resourceLines, List<String> lines) {
@@ -402,8 +485,9 @@ public final class YamlUpdater {
     }
 
     private static void collectRemovals(Node resource, Node disk, List<int[]> out) {
-        if (resource.extensible) {
-            // Owner-owned entries are not "stale keys": pruning stops at the marker.
+        if (resource.extensible || disk.extensible) {
+            // Owner-owned entries are not "stale keys": pruning stops at the marker, whether
+            // the author declared it in the resource or the owner declared it on disk.
             return;
         }
         for (Node dChild : disk.children) {
@@ -565,17 +649,19 @@ public final class YamlUpdater {
     }
 
     /**
-     * Lists the misplaced {@code sn:extensible} markers of a resource: a marker declares
-     * that the ENTRIES of a section belong to the server owner, so putting it on a key
-     * that holds a plain value protects nothing and is always an authoring mistake. An
-     * empty section ({@code cores: {}}, a section with no entries yet) is legitimate and
-     * never reported. Pure, safe for plain unit tests.
+     * Lists the misplaced {@code sn:extensible} markers of a yml: a marker declares that the
+     * ENTRIES of a section belong to the server owner, so putting it on a key that holds a
+     * plain value protects nothing and is always a mistake. An empty section
+     * ({@code cores: {}}, a section with no entries yet) is legitimate and never reported.
+     * Applies to a jar resource and to a disk file alike, since either may declare a marker.
+     * Pure, safe for plain unit tests.
      *
-     * @return one human-readable line per misplaced marker, empty when the resource is fine
+     * @param lines the yml to lint, resource or disk file
+     * @return one human-readable line per misplaced marker, empty when the file is fine
      */
-    public static List<String> markerWarnings(List<String> resourceLines) {
+    public static List<String> markerWarnings(List<String> lines) {
         List<String> out = new ArrayList<>();
-        collectMarkerWarnings(parse(resourceLines), "", out);
+        collectMarkerWarnings(parse(lines), "", out);
         return out;
     }
 

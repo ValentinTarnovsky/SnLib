@@ -196,12 +196,29 @@ epic_sword:
 It works in any yml the updater touches: the main config, `managed`/`managedPruning` files, `guis/*.yml`, `lang/`, `items.yml`.
 
 {% hint style="warning" %}
-Only the jar resource declares this. A marker typed by hand into the file on disk does nothing, and the owner cannot disable the protection by deleting the comment.
-
 The flip side of the subtree rule: a sub-key you add later inside a shipped entry does NOT reach servers that already have that entry. That is intentional - entries the owner created themselves could never receive it either - so read every sub-key of an entry with a default, always.
 {% endhint %}
 
-A marker on a key that holds a plain value (`# sn:extensible` above `max-uses: 10`) protects nothing and is always a mistake; SnLib logs one WARN naming the key. An empty section (`cores: {}`) is a legitimate empty catalogue and is never reported.
+### Who may declare it (since 1.19.0)
+
+Both sides may, and the two only ever **add** protection:
+
+| Declared in | Means | Effect |
+|---|---|---|
+| the jar **resource** | you, the author, stating the entries are the owner's | binding: the owner cannot switch merging back on by deleting the comment from their file |
+| the **disk** file | the server owner freezing that subtree in their own copy | the keys you would have inserted there are withheld, and SnLib reports it once per boot |
+
+There is no way to *remove* protection, only to add it, so an author-declared section stays declared no matter what the disk file says. Before 1.19.0 only the resource counted and a marker typed on disk was inert.
+
+The owner-declared case is reported so a frozen section never fails silently:
+
+```
+[update-configs] main.yml: 3 key(s) not inserted because the file declares sn:extensible at 'items'
+```
+
+It fires only while keys are actually being withheld, so a file the owner froze after it was already complete logs nothing. Design consequence for you: **read every key with a default anyway**. An owner can freeze any section of any file, so "the merge guarantees this key exists" was never a safe assumption, and it is now clearly not one.
+
+A marker on a key that holds a plain value (`# sn:extensible` above `max-uses: 10`) protects nothing and is always a mistake; SnLib logs one WARN naming the key, for the resource and for the disk file alike (a finding present in both is reported once, not twice). An empty section (`cores: {}`) is a legitimate empty catalogue and is never reported.
 
 ### Backups
 

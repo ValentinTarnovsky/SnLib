@@ -21,7 +21,11 @@ The plugin ships its default menus inside its jar and copies them into this fold
 If a plugin declares that it has menus but the `guis/` folder is empty and nothing loads, it logs a warning pointing at the folder. Normally you never see this, because the plugin's own menus are seeded automatically; it only shows up if the files were deleted or the plugin shipped without any bundled menu.
 {% endhint %}
 
-Being managed also means that deleting a button normally brings it back on the next restart. When a plugin intends for you to add and remove buttons freely, its `items:` block carries a `# sn:extensible` comment line - inside a marked block your deletions are permanent. The same marker appears in item files, usually as `# sn:extensible-root` in the header, when every entry in the file is yours to manage. See [Sections that are yours](configuration-files.md) for the full rules.
+Being managed also means that deleting a button normally brings it back on the next restart. When a plugin intends for you to add and remove buttons freely, its `items:` block carries a `# sn:extensible` comment line - inside a marked block your deletions are permanent. The same marker appears in item files, usually as `# sn:extensible-root` in the header, when every entry in the file is yours to manage. If a menu you want to trim did not ship with the marker, you can add the line yourself and the plugin will honor it. See [Sections that are yours](configuration-files.md) for the full rules.
+
+{% hint style="info" %}
+To simply **hide** a button, you do not need the marker at all: remove its letter from `layout` and the button stops being drawn, wherever its definition still sits in `items:`. Deleting the entry (and marking the block so it stays deleted) is only worth it when you want the file itself to be shorter.
+{% endhint %}
 
 Each file describes one menu top to bottom. What you can customize includes:
 
