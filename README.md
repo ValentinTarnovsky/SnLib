@@ -650,7 +650,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.20.0`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.20.1`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`

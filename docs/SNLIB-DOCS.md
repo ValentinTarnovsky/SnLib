@@ -41,6 +41,11 @@
 > per CELL: an unfilled cell, an entry with no template and one hidden by its view-requirements
 > all fall through to the declared item, on render and on click alike. Precedence is manual
 > bind &gt; paged &gt; region &gt; declared. No pagination required (section 12).
+> Updated on 2026-07-27 for the 1.20.1 change (no API level change): the self-updater's
+> `plugins/.snlib-update/` staging folder is removed once it is empty instead of being left on
+> disk after every update. `install` now wraps `swap` in a `try/finally` so every exit cleans
+> up, and `purgeStagingIn` removes the folder after sweeping its `.part` files on arm (section
+> 17.b).
 > Updated on 2026-07-24 for the 1.14.0 change (API level 9): the generated command help is
 > translatable - the description of every command and the visible label of every argument are
 > seeded into `lang/messages_en.yml` under a top-level `commands` block (reserved
@@ -3358,7 +3363,7 @@ This module closes the documentation with the infrastructure that sustains the l
 
 ### pom.xml (SnLib build)
 `pom.xml`
-Coordinates `com.sn:snlib:1.20.0`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=12`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (12 since the 1.20.0 release; the Velocity base is a separate surface outside the level; history in SnApi's Javadoc). Both values are hand-maintained and must be bumped in the SAME edit as the constant.
+Coordinates `com.sn:snlib:1.20.1`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=12`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (12 since the 1.20.0 release; the Velocity base is a separate surface outside the level; history in SnApi's Javadoc). Both values are hand-maintained and must be bumped in the SAME edit as the constant.
 
 Declared repositories:
 
@@ -3882,12 +3887,13 @@ Public surface (all inside the internal package):
 - `descriptorOf(Path)` reads a jar's `plugin.yml` text (null for a non-archive or a jar without one) and backs both `verifyJar` (identity + expected version, for a download) and `isOwnJar` (identity only, any version, for recognising an installed jar). `isOwnJar` is never used to accept a download.
 - Windows fallback: when the filesystem refuses the swap because the running jar is locked, the verified file is moved into `Bukkit.getUpdateFolderFile()` under the running jar's exact file name, which the server applies at the next boot. So the feature degrades to the native update-folder mechanism rather than failing.
 - Staging lives in `plugins/.snlib-update/`. Subdirectories of `plugins/` are never scanned for jars, so a partial download can never be loaded; leftovers are purged on arm - on arm both the installed jar's folder and the loaded jar's folder are swept, so the `.snlib-update` folder 1.16.0/1.16.1 left inside the remap cache is cleaned up too.
+- **The folder does not outlive the pass that created it (v1.20.1).** `install` delegates to `swap` inside a `try/finally` whose `finally` calls `deleteStagingIfEmpty`, so every exit - verified swap, verification failure, Windows lock fallback, rollback - removes the folder; `purgeStagingIn` removes it too after sweeping the `.part` files on arm. The removal is `Files.deleteIfExists`, which refuses a non-empty directory, so anything still staged (or a file the owner put there) survives untouched and no failure is ever logged. Before 1.20.1 the `.part` was moved out or deleted but the empty `.snlib-update` was left on disk for good.
 - Outputs: console INFO `SnLib <new> installed on disk; restart the server to activate it (running <old>).`, a chat notice to online holders of `snlib.admin.update`, and the same notice to joiners while `pendingVersion` is set (its own `JoinListener`, inscribed in the ListenerHub next to the module's).
 - Reentrancy guarded by an `AtomicBoolean`; every pass early-returns on `ctx.isShuttingDown()`.
 
 ### SelfUpdaterTest
 `src/test/java/com/sn/lib/update/internal/SelfUpdaterTest.java`
-16 pure JUnit tests (no Bukkit, no network) over the decision helpers, all of which run before the installed jar is ever touched: the asset-URL allowlist (foreign owner, foreign repo, foreign host and an `http://` downgrade all rejected), the same-major gate, `targetFileName` for versioned and unversioned jars, `expectedSha256` normalization (rejecting non-sha256 algorithms and wrong lengths), `sha256` against a known vector, `assetsSlice` + `jsonString` against a payload whose release body deliberately contains the literal words `digest` and `browser_download_url`, and `verifyJar` accepting a well-formed descriptor while rejecting a wrong plugin name, a wrong main class, a wrong version, a missing `plugin.yml` and a file that is not a zip at all.
+24 pure JUnit tests (no Bukkit, no network) over the decision helpers, all of which run before the installed jar is ever touched: the asset-URL allowlist (foreign owner, foreign repo, foreign host and an `http://` downgrade all rejected), the same-major gate, `targetFileName` for versioned and unversioned jars, `expectedSha256` normalization (rejecting non-sha256 algorithms and wrong lengths), `sha256` against a known vector, `assetsSlice` + `jsonString` against a payload whose release body deliberately contains the literal words `digest` and `browser_download_url`, and `verifyJar` accepting a well-formed descriptor while rejecting a wrong plugin name, a wrong main class, a wrong version, a missing `plugin.yml` and a file that is not a zip at all. `deleteStagingIfEmpty` is covered on its three states: an empty `.snlib-update` is removed, one that still holds a `.part` is left untouched, and a folder that does not exist is not an error.
 
 ## 18. Region: cuboid selection (v1.1)
 

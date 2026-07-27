@@ -325,6 +325,11 @@ public final class SelfUpdater implements Reloadable {
     /**
      * Downloads, verifies and swaps the jar. Any verification failure deletes the partial
      * download and aborts without touching the installed jar.
+     *
+     * <p>Every exit runs through the {@code finally}, so the staging folder never outlives the
+     * pass that created it: whichever way this ends, the {@code .part} has either been moved
+     * out or deleted, and an empty {@code .snlib-update} is removed instead of being left
+     * behind on the owner's disk.</p>
      */
     private void install(File runningJar, String latest, String current, String assetUrl,
             @Nullable String expectedSha, @Nullable CommandSender sender) {
@@ -333,7 +338,18 @@ public final class SelfUpdater implements Reloadable {
             fail(sender, "self-update failed: the running jar has no parent directory", "no-parent");
             return;
         }
-        Path part = pluginsDir.resolve(STAGING_DIR).resolve("SnLib-" + latest + ".jar" + PART_SUFFIX);
+        try {
+            swap(pluginsDir, runningJar, latest, current, assetUrl, expectedSha, sender);
+        } finally {
+            deleteStagingIfEmpty(pluginsDir.resolve(STAGING_DIR));
+        }
+    }
+
+    /** Body of {@link #install}, split out so the staging cleanup wraps every exit. */
+    private void swap(Path pluginsDir, File runningJar, String latest, String current,
+            String assetUrl, @Nullable String expectedSha, @Nullable CommandSender sender) {
+        Path part = pluginsDir.resolve(STAGING_DIR)
+                .resolve("SnLib-" + latest + ".jar" + PART_SUFFIX);
         try {
             Files.createDirectories(part.getParent());
             long size = download(assetUrl, part);
@@ -529,9 +545,9 @@ public final class SelfUpdater implements Reloadable {
     }
 
     /**
-     * Drops leftover partial downloads from a previous run. Both the installed jar's folder
-     * and the loaded jar's folder are swept: on a remapping server they differ, and versions
-     * before 1.16.2 staged next to the loaded (remapped) jar.
+     * Drops leftover partial downloads from a previous run, then the staging folder itself.
+     * Both the installed jar's folder and the loaded jar's folder are swept: on a remapping
+     * server they differ, and versions before 1.16.2 staged next to the loaded (remapped) jar.
      */
     private void purgeStaging() {
         purgeStagingIn(ownJar());
@@ -549,6 +565,22 @@ public final class SelfUpdater implements Reloadable {
                     .forEach(SelfUpdater::deleteQuietly);
         } catch (IOException ignored) {
             // A staging folder we cannot list is not worth a warning; the next pass rewrites it.
+        }
+        deleteStagingIfEmpty(staging);
+    }
+
+    /**
+     * Removes the staging folder once nothing is left in it, so a server that has updated is
+     * not left with an inert {@code .snlib-update} directory next to its plugins. Best effort
+     * by design, and safe by construction: {@link Files#deleteIfExists} refuses a non-empty
+     * directory, so anything still staged (or any file the owner put there) survives. The
+     * folder is recreated by the next download that needs it.
+     */
+    static void deleteStagingIfEmpty(Path staging) {
+        try {
+            Files.deleteIfExists(staging);
+        } catch (IOException ignored) {
+            // Not empty, or locked: both are harmless, the folder is never scanned for jars.
         }
     }
 

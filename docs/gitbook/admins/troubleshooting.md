@@ -82,8 +82,9 @@ done by hand.
 2. Stop the server.
 3. Delete the old `SnLib-*.jar` from `plugins/` and put the new one in its place. Make sure exactly
    one SnLib jar is left there.
-4. Optionally delete any stray `SnLib-*.jar` and the `.snlib-update` folder inside
-   `plugins/.paper-remapped/` - leftovers from the bug. They are inert, just wasted disk.
+4. Optionally delete any stray `SnLib-*.jar` inside `plugins/.paper-remapped/` - a leftover from
+   the bug. It is inert, just wasted disk. The `.snlib-update` folder in there needs no action:
+   from 1.20.1 onward SnLib sweeps it on every start, in that folder as well as in `plugins/`.
 5. Start the server. `/snlib update` should now report the installed version as 1.16.2.
 
 From 1.16.2 onward the self-updater replaces the jar in `plugins/` and updates apply on restart as

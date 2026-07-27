@@ -236,6 +236,32 @@ class SelfUpdaterTest {
         assertFalse(SelfUpdater.isChildOf(dir.resolve("SnLib.jar").toFile(), plugins));
     }
 
+    // --- staging folder ------------------------------------------------------------
+
+    @Test
+    void emptyStagingFolderIsRemoved(@TempDir Path dir) throws IOException {
+        Path staging = Files.createDirectories(dir.resolve(".snlib-update"));
+        SelfUpdater.deleteStagingIfEmpty(staging);
+        assertFalse(Files.exists(staging));
+    }
+
+    @Test
+    void stagingFolderThatStillHoldsSomethingIsLeftAlone(@TempDir Path dir) throws IOException {
+        Path staging = Files.createDirectories(dir.resolve(".snlib-update"));
+        Path part = staging.resolve("SnLib-1.21.0.jar.part");
+        Files.write(part, "half a download".getBytes(StandardCharsets.UTF_8));
+
+        SelfUpdater.deleteStagingIfEmpty(staging);
+        assertTrue(Files.isDirectory(staging));
+        assertTrue(Files.exists(part));
+    }
+
+    @Test
+    void missingStagingFolderIsNotAnError(@TempDir Path dir) {
+        SelfUpdater.deleteStagingIfEmpty(dir.resolve(".snlib-update"));
+        assertFalse(Files.exists(dir.resolve(".snlib-update")));
+    }
+
     @Test
     void yamlValueReadsQuotedAndPlainScalars() {
         assertEquals("SnLib", SelfUpdater.yamlValue("name: SnLib\n", "name"));

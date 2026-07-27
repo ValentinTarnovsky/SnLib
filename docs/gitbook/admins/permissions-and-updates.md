@@ -90,6 +90,8 @@ Every `interval-hours` (12 by default), off the main thread, SnLib asks its own 
 
 Only after that does it swap the file: the new jar is written into `plugins/` and the old one is deleted. If the operating system refuses to replace the file because the server has it locked (this is the normal situation on Windows), SnLib instead hands the verified jar to the server's own update folder, which applies it at the next boot. Either way you end up with the new version in place.
 
+The download itself never lands directly in `plugins/`. It goes into a `plugins/.snlib-update/` folder while it is still unverified, because your server scans `plugins/` for jars but never looks inside its subfolders - so a download that gets cut halfway can never be loaded by mistake. Once the check is over, whichever way it ended, the folder is removed again. If you do find it sitting there, it is either an update in progress or the remains of one that was interrupted; it is inert either way, and the next check cleans it up.
+
 The file it replaces is always the SnLib jar sitting in your `plugins/` folder. That matters on Paper 1.20.5 and newer, which keeps a rewritten copy of every plugin in a `plugins/.paper-remapped/` cache and actually runs the copy - a cache the server rebuilds from `plugins/` on every boot, so a jar written there would be thrown away. If your `plugins/` folder somehow contains two SnLib jars, SnLib will not touch either of them and says so in the console; delete the one you do not want and the next check proceeds normally.
 
 You then see one console line and a chat notice to admins holding `snlib.admin.update`:
