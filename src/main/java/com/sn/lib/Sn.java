@@ -71,8 +71,21 @@ public final class Sn {
     private final SnCommands commands;
     private final ReloadManager reload;
 
-    /** Set by the teardown before anything else; flips SnYml.save() to synchronous writes. */
+    /**
+     * Teardown WINDOW: true from the moment the disable path starts, which is
+     * {@link #beginTeardown()} (right before the consumer's {@code onInnerDisable()}) or
+     * {@link #shutdown()} when nothing opened the window first. Flips SnYml.save() to
+     * synchronous writes and makes SnFuture.join() accept the calling thread.
+     */
     volatile boolean shuttingDown;
+
+    /**
+     * Idempotence guard of {@link #shutdown()}, deliberately SEPARATE from
+     * {@link #shuttingDown}: the window opens before the teardown runs, so the window flag
+     * cannot double as the "already torn down" guard without turning the whole teardown
+     * into a no-op.
+     */
+    private volatile boolean shutdownRan;
 
     Sn(JavaPlugin plugin, SnSpec spec) {
         this.plugin = plugin;
@@ -355,6 +368,19 @@ public final class Sn {
     }
 
     /**
+     * Opens the teardown window WITHOUT running the teardown: called by
+     * {@code SnPlugin.onDisable()} right before {@code onInnerDisable()}, which is the
+     * documented place for a consumer's final flush. From here {@link #isShuttingDown()}
+     * is true, so that flush writes yml inline and a {@code SnFuture.join()} on the main
+     * thread is recognized as part of the shutdown instead of being reported as an
+     * out-of-shutdown join. {@link #shutdown()} still performs the actual teardown and
+     * keeps its own idempotence guard.
+     */
+    void beginTeardown() {
+        shuttingDown = true;
+    }
+
+    /**
      * Shuts down every module owned by this context and releases its registrations, in a
      * strict order that never loses a pending write. Idempotent: only the first call runs
      * the teardown, and it flips the context to synchronous-write mode before anything
@@ -363,11 +389,13 @@ public final class Sn {
      * that is about to be cancelled.
      */
     public void shutdown() {
-        if (shuttingDown) {
+        if (shutdownRan) {
             return;
         }
+        shutdownRan = true;
         // 0. Flip to synchronous-write mode FIRST: SnYml.save() now writes inline and
-        //    SnFuture.join accepts the teardown thread.
+        //    SnFuture.join accepts the teardown thread. Already flipped when the consumer
+        //    disable path opened the window through beginTeardown(); idempotent either way.
         shuttingDown = true;
         // 1. Close this owner's open GUIs; each per-viewer session cancels its timers,
         //    untracks its holder and force-closes its viewer.

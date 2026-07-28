@@ -53,6 +53,13 @@ public abstract class SnPlugin extends JavaPlugin {
 
     @Override
     public final void onDisable() {
+        // The teardown window opens BEFORE the consumer's own disable logic: onInnerDisable
+        // is the documented place for the final flush, so a save or a join performed there
+        // must already count as shutdown work (inline yml writes, no out-of-shutdown join
+        // WARN). The teardown itself still runs in the finally.
+        if (sn != null) {
+            sn.beginTeardown();
+        }
         try {
             onInnerDisable();
         } finally {
@@ -74,7 +81,13 @@ public abstract class SnPlugin extends JavaPlugin {
     /** Consumer enable logic; runs after the handshake and the context initialization. */
     protected abstract void onInnerEnable();
 
-    /** Consumer disable logic; runs before the context teardown. Optional. */
+    /**
+     * Consumer disable logic; runs before the context teardown. Optional. The context is
+     * already inside its teardown window here ({@code sn().isShuttingDown()} is true), so
+     * a final flush behaves like teardown work: {@code SnYml.save()} writes inline and a
+     * {@code SnFuture.join()} on the main thread is allowed without a WARN. Every module
+     * is still live: the pool is open and joins complete normally.
+     */
     protected void onInnerDisable() {
     }
 

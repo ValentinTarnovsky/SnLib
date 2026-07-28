@@ -37,6 +37,13 @@ is not. During teardown the database module joins its pending writes and then
 calls `shutdownNow` after a timeout, so a clean shutdown never loses a write nor
 hangs forever.
 
+The teardown window opens before your `onInnerDisable()` runs, not after it: that
+method is the documented place for a final flush, so a `join()` there is inside
+the window and does not warn. Every module is still live at that point - the pool
+is open and the join completes normally. The window flag and the "teardown
+already ran" idempotency guard are two separate fields, so opening the window
+early never skips the teardown itself.
+
 ## Synchronous I/O only in `onEnable` and the reload path
 
 Blocking file or database I/O on the main thread is allowed in exactly two

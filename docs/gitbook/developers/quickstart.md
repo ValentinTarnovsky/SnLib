@@ -59,7 +59,7 @@ your jar) and that you do not shade it. A ready-to-copy template lives at
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
-            <version>1.20.1</version>
+            <version>1.20.2</version>
             <scope>provided</scope>
         </dependency>
 
@@ -243,7 +243,11 @@ private to your plugin; another consumer's context never sees your state.
 built. If it throws, `SnPlugin` logs the error and disables your plugin cleanly
 rather than leaving it half-initialized. `onInnerDisable()` is optional and runs
 before the library's own ordered teardown, which cleans up everything you
-registered (see [Multi-tenant contract](multi-tenant-contract.md)).
+registered (see [Multi-tenant contract](multi-tenant-contract.md)). It is the
+right place for your final flush: the context is already inside its teardown
+window there, so `sn().isShuttingDown()` is true, a `SnYml.save()` writes inline
+and a `SnFuture.join()` on the main thread is allowed without a warning. Every
+module is still live, so the join completes normally.
 
 ## Step 4: declare only what you use
 
