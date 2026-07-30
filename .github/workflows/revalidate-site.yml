@@ -1,0 +1,38 @@
+name: Revalidate sndevelopment.dev
+
+# sndevelopment.dev derives the SnLib docs and changelog from this repo and
+# caches them with ISR (15 minute windows). This job purges the matching cache
+# tags right after a change so the site updates in seconds. It is best effort:
+# if it fails or the secret is missing, ISR still catches up on its normal
+# cycle.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/gitbook/**"
+  release:
+    types: [published, edited, deleted]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: revalidate-site
+  cancel-in-progress: true
+
+jobs:
+  revalidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Let the raw.githubusercontent.com CDN settle
+        run: sleep 15
+
+      - name: Purge the site cache tags
+        env:
+          SECRET: ${{ secrets.SN_REVALIDATE_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+               --retry 3 --retry-delay 5 --retry-all-errors \
+               --request POST "https://sndevelopment.dev/api/revalidate" \
+               --header "Authorization: Bearer $SECRET"
