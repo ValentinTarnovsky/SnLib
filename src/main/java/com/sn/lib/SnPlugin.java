@@ -42,8 +42,24 @@ public abstract class SnPlugin extends JavaPlugin {
         try {
             onInnerEnable();
         } catch (Throwable t) {
+            // A consumer that disabled itself INSIDE onInnerEnable (a license gate, a
+            // missing requirement) and then threw only did so to cut the enable short:
+            // the reason was already logged where the decision was taken, so one line
+            // closes it instead of a stack trace that reads like a bug. The detail stays
+            // available at FINE. Throwing WITHOUT disabling is still a bug and keeps the
+            // full trace below.
+            if (!isEnabled()) {
+                getLogger().severe("Enable aborted: " + reasonOf(t));
+                getLogger().log(Level.FINE, "Enable aborted", t);
+                return;
+            }
             getLogger().log(Level.SEVERE, "onInnerEnable failed", t);
             getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        // Same abort, expressed as a plain return: the teardown already ran, so there is
+        // no command tree left to seed.
+        if (!isEnabled()) {
             return;
         }
         // The command tree exists only once the consumer registered its roots, so the
@@ -78,7 +94,21 @@ public abstract class SnPlugin extends JavaPlugin {
         return SnSpec.builder().build();
     }
 
-    /** Consumer enable logic; runs after the handshake and the context initialization. */
+    /**
+     * Consumer enable logic; runs after the handshake and the context initialization.
+     *
+     * <p><b>Refusing to enable.</b> A consumer that decides it must not run (an invalid
+     * license, an absent requirement) disables itself with
+     * {@code getServer().getPluginManager().disablePlugin(this)} and then leaves this
+     * method, either with a plain {@code return} or by throwing - both are supported and
+     * both are reported as ONE line, {@code "Enable aborted: <reason>"}, because the
+     * refusal already logged its own reason. The throwable of the throwing form is kept
+     * at {@code FINE}.</p>
+     *
+     * <p>Throwing WITHOUT disabling first stays what it always was: an unexpected failure,
+     * logged {@code SEVERE} with the full stack trace, after which the library disables the
+     * plugin rather than leaving it half-initialized.</p>
+     */
     protected abstract void onInnerEnable();
 
     /**
@@ -94,5 +124,11 @@ public abstract class SnPlugin extends JavaPlugin {
     /** SnLib context of this plugin; available from {@link #onInnerEnable()} on. */
     public final Sn sn() {
         return sn;
+    }
+
+    /** One-line reason of an aborted enable; never empty, the message may be absent. */
+    private static String reasonOf(Throwable t) {
+        String message = t.getMessage();
+        return message == null || message.isBlank() ? t.getClass().getSimpleName() : message;
     }
 }

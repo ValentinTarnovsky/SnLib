@@ -59,7 +59,7 @@ your jar) and that you do not shade it. A ready-to-copy template lives at
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
-            <version>1.20.2</version>
+            <version>1.20.3</version>
             <scope>provided</scope>
         </dependency>
 
@@ -241,7 +241,18 @@ private to your plugin; another consumer's context never sees your state.
 
 `onInnerEnable()` runs after the API-level handshake passed and the context was
 built. If it throws, `SnPlugin` logs the error and disables your plugin cleanly
-rather than leaving it half-initialized. `onInnerDisable()` is optional and runs
+rather than leaving it half-initialized.
+
+If your plugin decides it must NOT run - an invalid license, a requirement that
+is not there - disable it yourself with
+`getServer().getPluginManager().disablePlugin(this)` and then leave
+`onInnerEnable()`, either with a plain `return` or by throwing. Both forms are
+supported and both print ONE line, `Enable aborted: <reason>`, because your own
+refusal already logged its reason; no stack trace is printed for a decision you
+took on purpose. Throwing *without* disabling first still means "this blew up"
+and keeps the full `onInnerEnable failed` stack trace.
+
+`onInnerDisable()` is optional and runs
 before the library's own ordered teardown, which cleans up everything you
 registered (see [Multi-tenant contract](multi-tenant-contract.md)). It is the
 right place for your final flush: the context is already inside its teardown
