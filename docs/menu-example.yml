@@ -6,6 +6,11 @@
 # user sets a supported field, it ALREADY works without plugin code.
 
 title: string # default: "Menu"
+# Resolved per viewer through PAPI. Since 1.22.0 it also resolves the local
+# placeholders the plugin passes to Gui.open(player, Ph...) / GuiSession
+# .titlePlaceholders(...), so a menu whose subject is NOT its viewer can name
+# that subject: "{player}'s Inventory", "{clan} Members". The token is the
+# plugin's to define; with none passed the title renders exactly as written.
 rows: 1-6 # default: 3
 open-sound: id # default: ''
 close-sound: id # default: '' (played when the viewer closes the menu)

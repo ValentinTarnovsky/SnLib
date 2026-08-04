@@ -38,12 +38,15 @@ package com.sn.lib;
  * 1.21.0 (plugin-supplied stacks in menus: GuiSession.bind(int, GuiTemplate, ItemStack,
  * Ph...), PhCollector.stack(ItemStack) and GuiEntry.stack(ItemStack) let a bind render a
  * ready-made ItemStack under the template's display-name/lore overlay, so a menu can show
- * stacks the plugin did not author).</p>
+ * stacks the plugin did not author); LEVEL 14 = release 1.22.0 (per-session menu titles:
+ * GuiSession.titlePlaceholders(Ph...) and the Gui.open(Player, Ph...) /
+ * Gui.open(Player, int, Ph...) overloads resolve local placeholders into the declared
+ * {@code title:}, so a menu whose subject is not its viewer can name that subject).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 13;
+    public static final int LEVEL = 14;
 
     private SnApi() {
     }

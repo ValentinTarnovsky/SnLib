@@ -116,6 +116,7 @@ public final class GuiSession implements PageTarget {
     private volatile Set<Integer> pagedSlots = Set.of();
     private volatile Map<String, RegionBind<?>> regionBinds = Map.of();
     private volatile int manualTotalPages;
+    private volatile Ph[] titlePhs = NO_LOCALS;
     private boolean typeWarned;
     private boolean navUnknownNoted;
 
@@ -553,6 +554,28 @@ public final class GuiSession implements PageTarget {
         }
     }
 
+    /**
+     * Local placeholders resolved into the {@code title:} of THIS session, so a menu whose
+     * subject is not its viewer can name that subject - another player's inventory, the clan
+     * or crate being inspected. The declared title stays shared and immutable; only the
+     * resolution is per session.
+     *
+     * <p>Setting them re-renders immediately, recreating the inventory when the resolved
+     * title actually changed (a title change cannot be painted into an open window). Prefer
+     * {@link Gui#open(Player, Ph...)}, which seeds them before the first frame; this setter
+     * is for a title that changes while the menu is already open, and it costs a reopen.
+     * Passing none clears them. Main-thread only.</p>
+     */
+    public void titlePlaceholders(Ph... phs) {
+        titlePhs(phs);
+        refreshMenu();
+    }
+
+    /** Seeds the locals without rendering; how {@link Gui#open} gets the first frame right. */
+    void titlePhs(Ph... phs) {
+        this.titlePhs = phs == null ? NO_LOCALS : phs.clone();
+    }
+
     @Override
     public boolean paginationEnabled() {
         return def.pagination();
@@ -820,9 +843,14 @@ public final class GuiSession implements PageTarget {
         return Bukkit.createInventory(holder, def.rows() * 9, title);
     }
 
-    /** Title resolved for THIS viewer through PAPI and the full text pipeline. */
+    /**
+     * Title resolved for THIS viewer through the session's locals, PAPI and the full text
+     * pipeline. The locals run FIRST, so a placeholder may expand into a PAPI token; with
+     * none set {@link SnText#applyLocals} returns the raw title untouched.
+     */
     private Component renderTitle() {
-        return SnText.color(ctx.papi().apply(viewer, def.title()));
+        return SnText.color(ctx.papi().apply(viewer,
+                SnText.applyLocals(def.title(), titlePhs)));
     }
 
     private void renderContents() {

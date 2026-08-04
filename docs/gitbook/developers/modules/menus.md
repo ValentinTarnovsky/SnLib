@@ -28,6 +28,23 @@ shop.open(player);
 The whole GUI module is main-thread only, like all inventory work in Paper. Open menus and bind content from the main thread.
 {% endhint %}
 
+### Naming the menu's subject in the title (1.22.0)
+
+A `title:` is resolved per viewer through PAPI, which covers "your" menus. It does not cover a menu whose **subject is somebody else** - another player's inventory, the clan you are inspecting, the crate you are previewing. For those, pass local placeholders when you open:
+
+```yaml
+# guis/inventory.yml
+title: "&#8354f2&l{player}'s Inventory"
+```
+
+```java
+sn.guis().get("inventory").open(viewer, Ph.of("player", ownerName));
+```
+
+The token is yours to define; it is resolved before PAPI, so a placeholder may expand into a PAPI token. With none passed the title renders exactly as written, which is why every existing menu is unaffected.
+
+To change the title of a menu that is **already open**, use `session.titlePlaceholders(...)`. Prefer the `open` overload where you can: a title cannot be painted into a live window, so changing one costs an inventory recreation, while `open` gets the first frame right for free.
+
 ## Bundling menus in your jar
 
 Ship your default menus as `guis/*.yml` resources inside your jar. On load (onEnable and on every reload) SnLib seeds them into the data folder's `guis/` folder with the SAME managed semantics as configs: a missing file is written from the jar, an existing file is structurally merged (new keys added, user edits kept), and the whole seed is gated by the config's `update-configs` switch. Only top-level `guis/<name>.yml` resources are seeded; nested resources (`guis/sub/x.yml`) and non-`.yml` entries are ignored. The resources are read from the CONSUMER jar, so a menu you bundle is never confused with one bundled by SnLib itself.

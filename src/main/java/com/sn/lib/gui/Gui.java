@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.Ph;
 import com.sn.lib.Sn;
 
 /**
@@ -50,15 +51,42 @@ public final class Gui {
      * per owner and rendered.
      */
     public void open(Player player, int page) {
+        openWith(player, page);
+    }
+
+    /**
+     * Opens the GUI on page 1 with local placeholders resolved into its {@code title:},
+     * so a menu whose subject is not its viewer can name that subject. Seeded before the
+     * first frame, so the window carries the resolved title from the moment it appears.
+     *
+     * <p>Existing arity still binds to {@link #open(Player)} and {@link #open(Player, int)},
+     * which this overload does not change.</p>
+     *
+     * @see GuiSession#titlePlaceholders(Ph...)
+     */
+    public void open(Player player, Ph... phs) {
+        openWith(player, 1, phs);
+    }
+
+    /** {@link #open(Player, Ph...)} on the given page. */
+    public void open(Player player, int page, Ph... phs) {
+        openWith(player, page, phs);
+    }
+
+    private void openWith(Player player, int page, Ph... phs) {
         if (player == null) {
             return;
         }
         GuiSession existing = sessions.get(player.getUniqueId());
         if (existing != null && !existing.closed()) {
+            // Seeded raw, then re-shown: reopen() already re-renders and recreates the
+            // inventory if the resolved title moved, so refreshing here would do it twice.
+            existing.titlePhs(phs);
             existing.reopen(page);
             return;
         }
         GuiSession session = new GuiSession(ctx, this, player, page);
+        session.titlePhs(phs);
         sessions.put(player.getUniqueId(), session);
         GuiManager.SESSIONS.add(ctx.plugin(), session);
         session.open();
