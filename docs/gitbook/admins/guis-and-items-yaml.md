@@ -60,6 +60,15 @@ You can also set `view-requirements` to control whether an item is shown to a pl
 
 Several items may even share the same slot (or the same layout `key:`) with opposite view requirements: the first item in the file whose requirements pass is the one drawn and clicked, so one cell can show a different button per player state - for example an "info" button for members and a "create" button for everyone else. If every candidate is hidden, the cell stays empty. Order matters: put the preferred item first.
 
+### Cells the plugin fills with a real item
+
+Some cells show an actual item rather than one described in the file: a crate's reward, the contents of a kit, a shop's stock. There the plugin hands the real item over - with its own name, enchantments and texture - and the entry in the file only decides two things about how it looks:
+
+- `display-name` - fill it in to rename the item, or leave it out (or blank) to show the item's real name.
+- `lore` - whatever you write here is added UNDER the item's own description, so you can append a price or a chance line without erasing what the item already says.
+
+`material`, `amount`, `glow` and the other appearance fields do nothing for those cells - the item already carries them. Everything about behavior still works normally: click actions, requirements, deny actions and view requirements are all yours to configure. You can tell which entries these are by their shape: they are the ones whose plugin documentation says the contents come from the game, and they usually ship with no `material` set.
+
 The exact syntax for the action and requirement lists is a small mini-language shared across every Sn plugin. It is documented on its own page: see [Actions and Requirements](actions-and-requirements.md).
 
 {% hint style="info" %}

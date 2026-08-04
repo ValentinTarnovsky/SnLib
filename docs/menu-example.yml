@@ -383,6 +383,24 @@ items:
 #     different data) keep working. Prefer a region over this whenever the menu is
 #     file-backed: a slot decided in Java is a slot the owner cannot move.
 #
+# PLUGIN-SUPPLIED APPEARANCE (1.21.0) - affects what you can configure here:
+#   All three bind surfaces let the plugin hand over a ready-made ItemStack for a cell
+#   (bind(slot, template, stack, phs...), PhCollector.stack(...) inside bindPaged and
+#   GuiEntry.stack(...) inside bindEach). It exists for contents the plugin did not
+#   author - a crate reward, kit contents, shop stock - whose enchantments, custom model
+#   data, head texture and custom name cannot be re-expressed as a yml item definition.
+#   When a bind supplies a stack, the STACK decides the appearance and this template
+#   still decides the behaviour, so on such a template only these keep any effect:
+#     - display-name: when non-empty it REPLACES the stack's own name (leave it out or
+#       blank it to keep the item's real name);
+#     - lore: the lines are APPENDED after the lore the item already has (leave it out
+#       to show the item exactly as it is);
+#     - view-requirements, click-requirements, deny-actions, click-actions, the per-click
+#       matrix and update-interval - all unchanged.
+#   material, amount, glow, enchantments, custom-model-data and every other appearance
+#   field are IGNORED for that cell (the stack already carries them). Nothing changes for
+#   a bind that supplies no stack: the template renders the cell as it always has.
+#
 # Usage example (backpack plugin):
 #   - Plugin defines: backpack-slots: [0,1,2,3,4]
 #   - Plugin code decides per-player: slot 0 -> "backpack-available", slots 1-4 -> "backpack-locked"

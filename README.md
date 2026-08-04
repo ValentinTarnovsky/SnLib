@@ -149,6 +149,8 @@ s.bind("banner", Ph.of("clan", name));  // v1.18: slots come from the template's
 s.bindEach("toggles", actions, (a, e) ->  // v1.20: one entry per cell of the
         e.template(on(a) ? "on" : "off")  // region declared under regions:,
                 .add("action", a));       // template chosen per entry
+s.bind(22, shop.template("reward"), reward.icon());    // v1.21: the plugin
+                                                       // supplies the stack
 s.bindPaged("entry", data, slots, (ph, item) -> ...);  // pagination: true
 sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
 ```
@@ -179,6 +181,17 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   click alike. No `pagination:` needed. Cardinality is the owner's and never
   WARNs; `GuiDef.regionSlots(id)` reports the cell count to a plugin that wants
   to say something about it in its own words.
+- Plugin-supplied stacks (v1.21.0): all three bind surfaces accept a ready-made
+  `ItemStack` - `bind(slot, template, stack, phs...)`, `PhCollector.stack(...)`
+  inside `bindPaged` and `GuiEntry.stack(...)` inside `bindEach`. The stack
+  supplies the APPEARANCE and the template keeps supplying the BEHAVIOUR (view
+  requirements, the per-click matrix, click and deny actions); only the
+  template's `display-name` (replacing) and `lore` (appended) are painted over
+  it, and a template declaring neither leaves the stack untouched. That is what
+  lets a menu show contents the plugin did not author - crate rewards, kit
+  items, shop stock, lootbox previews - whose NBT no yml item definition can
+  re-express. The stack is copied in and per render, the anti-theft marker is
+  still stamped, and a null stack is byte-for-byte the pre-1.21 behaviour.
 - Per-click matrix (v1.1): `right/left/shift-right/shift-left/middle` x
   `*-click-actions` / `*-click-requirements` / `*-click-deny-actions` with
   specific-over-generic resolution and fallback to `click-actions`;
@@ -650,7 +663,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.20.3`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.21.0`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`
@@ -658,8 +671,8 @@ rolling the jar to production.
 - Public API frozen under semver: additive-only japicmp ACTIVE with an
   explicit `com.sn:snlib:1.0.0` baseline (missing baseline = broken build);
   `*.internal` packages outside the contract; `SnApi.LEVEL` increments +1 on
-  every release that adds public Paper API (currently 12, since the 1.20.0
-  release that added runtime layout regions; full history in the `SnApi`
-  javadoc, which is the source of truth). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
+  every release that adds public Paper API (currently 13, since the 1.21.0
+  release that added plugin-supplied stacks to the menu binds; full history in
+  the `SnApi` javadoc, which is the source of truth). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
   Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
   outside the japicmp gate while it settles.

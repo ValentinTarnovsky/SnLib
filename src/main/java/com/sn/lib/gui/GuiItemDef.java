@@ -438,4 +438,21 @@ public final class GuiItemDef {
         }
         return item.build();
     }
+
+    /**
+     * Renders a PLUGIN-SUPPLIED stack under this definition instead of building one from the
+     * yml: a clone of {@code supplied} carries the whole appearance and only this
+     * definition's {@code display-name} (replacing) and {@code lore} (appended) are painted
+     * over it, both resolved per viewer plus the locals {@code phs}. See
+     * {@link StackOverlay} for the exact overlay rules.
+     *
+     * <p>There is no skin-refresh hook on this path: the appearance is the caller's stack,
+     * so there is no {@code skull-owner} left to resolve and firing a fetch would be
+     * pointless.</p>
+     */
+    ItemStack renderOver(ItemStack supplied, @Nullable Player viewer, Ph... phs) {
+        String p = path + ".";
+        return StackOverlay.apply(supplied, yml.getString(p + "display-name", "", viewer),
+                yml.getStringList(p + "lore", List.of(), viewer), phs);
+    }
 }

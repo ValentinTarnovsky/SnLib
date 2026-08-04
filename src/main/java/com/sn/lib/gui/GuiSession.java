@@ -71,6 +71,15 @@ import com.sn.lib.util.TagIo;
  * underneath, on the screen and on the click alike. Precedence over a shared cell is manual
  * bind, then paged bind, then region, then declared item.</p>
  *
+ * <p>All three bind surfaces accept a PLUGIN-SUPPLIED appearance since 1.21.0:
+ * {@link #bind(int, GuiTemplate, ItemStack, Ph...)}, {@link PhCollector#stack} for a paged
+ * entry and {@link GuiEntry#stack} for a region cell. The stack is rendered instead of the
+ * template's own appearance while the template keeps supplying the behaviour, with only its
+ * {@code display-name} (replacing) and {@code lore} (appended) painted over the stack. That
+ * is what lets a menu show stacks the plugin did not author - crate rewards, kit contents,
+ * shop stock - whose NBT no yml item definition can re-express. A null stack is exactly the
+ * template-rendered behaviour.</p>
+ *
  * <p><b>View requirements gate interaction, not only rendering</b>: a click resolves what
  * the slot actually shows to this viewer, under the same precedence, the same
  * declaration-order fallthrough on shared slots and the same requirement test the render
@@ -248,10 +257,37 @@ public final class GuiSession implements PageTarget {
      * until overwritten; it takes precedence over a declared item on the same slot.
      */
     public void bind(int slot, GuiTemplate template, Ph... phs) {
+        bind(slot, template, (ItemStack) null, phs);
+    }
+
+    /**
+     * Same bind with the APPEARANCE supplied by the plugin: {@code stack} is rendered into
+     * the slot instead of the template's own appearance, and the template keeps supplying
+     * the BEHAVIOUR - {@code view-requirements}, the per-click matrix, the click and deny
+     * actions. This is the surface for stacks the plugin did not author (a crate reward,
+     * kit contents, shop stock, a lootbox preview), whose enchantments, custom model data,
+     * head texture and custom name no yml item definition can re-express.
+     *
+     * <p>Only two things of the template are painted over the stack: its
+     * {@code display-name}, when it declares a non-empty one, REPLACES the stack's name, and
+     * its {@code lore} lines, when it declares any, are APPENDED after the stack's own lore,
+     * both resolved through the normal pipeline (viewer PAPI, the locals {@code phs}, colour,
+     * rgb). A template that declares neither leaves the stack visually untouched; nothing
+     * else of it is applied, because the stack is the authority on how the cell looks.</p>
+     *
+     * <p>The stack is copied on the way in and again on every render, so the caller's
+     * instance is never mutated and never reaches the inventory. Everything else is
+     * identical to {@link #bind(int, GuiTemplate, Ph...)}: same precedence, same lifetime
+     * across page changes, refreshes and inventory recreations, same anti-theft marker on
+     * the rendered stack. A null {@code stack} IS that method - the template renders the
+     * slot - so this overload is strictly additive.</p>
+     */
+    public void bind(int slot, GuiTemplate template, @Nullable ItemStack stack, Ph... phs) {
         if (template == null || slot < 0) {
             return;
         }
-        Binding binding = new Binding(template, phs == null ? NO_LOCALS : phs.clone());
+        Binding binding = new Binding(template, phs == null ? NO_LOCALS : phs.clone(),
+                stack == null ? null : stack.clone());
         binds.put(slot, binding);
         Inventory current = inventory;
         if (current != null && slot < current.getSize()) {
@@ -935,6 +971,12 @@ public final class GuiSession implements PageTarget {
      * slice) into its slot, wiring the skin hook so an unresolved head re-renders that slot
      * when the fetch lands. Slots taken by a manual bind are left alone; a short page or a
      * failed view requirement clears the slot and its captured placeholders.
+     *
+     * <p>The mapper may hand over the entry's appearance as a ready-made stack
+     * ({@link PhCollector#stack}); it is then rendered under the template's overlay and the
+     * skin hook is skipped, since a supplied stack has no {@code skull-owner} to resolve.
+     * The stack is read back per render, exactly like the placeholders, so it stays live
+     * under {@code update-interval:}.</p>
      */
     private <T> void renderPagedSlot(Inventory target, PagedBind<T> bind, List<T> slice, int index) {
         int[] slots = bind.slots();
@@ -953,9 +995,14 @@ public final class GuiSession implements PageTarget {
             bind.mapper().accept(slice.get(index), collector);
             Ph[] phs = collector.toArray();
             if (item.viewRequirement().test(viewer, resolver(phs))) {
-                int atPage = page;
-                stack = stamp(item.render(viewer, skinHook(() -> reRenderPagedSlot(atPage, index)), phs),
-                        slot);
+                ItemStack supplied = collector.stack();
+                if (supplied != null) {
+                    stack = stamp(item.renderOver(supplied, viewer, phs), slot);
+                } else {
+                    int atPage = page;
+                    stack = stamp(item.render(viewer,
+                            skinHook(() -> reRenderPagedSlot(atPage, index)), phs), slot);
+                }
                 resolved = phs;
             }
         }
@@ -1049,9 +1096,16 @@ public final class GuiSession implements PageTarget {
                     + index + " hidden by its view-requirements for " + viewer.getName());
             return;
         }
-        target.setItem(slot, stamp(item.render(viewer,
-                skinHook(() -> reRenderRegionCell(regionId, bind, index)), phs), slot));
-        regionCells.put(slot, new Binding(template, phs));
+        ItemStack supplied = entry.stack();
+        ItemStack painted = supplied != null
+                ? item.renderOver(supplied, viewer, phs)
+                : item.render(viewer, skinHook(() -> reRenderRegionCell(regionId, bind, index)),
+                        phs);
+        target.setItem(slot, stamp(painted, slot));
+        // The cell's Binding exists for the CLICK side (definition + locals), so it keeps a
+        // null stack: a supplied one is per render, resolved from the filler each time and
+        // consumed immediately, and retaining the caller's instance here would buy nothing.
+        regionCells.put(slot, new Binding(template, phs, null));
     }
 
     /**
@@ -1068,12 +1122,21 @@ public final class GuiSession implements PageTarget {
         renderRegionCell(current, regionId, bind, index);
     }
 
+    /**
+     * Renders one manual bind: the template builds the stack, unless the bind carries a
+     * plugin-supplied one, in which case that stack is rendered under the template's
+     * appearance overlay ({@link GuiItemDef#renderOver}). The skin hook belongs to the
+     * template path only - a supplied stack has no {@code skull-owner} left to resolve.
+     */
     private void renderBinding(Inventory target, int slot, Binding binding) {
-        Requirement viewReq = binding.template().item().viewRequirement();
+        GuiItemDef item = binding.template().item();
         ItemStack stack = null;
-        if (viewReq.test(viewer, resolver(binding.phs()))) {
-            stack = stamp(binding.template().item().render(viewer,
-                    skinHook(() -> reRenderBinding(slot, binding)), binding.phs()), slot);
+        if (item.viewRequirement().test(viewer, resolver(binding.phs()))) {
+            ItemStack supplied = binding.stack();
+            stack = supplied != null
+                    ? stamp(item.renderOver(supplied, viewer, binding.phs()), slot)
+                    : stamp(item.render(viewer, skinHook(() -> reRenderBinding(slot, binding)),
+                            binding.phs()), slot);
         }
         target.setItem(slot, stack);
     }
@@ -1187,8 +1250,14 @@ public final class GuiSession implements PageTarget {
         renderItem(inventory, item);
     }
 
-    /** Template bound to a slot with its local placeholders captured at bind time. */
-    private record Binding(GuiTemplate template, Ph[] phs) {
+    /**
+     * Template bound to a slot with its local placeholders captured at bind time, plus the
+     * optional plugin-supplied appearance (1.21.0): a non-null {@code stack} is rendered
+     * under the template's overlay instead of the template's own appearance, and is already
+     * a defensive copy of what the caller passed. Region cells reuse this record for the
+     * click side only and always carry a null stack.
+     */
+    private record Binding(GuiTemplate template, Ph[] phs, @Nullable ItemStack stack) {
     }
 
     /**

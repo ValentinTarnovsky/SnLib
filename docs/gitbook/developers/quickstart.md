@@ -59,7 +59,7 @@ your jar) and that you do not shade it. A ready-to-copy template lives at
         <dependency>
             <groupId>com.sn</groupId>
             <artifactId>snlib</artifactId>
-            <version>1.20.3</version>
+            <version>1.21.0</version>
             <scope>provided</scope>
         </dependency>
 

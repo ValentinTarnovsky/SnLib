@@ -34,12 +34,16 @@ package com.sn.lib;
  * declares named groups of cells under {@code regions:} and
  * GuiSession.bindEach(String, List, BiConsumer) fills one entry per cell, choosing the
  * template and the local placeholders per entry through the new GuiEntry;
- * GuiDef.regionSlots(String) reports the owner-declared cell count).</p>
+ * GuiDef.regionSlots(String) reports the owner-declared cell count); LEVEL 13 = release
+ * 1.21.0 (plugin-supplied stacks in menus: GuiSession.bind(int, GuiTemplate, ItemStack,
+ * Ph...), PhCollector.stack(ItemStack) and GuiEntry.stack(ItemStack) let a bind render a
+ * ready-made ItemStack under the template's display-name/lore overlay, so a menu can show
+ * stacks the plugin did not author).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 12;
+    public static final int LEVEL = 13;
 
     private SnApi() {
     }

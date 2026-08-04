@@ -158,6 +158,54 @@ Removing a region is a layout edit - take the letter out and the region binds no
 
 Unlike `bindPaged`, a region needs no `pagination: true`, never touches the page and shows the same entries on every page.
 
+### Plugin-supplied stacks (1.21.0)
+
+Every binding above builds the cell from the yml. That works while the plugin can DESCRIBE what it shows - but a crate reward, a kit's contents, shop stock or a lootbox preview is an `ItemStack` the plugin did not author, carrying enchantments, custom model data, a head texture and a custom name that no item definition can re-express. Hand the stack over instead, on any of the three bind surfaces:
+
+```java
+// manual bind
+s.bind(22, gui.template("reward"), reward.icon(), Ph.of("chance", reward.chance()));
+
+// paged bind: the mapper supplies the stack for its entry
+s.bindPaged("kit-item", kit.contents(), (item, ph) -> ph
+        .stack(item)
+        .add("slot", kit.slotOf(item)));
+
+// region: the filler supplies the stack for its cell
+s.bindEach("stock", shop.offers(), (offer, entry) -> entry
+        .template(offer.affordable(player) ? "offer" : "offer-locked")
+        .stack(offer.item())
+        .add("price", offer.price()));
+```
+
+The split is: **the stack supplies the appearance, the template supplies the behaviour.** The template's `view-requirements`, `click-requirements`, `deny-actions`, `click-actions` and the whole per-click matrix keep working exactly as they do for any other bind, and the rendered stack still carries the anti-theft marker, so an escaped copy is still deleted.
+
+Two template fields are painted OVER the stack, because both are text a server owner must be able to write:
+
+```yaml
+templates:
+  reward:
+    # No material: needed - the stack brings its own. Blank the name to keep the
+    # item's real one; leave out the lore to show the item exactly as it is.
+    display-name: "&#8354f2{reward_name}"
+    lore:
+      - ""
+      - "&7Chance: &f{chance}%"
+    click-actions:
+      - "[player] crate preview {crate}"
+```
+
+- `display-name`, when non-empty, **replaces** the stack's name;
+- `lore` lines are **appended** after the lore the item already carries;
+- a template that declares neither leaves the stack visually untouched;
+- everything else (`material`, `amount`, `glow`, `enchantments`, `custom-model-data`, ...) is ignored for that cell - the stack already has it.
+
+Both resolve through the normal pipeline, so `%papi%` placeholders, your local `Ph` pairs, `&` colours, `[rgb]` and MiniMessage all work in them.
+
+Your instance is never mutated and never ends up in the inventory: the stack is copied before anything is written to it. A supplied stack always needs its template - there is no way to bind a bare stack, because the template is what carries the click behaviour and a slot with no definition behind it would render but never respond. Passing no stack (or a null one) is exactly the behaviour of every version before 1.21.0, so nothing you already wrote changes.
+
+> A supplied stack narrows what the server owner can restyle to the name, the extra lore and the behaviour. Use it for contents you did not author; for a cell that is genuinely yours to describe, a plain template bind gives the owner the whole appearance.
+
 ## Paginated content
 
 Pagination is OPT-IN per menu with `pagination: true`. With it on, each viewer has real per-player page state, and you fill the paged slots with `bindPaged`:

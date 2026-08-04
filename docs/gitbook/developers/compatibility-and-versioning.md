@@ -124,8 +124,9 @@ surface (new public methods or classes). Its history:
 - LEVEL 10 = release 1.15.0 - owner-owned yml sections (`# sn:extensible`)
 - LEVEL 11 = release 1.18.0 - config-driven template placement (`GuiSession.bind(String, Ph...)`)
 - LEVEL 12 = release 1.20.0 - runtime layout regions (`regions:` + `GuiSession.bindEach`)
+- LEVEL 13 = release 1.21.0 - plugin-supplied stacks in menus (`GuiSession.bind(int, GuiTemplate, ItemStack, Ph...)`, `PhCollector.stack`, `GuiEntry.stack`)
 
-The current value is 12. Releases that change only behaviour do not bump it:
+The current value is 13. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base, and
 1.19.0/1.19.1 changed marker and warning behaviour, none of which grows the Paper
 handshake surface. The source of truth is the history javadoc on `SnApi` itself.
