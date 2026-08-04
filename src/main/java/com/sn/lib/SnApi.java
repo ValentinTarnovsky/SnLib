@@ -41,12 +41,17 @@ package com.sn.lib;
  * stacks the plugin did not author); LEVEL 14 = release 1.22.0 (per-session menu titles:
  * GuiSession.titlePlaceholders(Ph...) and the Gui.open(Player, Ph...) /
  * Gui.open(Player, int, Ph...) overloads resolve local placeholders into the declared
- * {@code title:}, so a menu whose subject is not its viewer can name that subject).</p>
+ * {@code title:}, so a menu whose subject is not its viewer can name that subject);
+ * LEVEL 15 = release 1.23.0 (placeholders on an event thread: SnPapi.applyHere resolves
+ * PAPI on the calling thread instead of skipping it off the main one, and the viewer-aware
+ * SnLang.get(String, Player, Ph...) / getList(String, Player, Ph...) render a spliced
+ * fragment for a viewer, so text assembled inside AsyncChatEvent can carry resolved
+ * placeholders without blocking a hop back to the main thread).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 14;
+    public static final int LEVEL = 15;
 
     private SnApi() {
     }

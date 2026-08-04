@@ -225,6 +225,54 @@ public final class SnLang {
         return out;
     }
 
+    /**
+     * First line rendered FOR a viewer, on the calling thread.
+     *
+     * <p>The difference from {@link #get(String, Ph...)} is PlaceholderAPI. That overload
+     * has no viewer, so it resolves locals only and a {@code %token%} survives as literal
+     * text; every {@code send} does resolve PAPI, but only because it knows who it is
+     * sending to. This overload is for the case in between: a fragment that is not sent on
+     * its own but SPLICED into something else - a tag inside a chat line, a lore line built
+     * into a stack - and must still carry the viewer's placeholders.
+     *
+     * <p>Resolution runs through {@link com.sn.lib.papi.SnPapi#applyHere}, so it works off
+     * the primary thread, which is the whole reason the overload exists: chat is assembled
+     * on Paper's async chat thread and has no later main-thread point to resolve at. Read
+     * that method before using this one - passing a viewer here is the caller stating that
+     * resolving on this thread is what they want.
+     *
+     * <p>Never cached, because the result is per viewer.
+     */
+    public Component get(String key, @Nullable Player viewer, Ph... phs) {
+        if (key == null) {
+            return Component.empty();
+        }
+        List<String> lines = templates.get(key);
+        if (lines == null) {
+            return missing(key);
+        }
+        if (lines.isEmpty() || lines.get(0) == null) {
+            return Component.empty();
+        }
+        return renderLineHere(lines.get(0), viewer, phs);
+    }
+
+    /** List overload of {@link #get(String, Player, Ph...)}; missing keys yield the marker line. */
+    public List<Component> getList(String key, @Nullable Player viewer, Ph... phs) {
+        if (key == null) {
+            return List.of();
+        }
+        List<String> lines = templates.get(key);
+        if (lines == null) {
+            return List.of(missing(key));
+        }
+        List<Component> out = new ArrayList<>(lines.size());
+        for (String line : lines) {
+            out.add(renderLineHere(line == null ? "" : line, viewer, phs));
+        }
+        return out;
+    }
+
     /** Shows the first line of the message on the player's action bar. */
     public void actionbar(Player target, String key, Ph... phs) {
         if (target == null || key == null) {
@@ -790,6 +838,17 @@ public final class SnLang {
         String s = SnText.applyLocals(line, phs);
         s = ctx.papi().apply(viewer, s);
         return SnText.normalizePapiOutput(s);
+    }
+
+    /**
+     * Same pipeline as {@link #resolveLine}, but PAPI resolves on the calling thread instead
+     * of being skipped off the main one. Reached only from the two viewer-aware getters,
+     * whose whole contract is that the caller asked for exactly that.
+     */
+    private Component renderLineHere(String line, @Nullable Player viewer, Ph... phs) {
+        String s = SnText.applyLocals(line, phs);
+        s = ctx.papi().applyHere(viewer, s);
+        return SnText.color(SnText.normalizePapiOutput(s));
     }
 
     private Component missing(String key) {

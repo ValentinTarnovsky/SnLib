@@ -130,6 +130,60 @@ public final class SnPapi {
         return SnFuture.wrap(ctx, future);
     }
 
+    /**
+     * Resolves PAPI tokens on the CALLING thread, main or not.
+     *
+     * <p>{@link #apply(Player, String)} is the safe default and deliberately leaves tokens
+     * intact off the primary thread. This is the documented escape hatch for the one shape
+     * that cannot use it: text built ON an event thread that must already carry resolved
+     * placeholders by the time it is sent. Paper's {@code AsyncChatEvent} is the case it
+     * exists for - a chat format, its hover and its click are assembled off-thread and
+     * handed to a renderer that runs off-thread too, so there is no later main-thread point
+     * to resolve them at. The alternative, blocking a hop back to the main thread, costs a
+     * tick per message on the hottest path a chat plugin has, which is the worse trade.
+     *
+     * <p><b>What the caller accepts.</b> PlaceholderAPI expansions are third-party code with
+     * no documented thread-safety contract. Expansions that read cached player state - the
+     * overwhelming majority, and effectively all of what a chat format uses - are fine here;
+     * one that touches the world or an unsynchronized structure is not. Resolution is
+     * fail-open: an expansion that throws leaves the ORIGINAL text untouched and logs one
+     * debug line, so a misbehaving third-party expansion degrades the line instead of
+     * killing the message.
+     *
+     * <p>Prefer {@link #apply(Player, String)} everywhere else, and
+     * {@link #applyOnMain(Player, String)} when the result is consumed through
+     * {@code thenSync}. Reach for this one only on an event thread.
+     */
+    public String applyHere(@Nullable Player viewer, String text) {
+        if (text == null || text.indexOf('%') < 0) {
+            return text;
+        }
+        if (!holder.available()) {
+            return text;
+        }
+        try {
+            return holder.apply(viewer, text);
+        } catch (Throwable t) {
+            SnDebug debug = ctx.debug();
+            if (debug != null) {
+                debug.log(() -> "applyHere failed to resolve; original text untouched: " + t);
+            }
+            return text;
+        }
+    }
+
+    /** List overload of {@link #applyHere(Player, String)}, resolving line by line. */
+    public List<String> applyHere(@Nullable Player viewer, List<String> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return lines;
+        }
+        List<String> out = new ArrayList<>(lines.size());
+        for (String line : lines) {
+            out.add(applyHere(viewer, line));
+        }
+        return out;
+    }
+
     /** True when the PlaceholderAPI plugin is present and enabled. */
     public boolean available() {
         return holder.available();
