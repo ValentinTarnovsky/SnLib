@@ -395,6 +395,12 @@ items:
 #       blank it to keep the item's real name);
 #     - lore: the lines are APPENDED after the lore the item already has (leave it out
 #       to show the item exactly as it is);
+#       Leaving BOTH out adds nothing whatsoever: no blank line, no cleared lore, no
+#       rewrite of what the plugin handed in. Careful with the difference between
+#       "lore:" / "lore: []" (declares nothing, the item keeps its own lore untouched)
+#       and a list holding an empty string (declares ONE blank line, appended as a
+#       spacer). The same goes for display-name: absent and "" both mean "keep the
+#       item's real name".
 #     - view-requirements, click-requirements, deny-actions, click-actions, the per-click
 #       matrix and update-interval - all unchanged.
 #   material, amount, glow, enchantments, custom-model-data and every other appearance

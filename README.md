@@ -187,7 +187,8 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   supplies the APPEARANCE and the template keeps supplying the BEHAVIOUR (view
   requirements, the per-click matrix, click and deny actions); only the
   template's `display-name` (replacing) and `lore` (appended) are painted over
-  it, and a template declaring neither leaves the stack untouched. That is what
+  it, and a template declaring neither is a strict pass-through - the meta is
+  not even read, so nothing is added, cleared or normalised. That is what
   lets a menu show contents the plugin did not author - crate rewards, kit
   items, shop stock, lootbox previews - whose NBT no yml item definition can
   re-express. The stack is copied in and per render, the anti-theft marker is
@@ -663,7 +664,7 @@ rolling the jar to production.
 ## Development
 
 - Consumer templates in `docs/`: `consumer-pom-template.xml` (minimal pom,
-  provided scope, `com.sn:snlib:1.21.0`) and `snlib-consumer-rules.pro`
+  provided scope, `com.sn:snlib:1.21.1`) and `snlib-consumer-rules.pro`
   (ProGuard rules).
 - Golden configuration specs in `docs/menu-example.yml` (GUIs),
   `docs/item-example.yml` (physical items) and `docs/selection-example.yml`

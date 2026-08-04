@@ -26,10 +26,13 @@ import com.sn.lib.text.SnText;
  *       stack already carries.</li>
  * </ul>
  *
- * <p>A template that declares neither leaves the stack visually untouched. Nothing else of
- * the template is applied - material, amount, enchantments, model data and every other
- * appearance field stay the stack's, because a stack the plugin did not author (a crate
- * reward, a kit item, shop stock) carries NBT that no yml item definition can re-express.
+ * <p>A template that declares neither is a STRICT pass-through: the clone comes back with
+ * nothing added, nothing cleared and nothing normalized, because {@link #apply} never even
+ * fetches the meta in that case. A consumer that hands over a fully-formed stack whose lore
+ * it built itself gets exactly that stack back. Nothing else of the template is applied -
+ * material, amount, enchantments, model data and every other appearance field stay the
+ * stack's, because a stack the plugin did not author (a crate reward, a kit item, shop
+ * stock) carries NBT that no yml item definition can re-express.
  * Both strings resolve through the normal pipeline: PAPI per viewer while the yml is read,
  * then the local placeholders, then colour, rgb and the rest of {@link SnText}, and each
  * line renders non-italic unless it asks for italics - exactly what
@@ -83,26 +86,37 @@ final class StackOverlay {
     /**
      * Paints the overlay over a CLONE of {@code supplied} and returns the clone: the caller's
      * instance is never mutated and never reaches the inventory. A stack with no meta (AIR)
-     * is returned as the plain clone. Nothing is written when the template declares neither
-     * field, so an untouched stack keeps its meta instance byte for byte.
+     * is returned as the plain clone.
+     *
+     * <p><b>Strict pass-through</b>: a template that declares NEITHER field never reads the
+     * meta and never writes it, so the result is the plain clone - equal to the input field
+     * for field, with nothing added, nothing cleared and nothing normalized. That is the
+     * contract a consumer relies on when it hands over a fully-formed stack whose lore it
+     * built itself and wants the menu to add exactly nothing. The meta is fetched only once
+     * something is actually going to be written to it.</p>
+     *
+     * <p>Scope note: this is the contract of the OVERLAY. The stack the session finally puts
+     * in the inventory additionally carries the {@code snlib_gui_item} anti-theft marker,
+     * which every rendered GUI stack has always carried and which is one PDC key written by
+     * {@code GuiSession.stamp} after this method returns.</p>
      */
     static ItemStack apply(ItemStack supplied, @Nullable String declaredName,
                            @Nullable List<String> declaredLore, Ph... phs) {
         ItemStack stack = supplied.clone();
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) {
+        Component name = name(declaredName, phs);
+        boolean appendsLore = declaredLore != null && !declaredLore.isEmpty();
+        if (name == null && !appendsLore) {
             return stack;
         }
-        Component name = name(declaredName, phs);
-        List<Component> lore = lore(meta.lore(), declaredLore, phs);
-        if (name == null && lore == null) {
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
             return stack;
         }
         if (name != null) {
             meta.displayName(name);
         }
-        if (lore != null) {
-            meta.lore(lore);
+        if (appendsLore) {
+            meta.lore(lore(meta.lore(), declaredLore, phs));
         }
         stack.setItemMeta(meta);
         return stack;

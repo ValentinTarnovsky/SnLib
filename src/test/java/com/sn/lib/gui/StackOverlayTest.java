@@ -143,6 +143,40 @@ class StackOverlayTest {
     }
 
     @Test
+    void everyShapeOfAnUndeclaredFieldIsAStrictPassThrough() {
+        // A consumer handing over a fully-formed stack needs SnLib to add NOTHING: no empty
+        // line appended, no lore cleared, no name written. Every way a template can leave
+        // the two fields out has to reach that same "do not touch it" null, whether the key
+        // is absent (the "" / List.of() defaults GuiItemDef.renderOver reads), written
+        // blank, or written as an empty list.
+        for (String undeclaredName : new String[] {null, ""}) {
+            assertNull(StackOverlay.name(undeclaredName),
+                    () -> "name(" + undeclaredName + ") must not touch the stack's name");
+            assertNull(StackOverlay.name(undeclaredName, Ph.of("unused", "x")));
+        }
+        for (List<String> undeclaredLore : List.of(List.<String>of())) {
+            assertNull(StackOverlay.lore(EXISTING, undeclaredLore));
+            assertNull(StackOverlay.lore(null, undeclaredLore));
+            assertNull(StackOverlay.lore(EXISTING, undeclaredLore, Ph.of("unused", "x")));
+        }
+        assertNull(StackOverlay.lore(EXISTING, null));
+        assertNull(StackOverlay.lore(null, null));
+    }
+
+    @Test
+    void anUndeclaredLoreIsNeverConfusedWithADeclaredEmptyOne() {
+        // The one distinction the whole strictness rests on: an empty LIST means "declared
+        // nothing" (null, leave the lore alone), while a list holding an empty STRING means
+        // "declared one blank line" (a spacer, appended like any other line).
+        assertNull(StackOverlay.lore(EXISTING, List.of()));
+
+        List<Component> withSpacer = StackOverlay.lore(EXISTING, List.of(""));
+        assertNotNull(withSpacer);
+        assertEquals(3, withSpacer.size());
+        assertEquals("", plain(withSpacer.get(2)));
+    }
+
+    @Test
     void theExistingLoreIsCopiedAndItsLinesAreKeptAsTheyAre() {
         List<Component> lore = StackOverlay.lore(EXISTING, List.of("&7Extra"));
 

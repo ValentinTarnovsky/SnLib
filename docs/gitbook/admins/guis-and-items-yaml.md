@@ -65,7 +65,7 @@ Several items may even share the same slot (or the same layout `key:`) with oppo
 Some cells show an actual item rather than one described in the file: a crate's reward, the contents of a kit, a shop's stock. There the plugin hands the real item over - with its own name, enchantments and texture - and the entry in the file only decides two things about how it looks:
 
 - `display-name` - fill it in to rename the item, or leave it out (or blank) to show the item's real name.
-- `lore` - whatever you write here is added UNDER the item's own description, so you can append a price or a chance line without erasing what the item already says.
+- `lore` - whatever you write here is added UNDER the item's own description, so you can append a price or a chance line without erasing what the item already says. Leave it out entirely and the item's description is shown exactly as it is, with nothing added. One thing to watch: an empty list (`lore: []`) means "add nothing", while a line written as `""` means "add one blank line" - that is how you put a gap between the item's own description and yours.
 
 `material`, `amount`, `glow` and the other appearance fields do nothing for those cells - the item already carries them. Everything about behavior still works normally: click actions, requirements, deny actions and view requirements are all yours to configure. You can tell which entries these are by their shape: they are the ones whose plugin documentation says the contents come from the game, and they usually ship with no `material` set.
 

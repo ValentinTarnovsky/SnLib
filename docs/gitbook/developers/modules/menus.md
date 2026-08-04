@@ -197,12 +197,29 @@ templates:
 
 - `display-name`, when non-empty, **replaces** the stack's name;
 - `lore` lines are **appended** after the lore the item already carries;
-- a template that declares neither leaves the stack visually untouched;
+- a template that declares neither is a strict pass-through (below);
 - everything else (`material`, `amount`, `glow`, `enchantments`, `custom-model-data`, ...) is ignored for that cell - the stack already has it.
 
 Both resolve through the normal pipeline, so `%papi%` placeholders, your local `Ph` pairs, `&` colours, `[rgb]` and MiniMessage all work in them.
 
+**If you already built the stack exactly how you want it, declare neither field and SnLib adds nothing.** No empty line appended, no lore cleared, no name written, no normalising pass over what you handed in - the item's meta is not even read. That holds for every way of leaving a field out: the key absent, `display-name: ""`, or `lore: []`. The one thing to know is that an empty LIST means "declared nothing", while a list holding an empty string means "declared one blank line" and is appended as a spacer:
+
+```yaml
+templates:
+  raw-item:      # adds nothing at all to the stack
+    click-actions:
+      - "[player] kit claim {kit}"
+  spaced-item:
+    lore:
+      - ""       # this DOES append a blank line
+      - "&7Click to claim"
+```
+
+One caveat on "adds nothing": the stack that lands in the inventory still carries the `snlib_gui_item` anti-theft marker, one PDC key every rendered GUI stack has always carried - it is what lets SnLib delete an escaped copy. Your own NBT is untouched.
+
 Your instance is never mutated and never ends up in the inventory: the stack is copied before anything is written to it. A supplied stack always needs its template - there is no way to bind a bare stack, because the template is what carries the click behaviour and a slot with no definition behind it would render but never respond. Passing no stack (or a null one) is exactly the behaviour of every version before 1.21.0, so nothing you already wrote changes.
+
+**Cost.** One `ItemStack` clone per rendered cell, plus one small record per bind, plus a `Component` per name and lore line the template actually declares. A bare template costs the clone and nothing else. That is cheaper than the template render it stands in for (which reads ~20 YAML keys and builds a stack from scratch), but it is not free: this is a declarative per-viewer session built for opens, refreshes, page changes and `update-interval:` ticks. If you are driving a per-frame animation at 10 Hz and repainting a whole strip every frame, use a raw Bukkit inventory instead - that is not what a GUI session is for.
 
 > A supplied stack narrows what the server owner can restyle to the name, the extra lore and the behaviour. Use it for contents you did not author; for a cell that is genuinely yours to describe, a plain template bind gives the owner the whole appearance.
 
