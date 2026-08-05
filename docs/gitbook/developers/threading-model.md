@@ -44,6 +44,18 @@ is open and the join completes normally. The window flag and the "teardown
 already ran" idempotency guard are two separate fields, so opening the window
 early never skips the teardown itself.
 
+That flush has no non-blocking alternative, and this is why: Bukkit clears your
+plugin's enabled flag BEFORE `onDisable` runs, so the `isEnabled()` guard on
+`thenSync` drops every success continuation from the first line of
+`onInnerDisable` onward. Blocking is the only way left to observe that a write
+landed. `joinWithin(Duration)` is that wait under a budget - `true` if it settled
+in time, `false` if it did not, and the same throw as `join()` if it failed - so
+one unreachable database costs you the budget instead of holding the server stop
+open for as long as the JDBC driver takes. Pair it with the `database` section's
+`connect-timeout-seconds` and `socket-timeout-seconds`, or the driver simply
+blocks below the future and no budget above it can be honoured. See the
+[database module](modules/database.md) for both.
+
 ## Synchronous I/O only in `onEnable` and the reload path
 
 Blocking file or database I/O on the main thread is allowed in exactly two

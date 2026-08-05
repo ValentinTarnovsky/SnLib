@@ -176,6 +176,33 @@ The same API runs on two backends, selected by your config:
 SQLite is single-writer, so the module pins it to a pool of one and a single-threaded
 executor - which also makes its write barrier exact. MySQL gets a real connection pool.
 
+### Connection timeouts
+
+Two optional keys in the same `database` section bound how long the driver may block. Both
+have safe defaults, so an existing config keeps working unchanged:
+
+```yaml
+database:
+  type: mysql
+  host: db.example.com
+  # How long a single connection attempt may take. Default 10, minimum 1, maximum 3600.
+  connect-timeout-seconds: 10
+  # How long a read over an OPEN connection may block. Default 30, 0 = unlimited.
+  socket-timeout-seconds: 30
+```
+
+`connect-timeout-seconds` becomes HikariCP's `connectionTimeout` on **both** backends and
+the driver's `connectTimeout` on the MySQL URL. `socket-timeout-seconds` becomes the MySQL
+driver's `socketTimeout`; SQLite ignores it, being a local file.
+
+The socket timeout is the one that matters against a host that stops answering without
+closing the connection: without it a read waits forever, and no budget above it can help.
+Raise it (or set it to `0`) only if you knowingly run queries longer than the cap.
+
+Shrinking the connect budget is safe here: the executor has exactly as many threads as the
+pool has connections, so a borrow never queues behind another borrow and the budget only
+ever measures the physical connect.
+
 ### Driver shading
 
 HikariCP is shaded **with** relocation into `com.sn.lib.libs.hikari`, so it never clashes
@@ -197,6 +224,45 @@ Calling `join()` on the main thread outside those windows logs one warning with 
 offending call frames, so accidental main-thread blocking is caught in review rather than
 in production. Off the main thread, `join()` is always fine.
 
+### `joinWithin(Duration)` - the same wait, under a budget
+
+`join()` waits forever. During teardown that is a real risk: one unreachable database and
+the server stop hangs for as long as the JDBC driver takes. `joinWithin(timeout)` bounds
+it and tells you which of the three things happened:
+
+```java
+@Override
+protected void onInnerDisable() {
+    // Bukkit already cleared the enabled flag, so thenSync would be dropped here:
+    // blocking is the only way to observe that the write landed.
+    SnFuture<Integer> flush = sn.db().update(SAVE_SQL, st -> bind(st, state));
+    try {
+        if (!flush.joinWithin(Duration.ofSeconds(3))) {
+            getLogger().warning("Shutdown flush still running after 3s; stopping anyway.");
+        }
+    } catch (CompletionException failed) {
+        getLogger().warning("Shutdown flush failed: " + failed.getCause());
+    }
+}
+```
+
+- **`true`** - it settled in time. The value is then available from `join()`, which returns
+  immediately on a settled future.
+- **throws** - it settled with a failure, exactly like `join()` would have thrown. A throw
+  always means *failed*, never *still running*.
+- **`false`** - the budget ran out. The work is **not** cancelled and keeps running; a late
+  failure only reaches you if you registered `exceptionally` beforehand.
+
+The main-thread rules are identical to `join()`: silent during teardown and bootstrap,
+warned anywhere else, and a future that can only complete on the main thread still refuses
+to be waited on from it - a budget postpones that deadlock, it does not break it.
+
+{% hint style="warning" %}
+A budget on your side is only half of it. If the driver blocks below the future, no
+timeout you set can be honoured - that is what the
+[connection timeouts](#connection-timeouts) are for.
+{% endhint %}
+
 On shutdown the module runs an ordered teardown so no write is lost:
 
 1. `flushPlayerCaches()` saves every dirty cache entry and **joins** the enqueued writes.
@@ -212,7 +278,8 @@ before the pool closes.
 - Reads and writes run off the main thread, always.
 - Results come back as `SnFuture`; hop to the main thread with `thenSync` (guarded by
   `isEnabled()`), observe failures with `exceptionally`.
-- `join()` only in bootstrap or teardown.
+- `join()` only in bootstrap or teardown; `joinWithin(Duration)` when that wait must not
+  outlive the server stop.
 
 For the general async rules this module follows - the scheduler, the `thenSync` guard, and
 the join policy - see the [threading model](../threading-model.md).

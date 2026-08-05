@@ -39,6 +39,13 @@ import com.zaxxer.hikari.HikariDataSource;
  * {@code com.sn.lib.libs.hikari} (the shade rewrites these imports); the SQLite and
  * MySQL drivers ship unrelocated as the single server-wide copy.</p>
  *
+ * <p>Every connection attempt is bounded: HikariCP's {@code connectionTimeout} on both
+ * backends and the driver's {@code connectTimeout}/{@code socketTimeout} on the MySQL URL
+ * come from {@link DbConfig#connectTimeoutSeconds()} and
+ * {@link DbConfig#socketTimeoutSeconds()}. Without them an unreachable host blocks a
+ * caller for as long as the JDBC driver takes, which defeats any budget the caller set on
+ * its own side (see {@link SnFuture#joinWithin(java.time.Duration)}).</p>
+ *
  * <p>{@link #shutdown()} rejects new work, drains pending writes for up to 10 seconds,
  * then interrupts stragglers with {@code shutdownNow()} and unpins the worker context
  * classloaders so a hung query cannot retain the consumer classloader; the pool closes
@@ -57,6 +64,8 @@ public final class SnDb {
     }
 
     private static final long SHUTDOWN_JOIN_SECONDS = 10L;
+    /** HikariCP's own default connection-validation budget, in milliseconds. */
+    private static final long HIKARI_DEFAULT_VALIDATION_TIMEOUT_MILLIS = 5_000L;
 
     private final Sn ctx;
     private final DbConfig config;
@@ -280,9 +289,36 @@ public final class SnDb {
         }
     }
 
+    /**
+     * MySQL JDBC URL of the given settings. The two timeout parameters are what stops an
+     * unreachable host from blocking longer than the caller's own budget: {@code
+     * connectTimeout} caps opening the socket and {@code socketTimeout} caps a read on an
+     * open one (0 = unlimited, the driver default that hangs forever on a black-holed
+     * link). Package-private and static so the parameter assembly is unit-tested.
+     */
+    static String mysqlUrl(String host, int port, String database, boolean ssl,
+            long connectTimeoutMillis, long socketTimeoutMillis) {
+        return "jdbc:mysql://" + host + ":" + port + "/" + database
+                + "?useSSL=" + ssl
+                + "&allowPublicKeyRetrieval=true&characterEncoding=utf8"
+                + "&connectTimeout=" + connectTimeoutMillis
+                + "&socketTimeout=" + socketTimeoutMillis;
+    }
+
     private HikariDataSource createDataSource() {
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName(poolName);
+        // Bounds the physical connect, and only that: the executor has exactly as many
+        // threads as the pool has connections, so a borrow never queues behind another
+        // borrow and this budget can never expire on pool contention.
+        long connectTimeoutMillis = config.connectTimeoutSeconds() * 1000L;
+        hikari.setConnectionTimeout(connectTimeoutMillis);
+        // A borrow must not outlive that budget through the liveness check either. Only
+        // tightened when the budget is shorter than HikariCP's own validation default, so
+        // a config that did not ask for anything keeps HikariCP's value untouched.
+        if (connectTimeoutMillis < HIKARI_DEFAULT_VALIDATION_TIMEOUT_MILLIS) {
+            hikari.setValidationTimeout(connectTimeoutMillis);
+        }
         if (config.type() == DbConfig.Type.SQLITE) {
             File file = config.sqliteFile();
             File parent = file.getParentFile();
@@ -296,9 +332,9 @@ public final class SnDb {
             hikari.addDataSourceProperty("journal_mode", "WAL");
         } else {
             hikari.setDriverClassName("com.mysql.cj.jdbc.Driver");
-            hikari.setJdbcUrl("jdbc:mysql://" + config.host() + ":" + config.port() + "/"
-                    + config.database() + "?useSSL=" + config.ssl()
-                    + "&allowPublicKeyRetrieval=true&characterEncoding=utf8");
+            hikari.setJdbcUrl(mysqlUrl(config.host(), config.port(), config.database(),
+                    config.ssl(), connectTimeoutMillis,
+                    config.socketTimeoutSeconds() * 1000L));
             hikari.setUsername(config.username());
             hikari.setPassword(config.password());
             hikari.setMaximumPoolSize(Math.max(1, config.poolSize()));

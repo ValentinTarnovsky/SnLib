@@ -16,6 +16,15 @@ import org.jetbrains.annotations.Nullable;
  * {@code port}, {@code database}, {@code username}, {@code password}, {@code pool-size}
  * and {@code ssl}. A missing section or an unknown type falls back to SQLite at
  * {@code <dataFolder>/database.db}.</p>
+ *
+ * <p>Two optional keys bound how long the driver may block, so an unreachable host cannot
+ * outlive a caller's own budget: {@code connect-timeout-seconds} (default
+ * {@value #DEFAULT_CONNECT_TIMEOUT_SECONDS}, minimum 1) caps opening a connection, and
+ * {@code socket-timeout-seconds} (default {@value #DEFAULT_SOCKET_TIMEOUT_SECONDS},
+ * {@code 0} = unlimited) caps a read on an already-open one - the case that otherwise
+ * hangs forever on a black-holed link. Both clamp to
+ * {@value #MAX_TIMEOUT_SECONDS} seconds. Omitting them keeps every existing config
+ * working; they are read from the same {@code database} section.</p>
  */
 public final class DbConfig {
 
@@ -28,6 +37,12 @@ public final class DbConfig {
     private static final String DEFAULT_SQLITE_FILE = "database.db";
     private static final int DEFAULT_MYSQL_PORT = 3306;
     private static final int DEFAULT_MYSQL_POOL_SIZE = 4;
+    /** Default cap on opening a connection, in seconds. */
+    static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
+    /** Default cap on a read over an open connection, in seconds; 0 disables it. */
+    static final int DEFAULT_SOCKET_TIMEOUT_SECONDS = 30;
+    /** Upper clamp shared by both timeouts, in seconds. */
+    static final int MAX_TIMEOUT_SECONDS = 3600;
 
     private final Type type;
     private final File sqliteFile;
@@ -38,9 +53,12 @@ public final class DbConfig {
     private final String password;
     private final int poolSize;
     private final boolean ssl;
+    private final int connectTimeoutSeconds;
+    private final int socketTimeoutSeconds;
 
     private DbConfig(Type type, File sqliteFile, String host, int port, String database,
-            String username, String password, int poolSize, boolean ssl) {
+            String username, String password, int poolSize, boolean ssl,
+            int connectTimeoutSeconds, int socketTimeoutSeconds) {
         this.type = type;
         this.sqliteFile = sqliteFile;
         this.host = host;
@@ -50,6 +68,8 @@ public final class DbConfig {
         this.password = password;
         this.poolSize = poolSize;
         this.ssl = ssl;
+        this.connectTimeoutSeconds = connectTimeoutSeconds;
+        this.socketTimeoutSeconds = socketTimeoutSeconds;
     }
 
     /**
@@ -85,7 +105,24 @@ public final class DbConfig {
                 ? DEFAULT_MYSQL_POOL_SIZE
                 : Math.max(1, section.getInt("pool-size", DEFAULT_MYSQL_POOL_SIZE));
         boolean ssl = section != null && section.getBoolean("ssl", false);
-        return new DbConfig(type, sqliteFile, host, port, database, username, password, poolSize, ssl);
+        int connectTimeout = clampConnectTimeout(section == null
+                ? DEFAULT_CONNECT_TIMEOUT_SECONDS
+                : section.getInt("connect-timeout-seconds", DEFAULT_CONNECT_TIMEOUT_SECONDS));
+        int socketTimeout = clampSocketTimeout(section == null
+                ? DEFAULT_SOCKET_TIMEOUT_SECONDS
+                : section.getInt("socket-timeout-seconds", DEFAULT_SOCKET_TIMEOUT_SECONDS));
+        return new DbConfig(type, sqliteFile, host, port, database, username, password, poolSize,
+                ssl, connectTimeout, socketTimeout);
+    }
+
+    /** Clamps the connect budget to 1..{@value #MAX_TIMEOUT_SECONDS}; it can never be zero. */
+    static int clampConnectTimeout(int seconds) {
+        return Math.min(MAX_TIMEOUT_SECONDS, Math.max(1, seconds));
+    }
+
+    /** Clamps the socket budget to 0..{@value #MAX_TIMEOUT_SECONDS}; 0 means unlimited. */
+    static int clampSocketTimeout(int seconds) {
+        return Math.min(MAX_TIMEOUT_SECONDS, Math.max(0, seconds));
     }
 
     /** Backend type. */
@@ -131,5 +168,27 @@ public final class DbConfig {
     /** Whether the MySQL connection uses SSL. */
     public boolean ssl() {
         return ssl;
+    }
+
+    /**
+     * Seconds a single connection attempt may take before it fails, from the
+     * {@code connect-timeout-seconds} key (default
+     * {@value #DEFAULT_CONNECT_TIMEOUT_SECONDS}, clamped to 1..{@value #MAX_TIMEOUT_SECONDS}).
+     * Applied as HikariCP's {@code connectionTimeout} on both backends and as the MySQL
+     * driver's {@code connectTimeout} on the URL.
+     */
+    public int connectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    /**
+     * Seconds a read over an already-open MySQL connection may block before it fails,
+     * from the {@code socket-timeout-seconds} key (default
+     * {@value #DEFAULT_SOCKET_TIMEOUT_SECONDS}, clamped to 0..{@value #MAX_TIMEOUT_SECONDS},
+     * where {@code 0} means unlimited). Applied as the driver's {@code socketTimeout};
+     * SQLite ignores it, being a local file.
+     */
+    public int socketTimeoutSeconds() {
+        return socketTimeoutSeconds;
     }
 }

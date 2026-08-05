@@ -46,12 +46,16 @@ package com.sn.lib;
  * PAPI on the calling thread instead of skipping it off the main one, and the viewer-aware
  * SnLang.get(String, Player, Ph...) / getList(String, Player, Ph...) render a spliced
  * fragment for a viewer, so text assembled inside AsyncChatEvent can carry resolved
- * placeholders without blocking a hop back to the main thread).</p>
+ * placeholders without blocking a hop back to the main thread); LEVEL 16 = release 1.24.0
+ * (a bounded teardown wait: SnFuture.joinWithin(Duration) reports whether the future
+ * settled inside a budget instead of blocking forever, and DbConfig.connectTimeoutSeconds
+ * / socketTimeoutSeconds bound the JDBC connect and read so an unreachable host cannot
+ * outlive that budget).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 15;
+    public static final int LEVEL = 16;
 
     private SnApi() {
     }

@@ -6,7 +6,7 @@
 
     <groupId>com.sn</groupId>
     <artifactId>snlib</artifactId>
-    <version>1.23.0</version>
+    <version>1.24.0</version>
     <packaging>jar</packaging>
 
     <name>SnLib</name>
@@ -16,8 +16,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven.compiler.release>21</maven.compiler.release>
-        <!-- Informative manifest value; the real handshake constant is com.sn.lib.SnApi.LEVEL -->
-        <sn.api.level>13</sn.api.level>
+        <!-- Informative manifest value; the real handshake constant is com.sn.lib.SnApi.LEVEL.
+             Nothing reads it, so it had drifted (13 while the constant was 15); keep it in
+             step with SnApi.LEVEL on every release that bumps the level. -->
+        <sn.api.level>16</sn.api.level>
     </properties>
 
     <repositories>
