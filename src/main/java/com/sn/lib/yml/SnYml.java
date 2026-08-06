@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
@@ -45,6 +46,12 @@ import com.sn.lib.text.SnText;
  * replaces the pending snapshot). Once the owning context is shutting down, saves write
  * synchronously on the calling thread, never through the scheduler. {@link #flush()}
  * drains whatever is still pending and is invoked by the context teardown.</p>
+ *
+ * <p><b>{@code save()} is the whole persist path on a running server.</b> It does not block:
+ * only the serialization happens on the caller. {@code flush()} is a teardown primitive, and
+ * the context already calls it for every mounted file from {@code Sn.shutdown()} - a consumer
+ * that pairs {@code save(); flush();} in a command or a listener is paying for a barrier it
+ * does not need.</p>
  */
 public final class SnYml {
 
@@ -55,13 +62,21 @@ public final class SnYml {
 
     private volatile YamlConfiguration yaml = new YamlConfiguration();
 
+    /** Ceiling on how long {@link #flush()} waits for a write it did not stage itself. */
+    private static final long FLUSH_BUDGET_SECONDS = 10L;
+
     private final Object saveLock = new Object();
     private String pendingSnapshot;
     private long pendingSeq;
-    private CompletableFuture<?> pendingWrite;
     private boolean writeScheduled;
 
-    private final Object ioLock = new Object();
+    /**
+     * Guards the physical write and {@code lastAttemptedSeq}. A {@link ReentrantLock} rather
+     * than a monitor because {@link #flush()} has to be able to give up on it: an intrinsic
+     * lock cannot be acquired with a timeout, and a teardown that blocks forever on a wedged
+     * disk takes the rest of the shutdown down with it.
+     */
+    private final ReentrantLock ioLock = new ReentrantLock();
     private long saveSeq;
     private long lastAttemptedSeq;
 
@@ -282,7 +297,6 @@ public final class SnYml {
             if (!writeScheduled) {
                 writeScheduled = true;
                 CompletableFuture<?> write = ctx.scheduler().supplyAsync(this::drainPendingWrites);
-                pendingWrite = write;
                 write.whenComplete((value, error) -> {
                     if (error != null) {
                         synchronized (saveLock) {
@@ -295,33 +309,60 @@ public final class SnYml {
     }
 
     /**
-     * Drains any pending save: joins the in-flight async write, then writes the leftover
-     * snapshot synchronously if the async write never started (scheduler rejected or
-     * already cancelled). Used by the context teardown so no coalesced write is lost.
+     * Drains any pending save: writes whatever {@link #save()} staged, on the calling thread,
+     * and waits out an unrelated write that is already in flight. Used by the context teardown
+     * so no coalesced write is lost.
+     *
+     * <p>It does NOT join the scheduled write's future. That future is completed by a Bukkit
+     * async task, and a consumer that called {@code save(); flush();} on the primary thread saw
+     * that join expire its full budget every single time on a live server, freezing the server
+     * for ten seconds per call. Taking the staged snapshot over reaches the same end state with
+     * no wait at all: the scheduled drain then finds nothing staged and exits.</p>
+     *
+     * <p>Two waits are involved and only one of them is bounded, which is the whole design.
+     * Waiting on somebody else's in-flight write is a courtesy, so it gives up after
+     * {@link #FLUSH_BUDGET_SECONDS} - otherwise a wedged disk would hang teardown forever and
+     * cost far more than the write is worth. Writing the snapshot this instance staged is not a
+     * courtesy: it is the caller's data, so it always happens, blocking uninterruptibly in
+     * {@link #writeToDisk} if it must, exactly as the pre-1.24.1 code did.</p>
      */
     public void flush() {
-        CompletableFuture<?> write;
-        synchronized (saveLock) {
-            write = pendingWrite;
+        boolean acquired = false;
+        boolean interrupted = false;
+        try {
+            acquired = ioLock.tryLock(FLUSH_BUDGET_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            // Re-arm and carry on rather than return. The flag survives the throw, so every
+            // later file in YmlManager.flushAll() would take this branch too, and returning
+            // here would silently drop every one of their staged writes.
+            interrupted = true;
+            Thread.currentThread().interrupt();
         }
-        if (write != null) {
-            try {
-                write.get(10, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (Exception ignored) {
-                // Exceptional or timed-out write: the leftover snapshot is handled below.
+        if (!acquired && !interrupted) {
+            // Only a real expiry is worth a line. tryLock throws at nanosecond zero when the
+            // interrupt flag was already set, and warning there would print one false alarm per
+            // mounted file on a shutdown where every write landed cleanly.
+            ctx.plugin().getLogger().warning("A write to " + file.getName()
+                    + " has been in progress for over " + FLUSH_BUDGET_SECONDS + "s");
+        }
+        try {
+            while (true) {
+                String snapshot;
+                long seq;
+                synchronized (saveLock) {
+                    snapshot = pendingSnapshot;
+                    seq = pendingSeq;
+                    pendingSnapshot = null;
+                    if (snapshot == null) {
+                        break;
+                    }
+                }
+                writeToDisk(snapshot, seq);
             }
-        }
-        String snapshot;
-        long seq;
-        synchronized (saveLock) {
-            snapshot = pendingSnapshot;
-            seq = pendingSeq;
-            pendingSnapshot = null;
-        }
-        if (snapshot != null) {
-            writeToDisk(snapshot, seq);
+        } finally {
+            if (acquired) {
+                ioLock.unlock();
+            }
         }
     }
 
@@ -416,23 +457,34 @@ public final class SnYml {
 
     private Void drainPendingWrites() {
         while (true) {
-            String snapshot;
-            long seq;
-            synchronized (saveLock) {
-                snapshot = pendingSnapshot;
-                seq = pendingSeq;
-                pendingSnapshot = null;
-                if (snapshot == null) {
-                    writeScheduled = false;
-                    return null;
+            // ioLock spans the TAKE as well as the write. Without that, this method would sit
+            // between "pendingSnapshot = null" and writeToDisk holding the only copy of a
+            // snapshot, and a concurrent flush() would find nothing staged, see a free lock and
+            // return before the bytes landed - which is exactly the guarantee its callers
+            // delete files and re-read files on.
+            ioLock.lock();
+            try {
+                String snapshot;
+                long seq;
+                synchronized (saveLock) {
+                    snapshot = pendingSnapshot;
+                    seq = pendingSeq;
+                    pendingSnapshot = null;
+                    if (snapshot == null) {
+                        writeScheduled = false;
+                        return null;
+                    }
                 }
+                writeToDisk(snapshot, seq);
+            } finally {
+                ioLock.unlock();
             }
-            writeToDisk(snapshot, seq);
         }
     }
 
     private void writeToDisk(String content, long seq) {
-        synchronized (ioLock) {
+        ioLock.lock();
+        try {
             // A snapshot older than an already attempted one NEVER overwrites the new
             // state (async drain vs synchronous teardown save race).
             if (seq <= lastAttemptedSeq) {
@@ -449,6 +501,8 @@ public final class SnYml {
                 ctx.plugin().getLogger().warning(
                         "Could not save " + file.getName() + ": " + e.getMessage());
             }
+        } finally {
+            ioLock.unlock();
         }
     }
 
