@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -76,14 +77,16 @@ public final class PapiHolder {
      */
     public boolean register(String identifier, String author, String version,
             Map<String, Function<OfflinePlayer, String>> exact,
-            Map<String, BiFunction<OfflinePlayer, String, String>> prefixed) {
+            Map<String, BiFunction<OfflinePlayer, String, String>> prefixed,
+            Set<String> globalExact, Set<String> globalPrefixed) {
         if (!available()) {
             owner.getLogger().warning("PlaceholderAPI absent: expansion '" + identifier
                     + "' not registered");
             return false;
         }
         try {
-            Object expansion = Bridge.register(owner, identifier, author, version, exact, prefixed);
+            Object expansion = Bridge.register(owner, identifier, author, version, exact,
+                    prefixed, globalExact, globalPrefixed);
             if (expansion == null) {
                 owner.getLogger().warning("PlaceholderAPI rejected the expansion '" + identifier + "'");
                 return false;
@@ -132,14 +135,15 @@ public final class PapiHolder {
 
         static @Nullable Object register(JavaPlugin owner, String identifier, String author,
                 String version, Map<String, Function<OfflinePlayer, String>> exact,
-                Map<String, BiFunction<OfflinePlayer, String, String>> prefixed) {
+                Map<String, BiFunction<OfflinePlayer, String, String>> prefixed,
+                Set<String> globalExact, Set<String> globalPrefixed) {
             PlaceholderExpansion existing = PlaceholderAPIPlugin.getInstance()
                     .getLocalExpansionManager().getExpansion(identifier.toLowerCase(Locale.ROOT));
             if (existing != null) {
                 existing.unregister();
             }
-            BuiltExpansion expansion =
-                    new BuiltExpansion(owner, identifier, author, version, exact, prefixed);
+            BuiltExpansion expansion = new BuiltExpansion(owner, identifier, author, version,
+                    exact, prefixed, globalExact, globalPrefixed);
             return expansion.register() ? expansion : null;
         }
 
@@ -150,7 +154,9 @@ public final class PapiHolder {
 
     /**
      * Expansion built from the declarative resolver maps: persists across PlaceholderAPI
-     * expansion reloads and null-checks the requesting player before any resolver runs.
+     * expansion reloads and null-checks the requesting player before a player-bound resolver
+     * runs. The resolvers the builder declared global take no player, so they answer a null
+     * requester instead of being dropped.
      */
     private static final class BuiltExpansion extends PlaceholderExpansion {
 
@@ -160,16 +166,21 @@ public final class PapiHolder {
         private final String version;
         private final Map<String, Function<OfflinePlayer, String>> exact;
         private final Map<String, BiFunction<OfflinePlayer, String, String>> prefixed;
+        private final Set<String> globalExact;
+        private final Set<String> globalPrefixed;
 
         BuiltExpansion(JavaPlugin owner, String identifier, String author, String version,
                 Map<String, Function<OfflinePlayer, String>> exact,
-                Map<String, BiFunction<OfflinePlayer, String, String>> prefixed) {
+                Map<String, BiFunction<OfflinePlayer, String, String>> prefixed,
+                Set<String> globalExact, Set<String> globalPrefixed) {
             this.owner = owner;
             this.identifier = identifier;
             this.author = author;
             this.version = version;
             this.exact = exact;
             this.prefixed = prefixed;
+            this.globalExact = globalExact;
+            this.globalPrefixed = globalPrefixed;
         }
 
         @Override
@@ -193,19 +204,26 @@ public final class PapiHolder {
             return true;
         }
 
+        /**
+         * The resolver is located FIRST and the null requester is rejected second, so a
+         * global resolver can answer one. A player-bound resolver still never sees a null
+         * player: it was written against the non-null contract its binder documents.
+         */
         @Override
         public @Nullable String onRequest(@Nullable OfflinePlayer player, @NotNull String params) {
-            if (player == null) {
-                return null;
-            }
             String key = params.toLowerCase(Locale.ROOT);
             Function<OfflinePlayer, String> exactResolver = exact.get(key);
             if (exactResolver != null) {
-                return resolveSafe(params, () -> exactResolver.apply(player));
+                return player == null && !globalExact.contains(key)
+                        ? null
+                        : resolveSafe(params, () -> exactResolver.apply(player));
             }
             for (Map.Entry<String, BiFunction<OfflinePlayer, String, String>> entry
                     : prefixed.entrySet()) {
                 if (key.startsWith(entry.getKey())) {
+                    if (player == null && !globalPrefixed.contains(entry.getKey())) {
+                        return null;
+                    }
                     String arg = params.substring(entry.getKey().length());
                     return resolveSafe(params, () -> entry.getValue().apply(player, arg));
                 }

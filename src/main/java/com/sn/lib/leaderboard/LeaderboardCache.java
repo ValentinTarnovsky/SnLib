@@ -105,10 +105,15 @@ public final class LeaderboardCache {
      * {@code top_<id>_<n>_name}, {@code top_<id>_<n>_value} and {@code pos_<id>}.
      * Resolvers only read the in-memory snapshots. Returns false with a WARN when
      * PlaceholderAPI is absent or rejects the expansion.
+     *
+     * <p>The {@code top_} tokens are bound GLOBAL: a ranking is server data, and the
+     * callers that show one - a global hologram, a Discord bridge, a console task -
+     * routinely supply no player. {@code pos_} asks about the requester by definition, so
+     * it stays player-bound and a null requester leaves it unresolved.</p>
      */
     public boolean exposePlaceholders(String identifier) {
         return ctx.papi().expansion(identifier)
-                .prefixed("top_", (player, rest) -> resolveTop(rest))
+                .globalPrefixed("top_", this::resolveTop)
                 .prefixed("pos_", (player, rest) ->
                         String.valueOf(positionOf(rest, player.getUniqueId())))
                 .register();

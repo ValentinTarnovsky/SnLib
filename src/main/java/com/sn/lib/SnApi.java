@@ -50,12 +50,17 @@ package com.sn.lib;
  * (a bounded teardown wait: SnFuture.joinWithin(Duration) reports whether the future
  * settled inside a budget instead of blocking forever, and DbConfig.connectTimeoutSeconds
  * / socketTimeoutSeconds bound the JDBC connect and read so an unreachable host cannot
- * outlive that budget).</p>
+ * outlive that budget); LEVEL 17 = release 1.25.0 (placeholders that need no player:
+ * ExpansionBuilder.global(String, Supplier) and globalPrefixed(String, Function) bind a
+ * resolver that takes no OfflinePlayer and therefore answers a strictly null requester -
+ * a global hologram, a Discord bridge, /papi parse --null - which the player-bound
+ * placeholder/prefixed bindings still drop; LeaderboardCache.exposePlaceholders binds its
+ * top_ tokens that way).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 16;
+    public static final int LEVEL = 17;
 
     private SnApi() {
     }

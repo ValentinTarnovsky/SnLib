@@ -114,6 +114,38 @@ sn.papi().expansion("shop")
 `author(...)` and `version(...)` default to your plugin's `plugin.yml` values; override
 them if you want.
 
+### Placeholders that need no player
+
+Not every placeholder describes a player. A leaderboard row, a server-wide counter, an
+event countdown - that is global data that merely happens to be exposed through a
+per-player API. And the callers that ask for it often supply **no player at all**: a
+global hologram, a Discord bridge, a console task, `/papi parse --null`.
+
+`placeholder(...)` and `prefixed(...)` never hand their resolver a null player - the token
+is left unresolved instead, so a resolver written against a real player stays safe.
+Declare the global ones with `global(...)` / `globalPrefixed(...)` and they answer a null
+requester too. The resolver takes no `OfflinePlayer`, so it cannot dereference one:
+
+```java
+sn.papi().expansion("shop")
+        .placeholder("balance", player -> money(player))   // needs a player
+        .global("open_shops", () -> String.valueOf(registry.openCount()))
+        .globalPrefixed("top_", position -> topSellerAt(position))
+        .register();
+// %shop_balance%     -> empty for a null requester
+// %shop_open_shops%  -> answers anyone, player or not
+// %shop_top_1%       -> answers anyone, position = "1"
+```
+
+Both share their keyspace with the player-bound binders, so declaring the same param twice
+is not an error: the later declaration wins outright.
+
+{% hint style="info" %}
+`LeaderboardCache.exposePlaceholders(id)` already binds its `top_` tokens this way, so
+every board you expose through it renders in a global hologram. `pos_<id>` asks about the
+requester by definition and stays player-bound.
+{% endhint %}
+
 ### `persist true` semantics
 
 The built expansion reports `persist() = true` to PlaceholderAPI. That means it **survives

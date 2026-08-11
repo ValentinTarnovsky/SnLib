@@ -3,6 +3,7 @@ package com.sn.lib.papi;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -209,7 +210,9 @@ public final class SnPapi {
 
     boolean registerExpansion(String identifier, String author, String version,
             Map<String, Function<OfflinePlayer, String>> exact,
-            Map<String, BiFunction<OfflinePlayer, String, String>> prefixed) {
-        return holder.register(identifier, author, version, exact, prefixed);
+            Map<String, BiFunction<OfflinePlayer, String, String>> prefixed,
+            Set<String> globalExact, Set<String> globalPrefixed) {
+        return holder.register(identifier, author, version, exact, prefixed,
+                globalExact, globalPrefixed);
     }
 }
