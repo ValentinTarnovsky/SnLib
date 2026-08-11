@@ -24,6 +24,38 @@ Open the language file for your chosen language, change any message text, save, 
 
 Because these files are [managed the same way as config files](configuration-files.md), your edits survive plugin updates. When a plugin adds a new message in an update, the new key is merged into your file automatically, in the right place, without disturbing the lines you have already customized.
 
+## Choosing how numbers read
+
+Any placeholder that holds a number can be rendered in three ways, by adding a hint after a colon inside the token. This works in message values, item names, item lore and menu titles, and it needs no change to the plugin.
+
+| Hint | `1500000` becomes | Use it for |
+| --- | --- | --- |
+| `{balance:short}` | `1.5M` | Chat, lore, scoreboards - anywhere space is tight |
+| `{balance:grouped}` | `1,500,000` | Receipts and confirmations, where the full figure matters |
+| `{balance:raw}` | `1500000` | Plain digits, no separators |
+
+Writing the placeholder without a hint, `{balance}`, keeps whatever the plugin already sends. Nothing changes in a file you do not edit.
+
+```yaml
+# Before
+balance-msg: "&aYou have &f{balance} &acoins"      # You have 1500000 coins
+
+# After
+balance-msg: "&aYou have &f{balance:short} &acoins"  # You have 1.5M coins
+```
+
+The suffixes are `K`, `M`, `B`, `T`, `Qa` and `Qi`, and `short` and `grouped` round to at most two decimals. `raw` never rounds, which is the reason to reach for it when a player needs the exact figure.
+
+{% hint style="warning" %}
+Only `raw`, `short` and `grouped` are hints. Any other word after a colon is left completely alone, so a Discord timestamp like `<t:1700000000:R>` or a placeholder that takes an argument keeps working untouched.
+
+A hint on something that is not a number does nothing rather than breaking the line: `{player:short}` still shows the player's name.
+{% endhint %}
+
+{% hint style="info" %}
+If a plugin already shortens a number before sending it, asking for `:raw` gives you back a rounded figure, not the exact one, because the exact value was lost before the message was built. When you need the true number, use a placeholder the plugin sends unformatted.
+{% endhint %}
+
 ## Automatic fallback to English
 
 The English file (`messages_en.yml`) is the reference. Every message key is guaranteed to exist there. When you use a translated file for another language and a specific key happens to be missing from it, the plugin does not show a blank line or an error. It automatically falls back to the English value for that one key, and logs a single warning telling you which key was missing.

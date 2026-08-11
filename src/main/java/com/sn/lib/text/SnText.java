@@ -1,5 +1,6 @@
 package com.sn.lib.text;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -16,6 +17,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import com.sn.lib.Ph;
+import com.sn.lib.util.NumberFormatter;
 
 /**
  * Text pipeline shared by every SnLib module.
@@ -73,6 +75,13 @@ public final class SnText {
     /** Consumed and discarded here; its semantics (skip the lang prefix) live in SnLang. */
     private static final String NOPREFIX_TAG = "[noprefix]";
     private static final char SECTION = (char) 0xA7;
+
+    /** Format hint: plain digits, no grouping and never in scientific notation. */
+    private static final String HINT_RAW = "raw";
+    /** Format hint: the largest fitting K/M/B/T/Qa/Qi suffix, up to two decimals. */
+    private static final String HINT_SHORT = "short";
+    /** Format hint: comma thousands grouping, up to two decimals. */
+    private static final String HINT_GROUPED = "grouped";
 
     private static final Map<Character, String> MINI_TAGS = Map.ofEntries(
             Map.entry('0', "black"), Map.entry('1', "dark_blue"), Map.entry('2', "dark_green"),
@@ -236,6 +245,12 @@ public final class SnText {
      * One-pass scanner over {@code %key%} and {@code {key}} tokens. A null from the resolver
      * leaves the token intact, so unresolved PAPI tokens survive untouched; replacement
      * values are not re-scanned.
+     *
+     * <p>A token may carry a trailing FORMAT HINT, {@code {balance:short}}, which renders a
+     * numeric value in one of {@link #HINT_RAW}, {@link #HINT_SHORT} or {@link #HINT_GROUPED}.
+     * See {@link #resolveHinted} for the full contract; the short version is that the hint is
+     * opt-in and inert unless the server owner writes it, so a file with no {@code :} in any
+     * token renders byte-identical to a build without this feature.</p>
      */
     public static String applyLocals(String s, Function<String, String> resolver) {
         if (s == null || s.isEmpty() || resolver == null) {
@@ -248,7 +263,13 @@ public final class SnText {
             if (c == '%' || c == '{') {
                 int end = s.indexOf(c == '%' ? '%' : '}', i + 1);
                 if (end > i + 1) {
-                    String value = resolver.apply(s.substring(i + 1, end));
+                    String token = s.substring(i + 1, end);
+                    // The whole token is tried FIRST so a key that legitimately contains a
+                    // colon keeps resolving exactly as it did before hints existed.
+                    String value = resolver.apply(token);
+                    if (value == null) {
+                        value = resolveHinted(token, resolver);
+                    }
                     if (value != null) {
                         out.append(value);
                         i = end + 1;
@@ -260,6 +281,63 @@ public final class SnText {
             i++;
         }
         return out.toString();
+    }
+
+    /**
+     * Resolves a {@code key:hint} token, returning {@code null} when it is not one.
+     *
+     * <p>The hint lets the SERVER OWNER pick how a number reads without the plugin being
+     * rebuilt: a plugin hands over whatever digits it has and the language file decides
+     * between {@code 1500000}, {@code 1,500,000} and {@code 1.5M}. Five rules keep it from
+     * ever damaging text that was not asking for it:</p>
+     * <ol>
+     *   <li>the full token is resolved first (see the caller), so an existing key containing
+     *       a colon is never reinterpreted as a hint;</li>
+     *   <li>the suffix must be one of the three known hints. Anything else - a Discord
+     *       timestamp, a MiniMessage tag, a PAPI token with an argument - returns
+     *       {@code null} and the token survives verbatim for the next stage;</li>
+     *   <li>the key must resolve. An unknown key leaves the whole token, hint included,
+     *       intact, matching what an unhinted unknown token already does;</li>
+     *   <li>a value that is not a number comes back UNCHANGED rather than blanked, so
+     *       {@code {player:short}} renders the player's name instead of eating it;</li>
+     *   <li>a non-finite result is left alone too. {@code parseFormatted} accepts
+     *       {@code 1e400}, which overflows to infinity and would throw inside
+     *       {@link BigDecimal#valueOf(double)}.</li>
+     * </ol>
+     *
+     * <p>The value is parsed back from its rendered form, which is what makes the hint work
+     * on a plugin that was never modified. The cost is precision: a caller that already
+     * abbreviated hands over {@code 1.23M}, so {@code :raw} answers {@code 1230000} and not
+     * the exact figure. Only a caller that passes unformatted digits can be re-rendered
+     * losslessly.</p>
+     */
+    private static String resolveHinted(String token, Function<String, String> resolver) {
+        int mark = token.lastIndexOf(':');
+        if (mark <= 0 || mark == token.length() - 1) {
+            return null;
+        }
+        String hint = token.substring(mark + 1);
+        if (!HINT_RAW.equals(hint) && !HINT_SHORT.equals(hint) && !HINT_GROUPED.equals(hint)) {
+            return null;
+        }
+        String value = resolver.apply(token.substring(0, mark));
+        if (value == null) {
+            return null;
+        }
+        double number;
+        try {
+            number = NumberFormatter.parseFormatted(value);
+        } catch (NumberFormatException notANumber) {
+            return value;
+        }
+        if (!Double.isFinite(number)) {
+            return value;
+        }
+        return switch (hint) {
+            case HINT_SHORT -> NumberFormatter.format(number);
+            case HINT_GROUPED -> NumberFormatter.formatComma(number);
+            default -> BigDecimal.valueOf(number).stripTrailingZeros().toPlainString();
+        };
     }
 
     /** Applies {@link #color(String)} to every line; null lists yield an empty list. */
