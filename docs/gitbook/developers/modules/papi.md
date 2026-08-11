@@ -78,6 +78,11 @@ sn.papi().applyOnMain(viewer, rawLines)
 `applyOnMain` returns the same `SnFuture` type as the [database](database.md) module, so
 you consume it the same way: `thenSync` to hop the result back for Bukkit calls,
 `exceptionally` to observe a failure. Its canonical consumption is `thenSync`.
+
+Never wait on it. When you call it off the main thread, only the main-thread hop it just
+scheduled can complete the future, so a `join()` from the main thread would wait for work
+that same thread was supposed to run. Since 1.27.0 that throws instead of deadlocking the
+server silently.
 {% endhint %}
 
 ## Declarative custom expansions

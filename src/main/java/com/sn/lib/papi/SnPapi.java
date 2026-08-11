@@ -80,6 +80,11 @@ public final class SnPapi {
      * resolver error or a scheduling failure (plugin disabled before the hop) completes
      * the future with the ORIGINAL unresolved text; null text completes with null.
      * Canonical consumption is {@code thenSync(...)}, as with the db futures.
+     *
+     * <p>The off-main future is marked {@link SnFuture#wrapMainCompleted} because only a
+     * main-thread task can ever complete it: waiting on it FROM the main thread now throws
+     * instead of deadlocking the server silently. The inline branch is already completed, so
+     * the marking is inert there and a wait on it still returns at once.</p>
      */
     public SnFuture<String> applyOnMain(@Nullable Player viewer, String text) {
         if (Bukkit.isPrimaryThread()) {
@@ -101,7 +106,7 @@ public final class SnPapi {
         } catch (IllegalPluginAccessException e) {
             future.complete(text);
         }
-        return SnFuture.wrap(ctx, future);
+        return SnFuture.wrapMainCompleted(ctx, future);
     }
 
     /**
@@ -128,7 +133,7 @@ public final class SnPapi {
         } catch (IllegalPluginAccessException e) {
             future.complete(lines);
         }
-        return SnFuture.wrap(ctx, future);
+        return SnFuture.wrapMainCompleted(ctx, future);
     }
 
     /**
