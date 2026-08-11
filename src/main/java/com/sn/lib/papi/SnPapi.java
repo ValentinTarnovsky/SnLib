@@ -81,10 +81,11 @@ public final class SnPapi {
      * the future with the ORIGINAL unresolved text; null text completes with null.
      * Canonical consumption is {@code thenSync(...)}, as with the db futures.
      *
-     * <p>The off-main future is marked {@link SnFuture#wrapMainCompleted} because only a
-     * main-thread task can ever complete it: waiting on it FROM the main thread now throws
-     * instead of deadlocking the server silently. The inline branch is already completed, so
-     * the marking is inert there and a wait on it still returns at once.</p>
+     * <p>The off-main branch returns {@link SnFuture#wrapMainCompleted}, because only a
+     * main-thread task can ever complete that future: waiting on it FROM the main thread now
+     * throws instead of deadlocking the server silently. The primary-thread branch keeps
+     * {@link SnFuture#wrap}, since it hands back an already-completed future where the marking
+     * would have no effect either way - the guard only fires while a future is still pending.</p>
      */
     public SnFuture<String> applyOnMain(@Nullable Player viewer, String text) {
         if (Bukkit.isPrimaryThread()) {

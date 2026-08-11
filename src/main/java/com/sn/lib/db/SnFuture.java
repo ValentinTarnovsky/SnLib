@@ -152,17 +152,27 @@ public final class SnFuture<T> {
      * which matches what {@code thenSync} would have done, but a wait on it never returns, which
      * is one more reason for the rule below.</p>
      *
-     * <p><b>Never wait on the returned future.</b> It can only complete normally from inside a
-     * main-thread task, so it carries the {@link #wrapMainCompleted} marking: {@link #join()}
-     * and {@link #joinWithin(Duration)} throw {@link IllegalStateException} when called from the
-     * main thread while it is still pending, instead of deadlocking the server. That guard is a
-     * published rule, not an observed behaviour: it only fires while the future is pending, so a
-     * chain that already settled joins fine and one that has not throws. Waiting from an async
-     * thread does not throw, but it is only safe while the main thread is ticking; during a stop
-     * the main thread is inside the teardown flush, so an async wait on a chained future is a
-     * deadlock the guard cannot catch. A producer whose future is joined by a teardown flush
-     * must therefore NOT use this method: joins belong on the future the database module
-     * returned.</p>
+     * <p><b>Never wait on the returned future.</b> While the plugin is running it can only
+     * complete normally from inside a main-thread task, so it carries the
+     * {@link #wrapMainCompleted} marking: {@link #join()} and {@link #joinWithin(Duration)}
+     * throw {@link IllegalStateException} when called from the main thread while it is still
+     * pending, instead of deadlocking the server. That guard is a published rule, not an
+     * observed behaviour: it only fires while the future is pending, so a chain that already
+     * settled joins fine and one that has not throws. Waiting from an async thread does not
+     * throw, but it is only safe while the main thread is ticking; during a stop the main thread
+     * is inside the teardown flush, so an async wait on a chained future is a deadlock the guard
+     * cannot catch. A producer whose future is joined by a teardown flush must therefore NOT use
+     * this method: joins belong on the future the database module returned.</p>
+     *
+     * <p>The marking is NOT applied when the plugin is already disabled or the context is
+     * already tearing down at the moment this is called, because the hop can never be allowed
+     * from then on and the returned future will settle on the completing thread. Without that
+     * exception the guard would throw during a teardown flush on a wait that would have
+     * returned, and an {@link IllegalStateException} escaping {@code onInnerDisable} takes the
+     * rest of that flush with it. One window remains and is not closed: a teardown that STARTS
+     * after this method returned leaves a future marked main-completed that settles off it, so a
+     * wait begun on the main thread in that window still throws. The rule above is what makes
+     * that window irrelevant in practice.</p>
      *
      * <p>Two more consequences worth knowing. A handler attached to the returned future runs on
      * whichever thread settled it, the MAIN thread when the consumer threw and the completing
@@ -196,11 +206,19 @@ public final class SnFuture<T> {
             chainStep(chained, value, error, consumer, hopAllowed,
                     ctx.scheduler()::sync, plugin.getLogger()::warning);
         });
+        // The marking says "only a main-thread task can complete this", which turns a
+        // main-thread wait from a silent server deadlock into an immediate throw. It is
+        // conditional for a reason: once the plugin is disabled or the context is tearing down,
+        // the hop below can never be allowed, so the derived future settles on the completing
+        // thread instead. Claiming otherwise would make the guard fire during a teardown flush
+        // on a wait that would in fact have returned - and that throw escapes onInnerDisable,
+        // taking the rest of the consumer's flush with it. Evaluated here rather than per
+        // branch because the flag is fixed when the future is built; a teardown that STARTS
+        // after this line still leaves the narrow window the javadoc records.
+        boolean mayCompleteOnMain = ctx.plugin().isEnabled() && !ctx.isShuttingDown();
         // db is carried verbatim for consistency (it is inert while the main-completed flag is
-        // set, since that guard pre-empts every main-thread path the join WARN could reach);
-        // the flag is set because this future completes ON the main thread, which turns a
-        // main-thread wait from a silent server deadlock into an immediate throw.
-        return new SnFuture<>(ctx, db, chained, true);
+        // set, since that guard pre-empts every main-thread path the join WARN could reach).
+        return new SnFuture<>(ctx, db, chained, mayCompleteOnMain);
     }
 
     /**
