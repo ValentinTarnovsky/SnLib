@@ -190,6 +190,10 @@ public final class SnDb {
      * Saves every dirty entry of every cache created via {@link #playerCache} and joins
      * the enqueued writes. Ordered teardown: this runs right before {@link #shutdown()}
      * so no write is lost to the pool close.
+     *
+     * <p>{@code saveAll()} returns a {@link #fence()} future on purpose and must never
+     * become a {@link SnFuture#chainSync} result: this joins it from the main thread, and a
+     * chained future is completed by a main-thread task that can no longer run here.</p>
      */
     public void flushPlayerCaches() {
         for (PlayerDataCache<?> cache : playerCaches) {

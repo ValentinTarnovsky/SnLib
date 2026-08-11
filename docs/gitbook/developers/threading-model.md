@@ -56,6 +56,23 @@ open for as long as the JDBC driver takes. Pair it with the `database` section's
 blocks below the future and no budget above it can be honoured. See the
 [database module](modules/database.md) for both.
 
+## Ordering: `thenSync` ends a chain, `chainSync` extends one
+
+`thenSync`, `exceptionally` and `orDisablePlugin` all return the SAME future. They register
+one more dependent on one completion, so two of them are siblings rather than steps. Sibling
+order is unspecified and OpenJDK runs dependents last-registered-first, which means a method
+that publishes state in its own `thenSync` and then RETURNS that future hands its caller a
+continuation that runs BEFORE the publish. Hopping to the main thread does not fix it: both
+tasks are queued in that same inverted order.
+
+`chainSync` (1.27.0) is the one method returning a NEW future, settled from inside the
+main-thread task after the consumer returned, so whatever the caller registers on it is a
+successor. Fix it in the producer and the callers need no edit. Two rules come with it: end
+the chain with `exceptionally` or `orDisablePlugin`, because a failure is propagated rather
+than swallowed into a WARN; and never wait on a chained future, since only a main-thread task
+can complete it. A producer whose future a teardown flush joins must keep using `thenSync`.
+See the [database module](modules/database.md) for the full contract.
+
 ## Synchronous I/O only in `onEnable` and the reload path
 
 Blocking file or database I/O on the main thread is allowed in exactly two

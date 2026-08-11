@@ -78,6 +78,50 @@ db.query(sql, binder, mapper)
   .exceptionally(error -> getLogger().warning("Query failed: " + error));
 ```
 
+### `chainSync` - when your method RETURNS the future
+
+`thenSync`, `exceptionally` and `orDisablePlugin` all return **the same future**. They add one
+more dependent to one completion, so they end a chain rather than extending it. That is fine
+until a method attaches a consumer and then hands the future to a caller:
+
+```java
+// WRONG: the caller's step is a SIBLING of the publish, not its successor
+public SnFuture<Integer> setLastResetDate(String date) {
+    return writeState(KEY, date).thenSync(ignored -> lastResetDate = date);
+}
+
+store.setLastResetDate(today)
+     .thenSync(ignored -> announce());   // runs BEFORE lastResetDate is assigned
+```
+
+Sibling order is unspecified, and OpenJDK pops dependents last-registered-first, so the
+caller's continuation runs FIRST and reads exactly the state the publish was about to install.
+Hopping to the main thread does not save you: both tasks are then queued in that same inverted
+order.
+
+`chainSync` is the one method that returns a NEW future, settled from inside the main-thread
+task after the consumer returned. Fix it in the **producer** and every existing caller becomes
+correct without being touched:
+
+```java
+public SnFuture<Integer> setLastResetDate(String date) {
+    return writeState(KEY, date).chainSync(ignored -> lastResetDate = date);
+}
+```
+
+Three ways it differs from `thenSync`, all deliberate:
+
+- a failure is **propagated** to the returned future instead of being swallowed into one WARN,
+  so terminate the chain with `exceptionally` or `orDisablePlugin`;
+- a consumer that **throws** fails the chain instead of only being logged by Bukkit, because a
+  link that never settles is a permanent hang for whoever waits above it;
+- **never wait on the returned future.** Only a main-thread task can complete it, so `join()`
+  and `joinWithin` throw from the main thread rather than deadlocking the server. A producer
+  whose future a teardown flush joins must not use `chainSync` at all.
+
+Only chain `chainSync` onto `chainSync`: `a.chainSync(x).thenSync(y).chainSync(z)` puts `z`
+back ahead of `y`.
+
 ## Writes: `update(...)`
 
 `update(sql, binder)` runs a prepared write off the main thread and completes with the

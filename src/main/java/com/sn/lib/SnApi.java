@@ -55,12 +55,17 @@ package com.sn.lib;
  * resolver that takes no OfflinePlayer and therefore answers a strictly null requester -
  * a global hologram, a Discord bridge, /papi parse --null - which the player-bound
  * placeholder/prefixed bindings still drop; LeaderboardCache.exposePlaceholders binds its
- * top_ tokens that way).</p>
+ * top_ tokens that way); LEVEL 18 = release 1.27.0 (a continuation a caller can chain onto:
+ * SnFuture.chainSync(Consumer) runs the consumer on the main thread and returns a NEW future
+ * settled from inside that same task, so a method that publishes state in a continuation of
+ * its own can hand back a future whose caller is a successor - thenSync, exceptionally and
+ * orDisablePlugin all register sibling dependents on one CompletableFuture and return this,
+ * and sibling order is unspecified, so the caller's step ran before the publish).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 17;
+    public static final int LEVEL = 18;
 
     private SnApi() {
     }

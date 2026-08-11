@@ -117,6 +117,11 @@ public abstract class SnPlugin extends JavaPlugin {
      * a final flush behaves like teardown work: {@code SnYml.save()} writes inline and a
      * {@code SnFuture.join()} on the main thread is allowed without a WARN. Every module
      * is still live: the pool is open and joins complete normally.
+     *
+     * <p>Flush by joining the future the database module returned, never a chained one: a
+     * {@code SnFuture.chainSync} result can only be completed by a main-thread task, and by
+     * this point the enabled flag is already cleared and the scheduler is about to be
+     * cancelled, so that task will never run.</p>
      */
     protected void onInnerDisable() {
     }
