@@ -16,7 +16,7 @@ item-id: # can be anything as long it is unique
   display-name: string # supports [small]/[rgb]/[center] prefix tags # default: ""
   material: string (can resolve basehead-base64) # default: "STONE"
   skull-owner: string # player name or UUID; resolves placeholders per viewer (%player_name%); requires PLAYER_HEAD; uncached name -> default head # default: ""
-  custom-model-data: int # default: 0
+  custom-model-data: int # only stamped when the key is present; 0 is NOT the same as omitting the key # default: not set
   item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
   amount: int # default: 1
   glow: true/false # default: false
@@ -31,8 +31,8 @@ item-id: # can be anything as long it is unique
     - string (can be any of the following: HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS)
     - create a HIDE_ALL flag by adding all of the above flags to the list
   color: RGB # 235, 64, 52 or HEX # FF0000 (for any item that supports color, like leather armor) # default: ""
-  trim-pattern: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
-  trim-material: string (for armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+  trim-pattern: string (armor only; any trim pattern id the server registry knows, ex SENTRY, DUNE, COAST, WILD, WARD, EYE, VEX, TIDE, SNOUT, RIB, SPIRE, WAYFINDER, SHAPER, SILENCE, RAISER, HOST; NONE or empty disables; must be set together with trim-material) # default: ""
+  trim-material: string (armor only; any trim material id the server registry knows, ex QUARTZ, IRON, NETHERITE, REDSTONE, COPPER, GOLD, EMERALD, DIAMOND, LAPIS, AMETHYST; NONE or empty disables; must be set together with trim-pattern) # default: ""
   potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
   attributes: list ex: ["ATTRIBUTE OPERATION amount [slot-group]"] # ex "GENERIC_MOVEMENT_SPEED ADD_NUMBER 0.02 HAND"; operations: ADD_NUMBER, ADD_SCALAR, MULTIPLY_SCALAR_1; slot-groups: ANY, HAND, ARMOR, MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET # default: []
   damage: int # initial vanilla damage already spent (0..max durability); independent from custom-durability # default: not set
@@ -41,7 +41,7 @@ item-id: # can be anything as long it is unique
   # PROPERTIES - Item behavior
   # ═══════════════════════════════════════
   unbreakable: true/false # default: false
-  max-stack-size: int (1-64) # default: vanilla default for the material
+  max-stack-size: int (1-99) # only applied when the key is present; probe-based, skipped with one WARN on 1.20.4 # default: vanilla default for the material
   droppable: true/false # whether the item can be dropped by the player # default: true
   moveable: true/false # whether the item can be moved in inventories # default: true
   placeable: true/false # whether the item can be placed as a block # default: true (only for blocks)
@@ -93,16 +93,16 @@ item-id: # can be anything as long it is unique
   # (not in a GUI - for GUI actions use menu-example.yml)
   right-click-actions: # default: []
     - "[player] spawn"
-    - "[console] give %player% diamond 1"
+    - "[console] give %player_name% diamond 1"
     - "[message] &aYou used the item!"
     - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP"
     - "[actionbar] &aCooldown: 5s"
     - "[title] &6Title;&eSubtitle;20;40;20"
-    - "[broadcastmessage] &e%player% used a special item!"
+    - "[broadcastmessage] &e%player_name% used a special item!"
     - "[connect] lobby"
     - "[particle] FLAME 50 0.5 0.5 0.5 0.1" # grammar: TYPE [count] [offX offY offZ] [extra]; spawns at the player
     - "[particle] DUST 10 0.2 0.2 0.2 0.01 color=#FF9B00 size=1.5" # key=value options at the end: color= (#RRGGBB or R,G,B) and size= for DUST, to= for DUST_COLOR_TRANSITION, block= for block particles, item= for ITEM; unknown/incompatible options WARN once and are ignored
-    - "[potion] SPEED 200 1" # effect duration(ticks) amplifier
+    - "[potion] SPEED 10 1" # effect duration(SECONDS) amplifier; defaults 10 / 0
     - "[remove-item]" # removes 1 of this item from the main hand (v1.0.0 behaviour)
     - "[remove-item] 5" # removes 5 of this item from the main hand
     - "[remove-item] 3 offhand" # selector offhand: removes from the offhand instead

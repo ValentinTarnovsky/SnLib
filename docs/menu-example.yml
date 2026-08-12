@@ -132,7 +132,10 @@ items:
     skull-owner: string # player name or UUID; placeholders resolve per viewer; requires PLAYER_HEAD # default: ""
     attributes: list ex: ["ATTRIBUTE OPERATION amount [slot-group]"] # attribute modifiers, static values # default: []
     damage: int # initial vanilla damage already spent; needs a material with durability # default: not set
-    custom-model-data: int # default: 0
+    unbreakable: true/false # only applied when the key is present # default: not set
+    max-stack-size: int (1-99) # only applied when the key is present; probe-based, skipped with one WARN on 1.20.4 # default: vanilla default for the material
+    equipment-slot: string # restricts where the item can be equipped: MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET # default: "" (any slot)
+    custom-model-data: int # only stamped when the key is present; 0 is NOT the same as omitting the key # default: not set
     item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
     amount: int # default: 1
     slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6] # alternative: key (one layout character, see example-layout-item); several items may declare the same slot or key (see example-shared-slot below)
@@ -142,8 +145,8 @@ items:
     - string (can be any of the following: HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS)
     - create a HIDE_ALL flag by adding all of the above flags to the list
     color: RGB # 235, 64, 52 or HEX # FF0000 (for any item that supports color, like leather armor) # default: ""
-    trim-pattern: string (for leather armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
-    trim-material: string (for leather armor only, can be any of the following: NONE, SILVER, GOLD, COPPER, IRON, DIAMOND, NETHERITE, REDSTONE, EMERALD, LAPIS, AMETHYST) # default: "NONE"
+    trim-pattern: string (armor only; any trim pattern id the server registry knows, ex SENTRY, DUNE, COAST, WILD, WARD, EYE, VEX, TIDE, SNOUT, RIB, SPIRE, WAYFINDER, SHAPER, SILENCE, RAISER, HOST; NONE or empty disables; must be set together with trim-material) # default: ""
+    trim-material: string (armor only; any trim material id the server registry knows, ex QUARTZ, IRON, NETHERITE, REDSTONE, COPPER, GOLD, EMERALD, DIAMOND, LAPIS, AMETHYST; NONE or empty disables; must be set together with trim-pattern) # default: ""
     potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
     update-interval: int (in ticks) # every update-interval ticks, the item will update all its information, including items, title, and rows. If set to 0, the item will not update automatically. # defalt: 0
     lore: list (each line of lore) # default: []
@@ -158,7 +161,7 @@ items:
     deny-actions: all same actions as click-actions but with "deny" instead of "click" but the actions will be performed only if the click-requirements are not met # default: []
     click-actions: # list of actions to perform when the item is clicked,
       - "[player] spawn"          # run command as player
-      - "[player-as-op] give %player% diamond 1" # run command as op player
+      - "[player-as-op] give %player_name% diamond 1" # run command as op player
       - "[right-click] spawn"     # run command as player when right-click
       - "[left-click] spawn"      # run command as player when left-click
       - "[shift-left-click] spawn"     # run command as player when shift-left-click
@@ -177,13 +180,13 @@ items:
       # [click-block]/[click-air] exist too, but in a GUI the line is always
       # skipped (the click surface is null there; they are for world items,
       # see item-example.yml).
-      - "[console] give %player% diamond 1" # run command as console
+      - "[console] give %player_name% diamond 1" # run command as console
       - "[message] &aWelcome!"    # send message to player
       - "[sound] ENTITY_EXPERIENCE_ORB_PICKUP" # play sound
       - "[close]"                 # close the menu
       - "[open] gui-id"        # open another menu
       - "[connect] lobby"         # BungeeCord server switch
-      - "[broadcastmessage] &e%player% joined!" # broadcast
+      - "[broadcastmessage] &e%player_name% joined!" # broadcast
       - "[actionbar] &aItem purchased!" # action bar message
       - "[title] &6Welcome;&eEnjoy your stay;20;40;20" # title message (title;subtitle;fadeIn;stay;fadeOut)
       - "[next-page]" # next page (pagination: true only)

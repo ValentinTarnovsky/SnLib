@@ -1,91 +1,122 @@
 # Installation and Requirements
 
-SnLib ships as a single file, `SnLib.jar`, that you drop into your server's `plugins/` folder. It is a normal plugin from the server's point of view, but no player ever interacts with it directly. Its whole job is to be present and ready before any Sn plugin enables, so that those plugins can share it.
+SnLib ships as a single file, `SnLib.jar`, that you drop into your server's `plugins/` folder. The guiding principle: you install one SnLib per server, and every Sn plugin shares it. No player ever interacts with it directly; its whole job is to be ready before any Sn plugin enables.
 
 ## Requirements
 
 ### Java 21 is mandatory
 
-SnLib is compiled for Java 21 and will not run on anything older. If you start the server with Java 17 (or any version below 21), the server fails immediately with an error like this, before any plugin logic runs at all:
+SnLib is compiled for Java 21 and refuses to run on anything older. On Java 17 or below the server fails immediately, before any plugin logic runs:
 
 ```
 java.lang.UnsupportedClassVersionError: com/sn/lib/SnLibPlugin has been compiled by a more recent version of the Java Runtime
 ```
 
-This is not a soft warning you can ignore. The class files themselves are Java 21, so the JVM refuses to load them. If you see `UnsupportedClassVersionError` anywhere involving an Sn class, the fix is always the same: install a Java 21 runtime and point your server at it.
+This is not a warning you can ignore. The class files themselves are Java 21, so the JVM refuses to load them. Seeing `UnsupportedClassVersionError` on an Sn class always has the same fix: point the server at a Java 21 runtime.
 
-{% hint style="warning" %}
-The Minecraft version floor and the Java requirement are linked. Running Minecraft 1.20.4 or newer already requires a Java 21 JVM, so this is not an extra burden SnLib adds on top of a modern Paper server - it is the same Java your server already needs.
+{% hint style="info" %}
+Minecraft 1.20.5 and newer already require Java 21 on their own. Only a 1.20.4 server may still run an older Java; SnLib raises the bar to 21 there.
 {% endhint %}
 
 ### Minecraft and Paper version
 
-SnLib targets Paper. Its supported range is:
+SnLib targets Paper. The supported range is:
 
 | | Version |
 |---|---|
 | Minimum (floor) | 1.20.4 |
 | Target | 1.21.8 |
 
-Anything from 1.20.4 up to 1.21.8 is fully supported and tested. If you run a newer version that SnLib has not seen yet (for example a future 1.22), it does not hard-fail. Instead it starts normally and logs a single forward-compatibility warning noting that it does not recognize the version. This is by design: SnLib is built to degrade gracefully on unknown newer versions rather than crash. See [Troubleshooting](troubleshooting.md) for what that warning looks like and why it is safe to ignore.
+A newer version SnLib does not recognize yet never hard-fails. The server starts normally and logs one forward-compatibility warning. See [Troubleshooting](troubleshooting.md) for that warning and why it is safe to ignore.
+
+The same `SnLib.jar` also loads on a Velocity proxy, with a reduced surface for proxy-side Sn plugins. Everything in this section describes the Paper side unless a page says otherwise.
+
+### Optional integrations
+
+Two separate plugins unlock extra behavior across every Sn plugin. Neither is required; without them the related features quietly do nothing.
+
+| Plugin | What it unlocks |
+| --- | --- |
+| [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) | `%...%` placeholders in messages, menus and requirements. An unresolved token is left as written, never an error. |
+| Vault | Economy-based requirements and prices, like `%vault_eco_balance%` (through PlaceholderAPI's Vault expansion). |
+
+Confirm what SnLib actually hooked with `/snlib integrations`: see [The /snlib Command](snlib-command.md).
 
 ## Installing it
 
 1. Download `SnLib.jar` (see below).
-2. Place it in the `plugins/` folder of your server.
+2. Place it in the server's `plugins/` folder.
 3. Start the server with a Java 21 runtime.
 
-SnLib declares `load: STARTUP` in its plugin descriptor. That means the server loads it during the earliest startup phase, before the normal plugins enable. This ordering matters: every Sn plugin depends on SnLib, so SnLib has to be ready first. You do not have to configure this - it is built into the jar - but it is the reason SnLib must be present before any consumer plugin.
+SnLib declares `load: STARTUP`, so the server loads it in the earliest startup phase, before normal plugins enable. Every Sn plugin depends on SnLib, so the library must be ready first. This ordering is built into the jar; you configure nothing.
 
-You install `SnLib.jar` once per server. A single copy in `plugins/` serves every Sn plugin on that server at the same time. You never install one SnLib per plugin.
+> One `SnLib.jar` serves every Sn plugin on the server. Never install a copy per plugin, and never leave two SnLib jars in `plugins/`.
 
 {% hint style="info" %}
-Most Sn plugins also attach a compatible `SnLib.jar` to their own releases, so if you download a plugin that needs a newer SnLib than you have, the matching library is usually right there next to it.
+Most Sn plugins attach a compatible `SnLib.jar` to their own releases. If a plugin needs a newer SnLib than you have, the matching library is usually right next to its download.
 {% endhint %}
+
+## What SnLib creates
+
+On first start, SnLib creates exactly one file of its own:
+
+```
+plugins/
+  SnLib.jar
+  SnLib/
+    config.yml
+```
+
+That `config.yml` holds the config merge gate, the debug output, bStats and the self-updater. [Configuration Files](configuration-files.md) walks through the annotated file. Every other folder under `plugins/` belongs to a consumer plugin, never to SnLib itself.
 
 ## Updating requires a full server restart
 
 This is a hard rule with no exceptions:
 
-{% hint style="danger" %}
-Updating `SnLib.jar` always requires a full server restart. Never hot-swap it, and never expect `/snlib reload` to pick up a new jar.
-{% endhint %}
+> Updating `SnLib.jar` always requires a full server restart. Never hot-swap it, and never expect `/snlib reload` to load a new jar.
 
-`/snlib reload` re-reads configuration files. It never reloads Java classes. When you replace `SnLib.jar` on disk, the running server is still holding the old classes in memory, and every Sn plugin currently running is sharing those exact classes through the same classloader. Swapping the file underneath them while they run is not supported and will lead to broken state. The only correct way to update SnLib is:
+A reload re-reads configuration files; it never reloads Java classes. Every running Sn plugin shares the loaded SnLib classes through the same classloader. Swapping the file underneath them is unsupported and leads to broken state. The only correct update path is:
 
 1. Stop the server.
 2. Replace `SnLib.jar` with the new one.
 3. Start the server again.
 
-Reload commands and plugin managers that claim to hot-reload jars do not change this. SnLib is shared by every consumer plugin at once, so a clean full restart is the only supported update path.
+Plugin managers that claim to hot-reload jars do not change this rule.
 
 {% hint style="info" %}
-SnLib can perform step 2 for you. By default it downloads and installs its own newer releases, so the new `SnLib.jar` is already on disk before your next restart - steps 1 and 3 are still yours, and the restart is still mandatory. See [Permissions and Updates](permissions-and-updates.md#snlib-keeps-its-own-jar-up-to-date) for the switch and what it verifies before replacing anything.
+SnLib performs step 2 for you by default: it downloads and verifies its own newer releases ahead of time. The restart is still yours, and still mandatory. See [Updates](updates.md) for the switch and the checks it runs before replacing anything.
 {% endhint %}
 
 ## The version handshake, in plain terms
 
-Every Sn plugin is built against a specific minimum version of SnLib, which it records internally as an "API level". You never see this number day to day, but it is what keeps mismatches safe.
+Every Sn plugin is built against a minimum SnLib version, recorded internally as an API level. You never track this number yourself; it exists to keep version mismatches safe.
 
-When an Sn plugin enables, it checks the SnLib that is actually installed:
+When an Sn plugin enables, it checks the SnLib actually installed:
 
-- If the installed `SnLib.jar` is new enough, the plugin enables normally and you never notice anything.
-- If the installed `SnLib.jar` is older than what that plugin needs, the plugin does not crash the server or throw a wall of stack traces. It logs one clear line stating that it requires a newer SnLib and disables itself cleanly, including a link to the latest release so you know exactly what to download.
+- New enough: the plugin enables normally and you notice nothing.
+- Too old: the plugin logs one clear line and disables itself cleanly, with no stack traces.
 
-The message looks roughly like this in your console:
+The message looks like this, with the two levels filled in:
 
 ```
-[SomePlugin] Requires SnLib API level 3 (installed: 2). Update SnLib.jar: https://github.com/ValentinTarnovsky/SnLib/releases
+[SomePlugin] Requires SnLib API level <built-against> (installed: <installed>). Update SnLib.jar (restart required): https://github.com/ValentinTarnovsky/SnLib/releases
 ```
 
-The fix is always to download the newest `SnLib.jar`, replace the old one, and restart. See [Troubleshooting](troubleshooting.md) for a full walk-through of this exact message. Because the check happens cleanly and up front, an out-of-date library can only ever disable the plugin that needs the newer version - it can never take the whole server down with obscure `NoSuchMethodError` or `NoClassDefFoundError` failures.
+The fix is always the same: download the newest `SnLib.jar`, replace the old one, restart. An outdated library can only disable the plugin that needs more. It never takes the server down with obscure `NoSuchMethodError` or `NoClassDefFoundError` failures. You can check the installed version and API level any time with `/snlib version`; see [The /snlib Command](snlib-command.md).
 
 ## Where to get it
 
-`SnLib.jar` is published on GitHub Releases. The repository is public:
+`SnLib.jar` is published on GitHub Releases, in a public repository:
 
 ```
 https://github.com/ValentinTarnovsky/SnLib/releases
 ```
 
-Always take `SnLib.jar` from the latest release unless a specific plugin tells you it needs an exact version. Newer SnLib versions stay backward compatible with plugins built against older ones, so updating the library is safe for every consumer already on your server.
+Take the latest release unless a specific plugin asks for an exact version. Newer SnLib versions stay backward compatible with plugins built against older ones, so updating is safe for every consumer.
+
+## Related pages
+
+- [Configuration Files](configuration-files.md): the config.yml this install just created.
+- [Updates](updates.md): the self-updater that stages new jars for you.
+- [The /snlib Command](snlib-command.md): check the installed version and API level.
+- [Troubleshooting](troubleshooting.md): the forward-compatibility warning and the handshake message, walked through.

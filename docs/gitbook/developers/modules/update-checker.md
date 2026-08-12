@@ -99,7 +99,7 @@ permissions:
 If you do not declare it, only players who have been **explicitly** granted `myplugin.admin.update` are notified. The permission name is always your plugin's (lowercased) name plus `.admin.update`.
 
 {% hint style="info" %}
-For the full receiving-end view - what the console line and the join notice look like from an admin's chair, and how to grant the permission - see [Permissions and updates](../../admins/permissions-and-updates.md) in the admin guide.
+For the full receiving-end view - what the console line and the join notice look like from an admin's chair, and how to grant the permission - see [Updates](../../admins/updates.md) in the admin guide.
 {% endhint %}
 
 ## Failure handling
@@ -152,10 +152,10 @@ SnLib additionally keeps its **own** jar current: it can download a newer `SnLib
 - It cannot be pointed at anything else. The repository and the allowed asset URL prefix are compile-time constants for SnLib's own releases; there is no configuration that redirects it at a consumer jar or a third-party host.
 - It therefore cannot weaken the guarantee above. The notify-only contract of this module is a property of the module, and the module has no download code in it at all.
 
-The practical consequence for you as a developer: `sn.updates()` behaves exactly as documented on this page and will keep doing so, and you never have to reason about your plugin's jar being touched. Only the shared library maintains itself, only within a major version by default, and even then the new SnLib is merely placed on disk - it becomes active on the next full server restart, never by hot-swap. The admin-facing description of that behavior, including its `auto-update` config block, is in [Permissions and updates](../../admins/permissions-and-updates.md#snlib-keeps-its-own-jar-up-to-date).
+The practical consequence for you as a developer: `sn.updates()` behaves exactly as documented on this page and will keep doing so, and you never have to reason about your plugin's jar being touched. Only the shared library maintains itself, only within a major version by default, and even then the new SnLib is merely placed on disk - it becomes active on the next full server restart, never by hot-swap. The admin-facing description of that behavior, including its `auto-update` config block, is in [Updates](../../admins/updates.md#snlib-keeps-its-own-jar-current).
 
 ## See also
 
-- [Permissions and updates](../../admins/permissions-and-updates.md) - the admin-facing side of the join notice.
+- [Updates](../../admins/updates.md) - the admin-facing side of the join notice.
 - [Bossbars, Holograms, Cron, Leaderboards, Discord](bossbars-holograms-cron-leaderboards-discord.md) - the Discord module shares the same `HttpClient` and warn-once discipline.
 - Back to the [developer guide](../README.md).

@@ -306,7 +306,9 @@ PlayerDataCache<Stats> cache = sn.db().playerCache(loader, saver);
   the main thread from async and returns an `SnFuture`; fail-open on disable
   (text untouched).
 - Declarative expansions with `persist true`:
-  `sn.papi().expansion("shop").resolver((player, params) -> ...).register()`.
+  `sn.papi().expansion("shop").placeholder("sales", p -> ...).register()`; also
+  `prefixed(prefix, ...)` for parameterized tokens, and `global`/`globalPrefixed`
+  for player-less placeholders that resolve in server-scope contexts.
 - Reactive hook: if PlaceholderAPI is enabled/disabled live, the bridge
   activates/invalidates itself.
 

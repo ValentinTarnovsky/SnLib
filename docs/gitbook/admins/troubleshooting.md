@@ -1,112 +1,216 @@
 # Troubleshooting
 
-A short guide to the log messages an admin is most likely to run into with SnLib and Sn plugins, what each one actually means, and what to do about it. None of these are common, and most are informational rather than errors.
+Every entry here has the same shape: the symptom you see, what it means, and the fix. Most lines below are warnings, not errors: the plugin keeps running while you decide. Placeholders in `<angle brackets>` stand for the real names and numbers your console prints.
 
 ## A plugin disables itself asking to update SnLib
 
-You start the server and, right after an Sn plugin enables, it immediately disables itself with a line like:
+Right after an Sn plugin enables, it disables itself with a line like:
 
 ```
-[SomePlugin] Requires SnLib API level 3 (installed: 2). Update SnLib.jar
-https://github.com/ValentinTarnovsky/SnLib/releases
+Requires SnLib API level <required> (installed: <installed>). Update SnLib.jar (restart required): https://github.com/ValentinTarnovsky/SnLib/releases
 ```
 
-**What it means:** the `SnLib.jar` you have installed is older than the version that plugin was built against. The plugin needs a newer SnLib and, rather than crash the server with cryptic errors, it disabled itself cleanly and told you exactly what it needs. This is the [version handshake](installation.md) working as intended.
+**What it means:** your `SnLib.jar` is older than the version the plugin was built against. The plugin disables itself cleanly instead of crashing the server. This is the [version handshake](installation.md) working as intended.
 
-**The fix:**
-
-1. Download the latest `SnLib.jar` from GitHub Releases: `https://github.com/ValentinTarnovsky/SnLib/releases`.
-2. Replace the old `SnLib.jar` in your `plugins/` folder with it.
-3. Restart the server (a full restart - not a reload).
-
-To confirm what you currently have before and after, run `/snlib version`. Newer SnLib versions stay compatible with your other plugins, so updating the library is safe for everything already on the server.
+**The fix:** download the latest `SnLib.jar` from that releases page, replace the old jar, and restart the server fully. Run `/snlib version` before and after to confirm. Newer SnLib stays compatible with your other Sn plugins.
 
 ## A warning about an unrecognized Minecraft version
 
-You see a single warning at startup saying SnLib does not recognize your Minecraft version, typically on a very new release.
+At startup you see:
 
-**What it means:** you are running a Minecraft version newer than the one SnLib was last tested against (its target is 1.21.8). SnLib is deliberately built to degrade gracefully on unknown newer versions rather than hard-fail, so it starts normally and just notes that it has not seen this version before.
+```
+[SnLib] '<version>': unrecognized version, assuming compat target
+```
 
-**What to do:** nothing, in most cases - it is safe to ignore, and it is logged once, not repeatedly. It is simply letting you know you are ahead of what has been verified. If you do run into an actual problem on a brand-new version, that warning is useful context to include when you report it.
+**What it means:** you run a Minecraft version newer than the one this SnLib build knows. SnLib degrades gracefully and starts normally.
+
+**The fix:** nothing. It logs once and is safe to ignore. Include it as context when you report a real problem on a brand-new version.
 
 ## A config file got renamed to `.backup-N`
 
-You find that a config or language file was renamed to something like `config.backup-1`, a fresh default file appeared in its place, and the console has a warning like:
+A fresh default file appeared and the console warned:
 
 ```
-[update-configs] config.yml does not parse as YAML: backed up at config.backup-1 and regenerated from the jar
+[update-configs] config.yml does not parse as YAML: backed up to config.yml.backup-1 and regenerated from the jar
 ```
 
-**What it means:** your file was no longer valid YAML (usually a stray tab, a bad indentation, or a misplaced colon), so instead of crashing, the plugin moved your broken file aside and regenerated a clean working one from its defaults. See [Configuration Files](configuration-files.md) for the full behavior.
+**What it means:** your file stopped being valid YAML, so the plugin moved it aside and reseeded a clean default instead of crashing.
 
-**The fix:**
-
-1. Open the `<name>.backup-N` file - that is your original, broken file, preserved exactly.
-2. Compare it against the freshly regenerated default to spot the formatting mistake (an indentation or a tab is the usual culprit).
-3. Reapply your custom settings into the working file, correctly this time, and reload the plugin.
+**The fix:** open the `.backup-N` file, which is your original preserved exactly. Find the formatting mistake, then reapply your settings into the working file. See [Configuration Files](configuration-files.md) for the full behavior.
 
 {% hint style="info" %}
-YAML is whitespace-sensitive and does not allow tab characters for indentation. If you edited a file in an editor that inserted tabs, that is very often the cause.
+Indentation tabs are repaired automatically and reported, so look for wrong indentation depth, unclosed quotes or a misplaced colon.
 {% endhint %}
 
-## Something I deleted from a config keeps coming back
+## A key you deleted keeps coming back
 
-That is the auto-updater doing its job: it compares your file against the defaults inside the jar on every start and re-inserts anything missing, so the plugin never runs on a config that lacks a key it needs.
+**What it means:** the merge compares your file against the jar defaults on every start and re-inserts anything missing. This covers `config.yml`, language files and every menu file under `guis/` alike.
 
-Whether a deletion should stick depends on what you deleted:
+> Deletions stick only inside a section marked `# sn:extensible`; everywhere else the merge puts the key back.
 
-- **A plugin setting** (a number, a toggle, a message). It is part of the plugin's structure and will always come back. If you want it inactive, set it to the value that disables it rather than deleting the line.
-- **An entry in a section you are meant to fill yourself** - a point type, a world, a reward. Those sections are marked with a `# sn:extensible` comment line above them, and inside a marked section your deletions ARE permanent. If your deletion keeps reverting and the section has no marker, the plugin does not consider those entries yours - but you can add the marker line yourself above that section and it will be honored from the next restart. Read [Marking a section yourself](configuration-files.md) first: the trade is that new keys the plugin adds there in a later version stop arriving.
+**The fix:** to turn a feature off, set the value that disables it instead of deleting the line. To hide a menu button, remove its letter from the layout: see [Menus](menus.md). Marked sections, and marking one yourself, are explained in [Configuration Files](configuration-files.md).
 
-See [Sections that are yours](configuration-files.md) for the full rules, including how to end up with zero entries in a marked section.
-
-If you want to stop ALL merging in every file, set `update-configs: false` in the plugin's `config.yml`. The plugin will then only warn about missing keys instead of adding them.
-
-## SnLib said an update was installed, but after restarting I still have the old version
-
-**Affects SnLib 1.16.0 and 1.16.1 only, on Paper 1.20.5+ (and forks of it).** Those two versions
-looked up their own jar the wrong way: on a server that remaps plugins, they wrote the new jar into
-the `plugins/.paper-remapped/` cache instead of `plugins/`. The console still printed
+Setting `update-configs: false` stops all merging; the plugin then only warns about what is missing:
 
 ```
-SnLib 1.16.1 installed on disk; restart the server to activate it (running 1.16.0).
+[update-configs] update-configs is false: <n> keys missing in config.yml
 ```
 
-but the server rebuilds that cache from `plugins/` on every boot, so the update was discarded and
-the old version came back with no error anywhere.
+## A marker warning about "the entries of a section"
 
-**The fix, once per server:** a broken updater cannot repair itself, so this one update has to be
-done by hand.
+```
+'<path>' is marked sn:extensible but holds a value; the marker only protects the entries of a section
+```
 
-1. Download `SnLib-1.16.2.jar` (or newer) from the [releases page](https://github.com/ValentinTarnovsky/SnLib/releases).
-2. Stop the server.
-3. Delete the old `SnLib-*.jar` from `plugins/` and put the new one in its place. Make sure exactly
-   one SnLib jar is left there.
-4. Optionally delete any stray `SnLib-*.jar` inside `plugins/.paper-remapped/` - a leftover from
-   the bug. It is inert, just wasted disk. The `.snlib-update` folder in there needs no action:
-   from 1.20.1 onward SnLib sweeps it on every start, in that folder as well as in `plugins/`.
-5. Start the server. `/snlib update` should now report the installed version as 1.16.2.
+**What it means:** you put `# sn:extensible` above a plain `key: value` line. The marker protects a section's entries, so on a plain value it protects nothing.
 
-From 1.16.2 onward the self-updater replaces the jar in `plugins/` and updates apply on restart as
-documented.
+**The fix:** move the marker above a section header, or remove it. See [Configuration Files](configuration-files.md).
 
-## Getting debug output to report a bug
+## Chat shows `{prefix}` as literal text
 
-If a plugin developer asks you for detailed logs to diagnose a problem, the source of that detail is the `debug` subcommand. Not every plugin has it - it is present only on plugins that opt into a debug command - but where it exists it lets you raise the log verbosity at runtime without restarting.
+```
+<n> message key(s) in lang/messages_en.yml embed the literal {prefix} token; SnLib prepends the configured prefix automatically, so the token renders literally - remove it from those values
+```
 
-The verbosity levels, from quietest to loudest, are:
+**What it means:** the prefix is automatic on single-line messages. A `{prefix}` you type is not a placeholder and prints as-is.
 
-| Level | Meaning |
-|---|---|
-| `OFF` | No debug output (the normal state). |
-| `INFO` | High-level notes. |
-| `DEBUG` | Detailed internal steps. |
-| `TRACE` | The most verbose, fine-grained tracing. |
+**The fix:** delete the token from the named keys. To send a line without the prefix, use `[noprefix]` instead: see [Language Files](language-files.md).
 
-Turn debug up on the relevant plugin, reproduce the problem so the extra detail is written to the console log, then copy that portion of the log for the developer. When you are done, turn it back to `OFF` so the log returns to normal. The setting is remembered in the plugin's config, so check that it is off again if you do not want verbose logs persisting across restarts.
+## A clickable message no longer reacts to clicks
+
+```
+<n> message key(s) in lang/messages_en.yml lost the <click>/<hover> tag their jar default carries (<keys>); the button still renders but clicking it does nothing - restore the tags in those values
+```
+
+**What it means:** while editing, you dropped the tags that made the message interactive. The text still shows; the click is gone.
+
+**The fix:** copy the tags back from the default value of each named key. See [Language Files](language-files.md).
+
+## A menu item renders in the wrong cells
+
+```
+Item '<id>': declares both 'slots' and 'key'; slots wins and key is ignored
+```
+
+**What it means:** the item declares `slots:` and `key:` at the same time, and declared slots always win.
+
+**The fix:** keep exactly one placement form. See [Menu Items and Clicks](menu-items-and-clicks.md).
+
+## A refresh or page button does nothing
+
+There is no console output for this one. With debug raised you see:
+
+```
+Action [refresh-menu] skipped: pagination not enabled (opt-in per menu)
+```
+
+**What it means:** page actions and `[refresh-menu]` are no-ops unless the menu sets `pagination: true`. Pagination is opt-in per menu.
+
+**The fix:** enable pagination in that menu file. See [Pagination, Regions and Templates](pagination-regions-templates.md).
+
+## A head ignores its custom texture
+
+```
+skull-owner and base64 texture defined at the same time for PLAYER_HEAD; skull-owner wins and the base64 texture is ignored
+```
+
+**What it means:** the item declares both a `skull-owner` and a texture-based material, and the owner's skin wins.
+
+**The fix:** remove one of the two. See [Item Appearance Reference](item-appearance.md).
+
+## A sound name is rejected
+
+```
+[SnLib] Invalid sound '<id>': not resolved by enum nor by Registry.SOUNDS; ignored
+```
+
+**What it means:** the sound ID matches nothing on this server version. The sound is skipped; nothing else breaks. A bad volume or pitch logs `Invalid volume/pitch in '<value>'; using 1.0` instead.
+
+**The fix:** use a real sound ID, or `none` to silence deliberately. See [Shared Value Formats](value-formats.md).
+
+## A cron schedule is rejected
+
+The error names the expression, for example:
+
+```
+Cron expression '<expression>': expected 5 fields (minute hour day month day-of-week), got 4
+```
+
+**What it means:** the schedule does not follow the 5-field cron grammar or one of its shortcuts.
+
+**The fix:** write 5 fields, or `daily HH:mm`, or `hourly :mm`. See [Shared Value Formats](value-formats.md).
+
+## Database trouble
+
+An unknown type falls back to SQLite with a warning:
+
+```
+[<Plugin>] invalid database.type: '<type>', using sqlite
+```
+
+A failing critical operation disables the plugin:
+
+```
+Critical database operation failed; disabling <Plugin>: <error>
+```
+
+**Checks:** the credentials key is `username`, not `user`. A `socket-timeout-seconds` of `0` can hang a query forever on a dead link. Every key and default is in [Database Connection](database.md).
+
+## Staff receives no update notices
+
+**What it means:** update notices reach holders of `<plugin>.admin.update`. If the plugin never declares that permission, only players granted it explicitly are notified.
+
+**The fix:** grant the node to your staff, or ask the developer to declare it. [Updates](updates.md) carries the full explanation.
+
+## The self-updater refuses to run
+
+```
+plugins/ holds more than one SnLib jar (<first> and <second>); the self-updater will not touch any of them until only one is left.
+```
+
+**What it means:** two SnLib jars sit in `plugins/`, so the server picks one at random. The self-updater refuses to gamble on which.
+
+**The fix:** stop the server, delete every SnLib jar except one, start again.
+
+## A self-update disappears after a restart
+
+The console said `SnLib <new> installed on disk; restart the server to activate it (running <old>).`, yet after restarting the old version is back.
+
+**What it means:** early SnLib builds on Paper 1.20.5 and newer wrote the update into the remap cache, which the server rebuilds on every boot. The update was silently discarded.
+
+**The fix, once:** a broken updater cannot repair itself. Download the current `SnLib.jar`, stop the server, replace the jar by hand and start again. Later self-updates then apply normally. Stray SnLib jars inside `plugins/.paper-remapped/` are inert leftovers you may delete.
+
+## An integration hook was disabled
+
+```
+Hook '<plugin>' requires version >= <required> (installed: <installed>); hook disabled
+```
+
+```
+Hook '<plugin>': required class <class> not found; hook disabled
+```
+
+**What it means:** the optional plugin it integrates with is present but too old or incompatible. The Sn plugin keeps running without that integration.
+
+**The fix:** update the hooked plugin, then restart. `/snlib integrations` shows what is active: see [The /snlib Command](snlib-command.md).
+
+## Player-typed text loses its colors
+
+That is the style policy gating what players type, not your YAML. See [Text, Colors and Numbers](text-formatting.md).
+
+## Need debug output for a bug report?
+
+The `debug` subcommand raises log verbosity at runtime and persists across restarts. The full how-to lives in [The /snlib Command](snlib-command.md).
 
 ## Still stuck?
 
-- Run `/snlib version` and include its output when reporting an issue - it pins down your SnLib version, API level, and detected Minecraft version.
-- Run `/snlib plugins` and `/snlib integrations` to confirm which Sn plugins are actually hooked and which integrations (PlaceholderAPI, Vault) are active.
-- Remember that any change to `SnLib.jar` needs a full restart, not a reload. See [Installation and Requirements](installation.md).
+- Run `/snlib version` and include its output: it pins your SnLib version, API level and detected server version.
+- `/snlib plugins` and `/snlib integrations` confirm which Sn plugins and integrations are hooked.
+- The restart rule for jar swaps is in [Installation and Requirements](installation.md).
+
+## Related pages
+
+- [Configuration Files](configuration-files.md) - the merge, backups and markers behind most warnings here.
+- [The /snlib Command](snlib-command.md) - the diagnostic subcommands and the debug how-to.
+- [Installation and Requirements](installation.md) - the version handshake and the restart rule.
+- [Updates](updates.md) - the update checker and the self-updater in full.

@@ -1,111 +1,139 @@
 # Language Files
 
-Every Sn plugin that shows messages to players keeps those messages in language files, so you can rewrite any line - change the wording, the tone, the colors - without touching a single line of code. The system is the same across every Sn plugin.
+Every line a plugin says lives in a language file, and that file is yours: the file is the message. You can rewrite the wording, the colors and the tone of any line, and your edits survive every update. This page covers the files, the value forms, the prefix, and the shared `snlib.*` keys every Sn plugin carries.
 
 ## Where messages live
 
-Messages are stored under a `lang/` folder inside the plugin's data directory, with one file per language:
+Messages sit under `lang/` in the plugin's data folder, one file per language:
 
 ```
-plugins/SomePlugin/lang/messages_en.yml
-plugins/SomePlugin/lang/messages_es.yml
-plugins/SomePlugin/lang/messages_fr.yml
+plugins/SomePlugin/lang/
+  messages_en.yml
+  messages_es.yml
 ```
 
-The file name encodes the language code (`en`, `es`, `fr`, and so on). Which language the plugin uses is chosen in its config. Each file is plain YAML: a key on the left, the message text on the right.
-
-## Editing wording is safe
-
-Open the language file for your chosen language, change any message text, save, and reload the plugin. Nothing else is affected. You can:
-
-- Rewrite the phrasing of any message.
-- Add or change color codes and formatting - see [Text Formatting and Colors](text-formatting.md) for the full list of codes and the `[small]`/`[rgb]`/`[center]` tags.
-- Adjust punctuation, capitalization, and tone to match your server's style.
-
-Because these files are [managed the same way as config files](configuration-files.md), your edits survive plugin updates. When a plugin adds a new message in an update, the new key is merged into your file automatically, in the right place, without disturbing the lines you have already customized.
-
-## Choosing how numbers read
-
-Any placeholder that holds a number can be rendered in three ways, by adding a hint after a colon inside the token. This works in message values, item names, item lore and menu titles, and it needs no change to the plugin.
-
-| Hint | `1500000` becomes | Use it for |
-| --- | --- | --- |
-| `{balance:short}` | `1.5M` | Chat, lore, scoreboards - anywhere space is tight |
-| `{balance:grouped}` | `1,500,000` | Receipts and confirmations, where the full figure matters |
-| `{balance:raw}` | `1500000` | Plain digits, no separators |
-
-Writing the placeholder without a hint, `{balance}`, keeps whatever the plugin already sends. Nothing changes in a file you do not edit.
+The plugin's `config.yml` picks the active language with the `lang:` key:
 
 ```yaml
-# Before
-balance-msg: "&aYou have &f{balance} &acoins"      # You have 1500000 coins
-
-# After
-balance-msg: "&aYou have &f{balance:short} &acoins"  # You have 1.5M coins
+lang: es   # uses lang/messages_es.yml
 ```
 
-The suffixes are `K`, `M`, `B`, `T`, `Qa` and `Qi`, and `short` and `grouped` round to at most two decimals. `raw` never rounds, which is the reason to reach for it when a player needs the exact figure.
+The choice is server-wide: one language for every player of that plugin, not per player. English is always seeded from the jar, so `messages_en.yml` always exists and holds every key. If the file for the configured language is missing, empty or corrupt, the plugin warns and uses English.
+
+Language files are [managed like config files](configuration-files.md). Keys added by an update are merged into your file in place; your values are never overwritten. New keys merged into a translation are announced in the console, so you can translate them when convenient.
+
+## Fallback to English
+
+English is the reference. When your active language misses one key, that key falls back to its English value, with a single warning naming it. A key missing from both files renders in chat as `<missing:key>`, again with one warning.
+
+{% hint style="info" %}
+This makes incremental translation safe. Translate the keys you care about first; everything else keeps working in English until you fill it in.
+{% endhint %}
+
+## The three value forms
+
+The form of a value decides how it is delivered:
+
+| Value form | Example | What happens |
+|---|---|---|
+| Single string | `joined: "&aWelcome!"` | Sent as one line, with the prefix prepended. |
+| List | `joined: ["&aWelcome!", "&7Enjoy your stay."]` | One send per entry, in order, never prefixed. |
+| Empty: `""` or `[]` | `joined: ""` | Nothing is sent. The message is silenced. |
+
+> One line gets the prefix, a list never does, and an empty value silences the message.
+
+Silencing with `""` or `[]` is the supported way to mute a message. Deleting the key instead lets the updater restore the default on the next start.
+
+## The prefix
+
+Most plugins define their chat prefix once, at the top of the language file:
+
+```yaml
+prefix: "&8[&dClans&8] &7"
+```
+
+SnLib prepends it to every single-line message automatically, so you never write it inside a value. The insertion is tag-aware. On a line starting with `[center]`, `[rgb]` or `[small]`, the prefix lands after those tags and inherits their effect. Setting `prefix: ""` removes the prefix everywhere.
 
 {% hint style="warning" %}
-Only `raw`, `short` and `grouped` are hints. Any other word after a colon is left completely alone, so a Discord timestamp like `<t:1700000000:R>` or a placeholder that takes an argument keeps working untouched.
-
-A hint on something that is not a number does nothing rather than breaking the line: `{player:short}` still shows the player's name.
+Never write the `{prefix}` token inside a message value. It is not a placeholder there: it renders literally, on top of the prefix already inserted. The plugin warns at startup when any value embeds it.
 {% endhint %}
 
-{% hint style="info" %}
-If a plugin already shortens a number before sending it, asking for `:raw` gives you back a rounded figure, not the exact one, because the exact value was lost before the message was built. When you need the true number, use a placeholder the plugin sends unformatted.
-{% endhint %}
+### Skipping the prefix on one line
 
-## Automatic fallback to English
-
-The English file (`messages_en.yml`) is the reference. Every message key is guaranteed to exist there. When you use a translated file for another language and a specific key happens to be missing from it, the plugin does not show a blank line or an error. It automatically falls back to the English value for that one key, and logs a single warning telling you which key was missing.
-
-That warning is emitted once per missing key, not repeated every time the message would be shown, so a partially translated file produces a short, useful list of what still needs translating rather than flooding your console. To fix it, copy the missing key from `messages_en.yml` into your translated file and provide the translation.
-
-{% hint style="info" %}
-This means you can translate a plugin incrementally. Translate the keys you care about first; anything you have not gotten to yet keeps working in English until you fill it in.
-{% endhint %}
-
-## Do not repeat the prefix
-
-Most plugins define a `prefix` at the top of the language file and add it in front of every one-line message automatically. Because it is added for you, you should never write the prefix placeholder inside a message value - the plugin's prefix token written in placeholder form. It is not replaced there, so it would just show up literally on top of the prefix the plugin already put in front. If any message value contains that token, the plugin logs a single warning at startup telling you how many messages need cleaning up. Remove the token from those lines and keep the prefix in the `prefix` key only.
-
-## Skipping the prefix on one line
-
-Sometimes a specific message looks better without the prefix - a full-width gradient line, a banner, a centered announcement. Start that message value with the `[noprefix]` tag and the plugin sends that one line bare; the tag itself never shows. It combines with the other tags in any order:
+Some lines look better bare: a gradient banner, a centered announcement. Start the value with `[noprefix]` and that line skips the prefix; the tag itself never shows:
 
 ```yaml
 reload-done: "[noprefix][rgb]Configuration reloaded."
 motd: "[noprefix][center]&#8354f2Welcome to the server"
 ```
 
-The tag only has meaning at the start of the line (together with the other leading tags). Written in the middle of a message it is treated as normal text. Requires the server to run SnLib 1.9.0 or newer; on older versions the tag shows literally.
+The tag counts only inside the leading tag run, in any order with `[center]`, `[rgb]` and `[small]`. Written after the first visible character it does not opt out, and it shows literally.
 
 ## Keep clickable tags when editing
 
-Some messages contain interactive tags like `<click:run_command:'...'>` and `<hover:show_text:'...'>` - they are what makes a chat button such as `[JOIN]` actually do something when clicked. Because your edits are always preserved, an edit or a translation that drops one of those tags is never repaired automatically: the button keeps its look but clicking it silently does nothing. Keep the tags around your rewritten text (only the visible text between them is yours to restyle). If a value loses a tag its default carries, the plugin logs a single warning at startup naming the affected keys so you can restore them.
+Some values carry interactive tags like `<click:run_command:'...'>` and `<hover:show_text:'...'>`. They are what makes a chat button such as `[JOIN]` actually work. Your edits are always preserved, so a rewrite that drops one of those tags is never repaired. The button keeps its look, but clicking it silently does nothing. Restyle only the visible text between the tags.
 
-Note for servers with Bedrock players (Geyser): Bedrock chat does not support click events at all, so well-made plugins also show the plain command to type next to the button. Keep that part of the message too when restyling.
+If a value loses a `<click>` or `<hover>` tag its jar default carries, the plugin warns at startup, naming the affected keys. Restore the tags in those values.
 
-## Shared core messages in every language
+{% hint style="info" %}
+Servers with Bedrock players (Geyser): Bedrock chat ignores click events entirely. Well-made messages also show the plain command to type next to the button; keep that part when restyling.
+{% endhint %}
 
-There is a set of common messages that are not specific to any one plugin - things like "you do not have permission to use this command", the correct-usage line shown when a command is typed wrong, and the messages for invalid or out-of-range arguments. These are the `snlib.*` keys.
+## Titles from the language file
 
-Rather than making every plugin author write and translate these basics separately, SnLib merges its shared `snlib.*` keys into every plugin's language file automatically. On each startup, any `snlib.*` key missing from your file is inserted, with a comment explaining when the message is sent. Your existing values are never overwritten, so if you have already customized one of these lines it stays exactly as you set it.
+When a plugin shows a message as a title, the value's first line reads as `title;subtitle;fadeIn;stay;fadeOut`. Times are in ticks, and omitted parts default to 10, 70 and 20. The grammar is the same one the `[title]` action uses; [Actions and Requirements](actions-and-requirements.md) documents it in full.
 
-The practical benefit is consistency: the "no permission" message, the usage format, and the other core messages read the same across every Sn plugin on your server, and you only have to style them the way you like once per plugin. The shared keys cover cases such as:
+```yaml
+level-up: "&6Level up!;&7You reached level {level};10;70;20"
+```
 
-| Key | When it is sent |
-|---|---|
-| `snlib.no-permission` | The sender lacks the permission for a command or subcommand. |
-| `snlib.usage` | A command was used with missing or malformed arguments. |
-| `snlib.invalid-number` | An argument expected a number and got something else. |
-| `snlib.invalid-value` | An argument value is not one of the accepted options. |
-| `snlib.out-of-range` | A numeric argument fell outside its allowed range. |
-| `snlib.player-not-found` | An argument expected an online player who was not found. |
-| `snlib.unknown-subcommand` | The given subcommand does not exist. |
-| `snlib.reload-done` | Shown after a successful reload. |
-| `snlib.help.*` | The header, per-entry, and footer lines of generated help output. |
-| `snlib.teleport.*` | The warmup and cancelled-on-move / cancelled-on-damage lines a plugin's warmup teleports show. |
+## The shared snlib.* keys
 
-Each of these lines is yours to restyle. Since they are merged in rather than hard-coded, editing them in your language file changes them everywhere that plugin uses them.
+Core messages such as "no permission" and the usage line are not written per plugin. SnLib merges its own `snlib.*` keys into every plugin's `messages_en.yml` on each start. Missing keys are inserted with a comment explaining when each line is sent; your existing values are never overwritten. This merge runs even with `update-configs: false`, because these keys are the library's own message contract.
+
+Restyle them once per plugin and every core message reads consistently across your Sn plugins. The full set, with the placeholders each line can use:
+
+| Key | Sent when | Placeholders |
+|---|---|---|
+| `snlib.no-permission` | The sender lacks the permission for a command or subcommand. | - |
+| `snlib.usage` | A command is used with missing or malformed arguments. | `{usage}` |
+| `snlib.invalid-number` | An argument expected a number and got something else. | `{value}` |
+| `snlib.invalid-value` | An argument value is not one of the accepted options. | `{value}` |
+| `snlib.out-of-range` | A numeric argument falls outside its allowed range. | `{min}`, `{max}`, `{value}` |
+| `snlib.number-too-small` | An open-ended numeric argument is under its minimum. | `{min}`, `{value}` |
+| `snlib.player-not-found` | An argument expected an online player who was not found. | `{value}` |
+| `snlib.unknown-subcommand` | The typed subcommand does not exist. | `{value}` |
+| `snlib.reload-done` | A reload finishes successfully. | - |
+| `snlib.help.header` | Printed before the generated help entries. | `{plugin}` |
+| `snlib.help.entry` | One line per subcommand visible to the sender. | `{usage}`, `{description}`, `{permission}` |
+| `snlib.help.footer` | Printed after the entries, only when help spans several pages. | `{page}`, `{total}`, `{command}` |
+| `snlib.teleport.warmup` | A warmup teleport starts. | `{time}` |
+| `snlib.teleport.cancelled-move` | A pending teleport is cancelled because the player moved. | - |
+| `snlib.teleport.cancelled-damage` | A pending teleport is cancelled because the player took damage. | - |
+| `snlib.selection.pos1-set` | A selection wand sets position 1. | `{x}`, `{y}`, `{z}`, `{world}` |
+| `snlib.selection.pos2-set` | A selection wand sets position 2. | `{x}`, `{y}`, `{z}`, `{world}` |
+| `snlib.selection.different-worlds` | The two selected positions are in different worlds. | - |
+| `snlib.selection.too-big` | The selected cuboid exceeds the allowed volume. | `{volume}`, `{max}` |
+| `snlib.selection.no-permission` | The player lacks the wand permission. | - |
+| `snlib.selection.timeout` | A selection session expires. | - |
+
+`{command}` in the footer is the alias the sender actually typed, so aliased commands render consistently. The `snlib.teleport.*` lines appear only in plugins that use warmup teleports. The `snlib.selection.*` lines belong to the selection wand described in [Physical Items](physical-items.md).
+
+## Other blocks in the file
+
+A few sections of the language file are documented elsewhere, or belong to the plugin:
+
+* The top-level `commands:` block renames command descriptions and argument labels in the generated help; see [Customizing Commands](customizing-commands.md).
+* Numeric placeholders accept display hints such as `{balance:short}`; [Text, Colors and Numbers](text-formatting.md) owns the full table.
+
+{% hint style="info" %}
+Many Sn plugins keep reusable state words, such as Online/Offline or Enabled/Disabled, under a `status:` section of the language file. That section is a plugin convention: SnLib itself never reads it. When present, edit it like any other keys.
+{% endhint %}
+
+## Related pages
+
+* [Text, Colors and Numbers](text-formatting.md) - every color code, tag and number hint you can use inside a value.
+* [Customizing Commands](customizing-commands.md) - the `commands:` block and the config-driven command aliases.
+* [Configuration Files](configuration-files.md) - how merging, backups and `update-configs` treat these files.
+* [Actions and Requirements](actions-and-requirements.md) - the full title grammar and the action line format.
+* [Physical Items](physical-items.md) - the selection wand behind the `snlib.selection.*` messages.
