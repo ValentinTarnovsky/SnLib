@@ -23,8 +23,8 @@ import com.sn.lib.yml.SnYml;
  * Immutable definition of one GUI, parsed from a file under {@code guis/} following the
  * golden spec ({@code docs/menu-example.yml}): title, rows, lenient inventory type, open
  * sound, close sound, close actions, menu update interval, the opt-in {@code pagination}
- * and {@code strict-clicks} flags, the {@code items:} section and the {@code templates:}
- * section.
+ * and {@code strict-clicks} flags, the {@code player-inventory} policy, the {@code items:}
+ * section and the {@code templates:} section.
  *
  * <p>{@code pagination} is resolved ONCE at load and defaults to false; page actions and
  * paged binds on sessions of a non-paginated GUI are no-ops. The definition and its
@@ -37,7 +37,8 @@ import com.sn.lib.yml.SnYml;
  *     never on page swaps or programmatic teardown),
  *     update-interval, inventory-type (lenient
  *     valueOf), pagination, strict-clicks (opt-in per
- *     menu, default false)
+ *     menu, default false), player-inventory
+ *     (locked | open, lenient valueOf, default locked)
  *   layout (1-6 strings of up to 9 chars each; ' ' is   -> GuiDef.parse (ASCII mask; rows
  *     an empty cell; every key char maps to its cells)     derives from the row count)
  *   paged-key (one layout char at menu level: its       -> GuiDef.parse into pagedSlots(),
@@ -64,6 +65,10 @@ import com.sn.lib.yml.SnYml;
  *       first declared whose view-requirements pass       (render and click use the same
  *       owns the cell; all hidden -> empty cell            declaration-order fallthrough)
  *     update-interval (per item)                        -> GuiItemDef.parse
+ *     input (the cell RECEIVES a stack: its cells are   -> GuiItemDef.parse; the cells are
+ *       input slots, and a stack aimed at one is           collected here and queried by
+ *       reported as an ItemOffer instead of firing         GuiSession.isInputSlot
+ *       the cell's click actions)
  *     view-requirements, click-requirements             -> GuiItemDef.parse via RequirementEngine
  *     click-actions, deny-actions                       -> GuiItemDef.parse; run by ActionEngine
  *       ([player], [player-as-op], [console], [message], [sound], [close], [open],
@@ -106,15 +111,18 @@ public final class GuiDef {
     private final int updateInterval;
     private final boolean pagination;
     private final boolean strictClicks;
+    private final PlayerInventoryPolicy playerInventory;
     private final int[] pagedSlots;
     private final Map<String, int[]> regions;
+    private final Set<Integer> inputSlots;
     private final List<GuiItemDef> items;
     private final Map<String, GuiTemplate> templates;
 
     private GuiDef(String id, String title, int rows, @Nullable InventoryType inventoryType,
                    String openSound, String closeSound, List<String> closeActions,
                    int updateInterval, boolean pagination, boolean strictClicks,
-                   int[] pagedSlots, Map<String, int[]> regions, List<GuiItemDef> items,
+                   PlayerInventoryPolicy playerInventory, int[] pagedSlots,
+                   Map<String, int[]> regions, Set<Integer> inputSlots, List<GuiItemDef> items,
                    Map<String, GuiTemplate> templates) {
         this.id = id;
         this.title = title;
@@ -126,8 +134,10 @@ public final class GuiDef {
         this.updateInterval = updateInterval;
         this.pagination = pagination;
         this.strictClicks = strictClicks;
+        this.playerInventory = playerInventory;
         this.pagedSlots = pagedSlots;
         this.regions = regions;
+        this.inputSlots = inputSlots;
         this.items = items;
         this.templates = templates;
     }
@@ -140,7 +150,8 @@ public final class GuiDef {
         if (root == null) {
             warn.accept("File is empty or unreadable; using a default gui without items");
             return new GuiDef(id, "Menu", 3, null, "", "", List.of(), 0, false, false,
-                    new int[0], Map.of(), List.of(), Map.of());
+                    PlayerInventoryPolicy.LOCKED, new int[0], Map.of(), Set.of(), List.of(),
+                    Map.of());
         }
         String title = root.getString("title", "Menu");
         List<String> layoutRows = truncateLayout(root.getStringList("layout"), warn);
@@ -167,10 +178,14 @@ public final class GuiDef {
         int updateInterval = Math.max(0, root.getInt("update-interval", 0));
         boolean pagination = root.getBoolean("pagination", false);
         boolean strictClicks = root.getBoolean("strict-clicks", false);
+        PlayerInventoryPolicy playerInventory = PlayerInventoryPolicy.resolve(
+                root.getString("player-inventory", ""), warn);
         int[] pagedSlots = parsePagedKey(root, keySlots, !layoutRows.isEmpty(), pagination, warn);
         Map<String, int[]> regions = parseRegions(root, keySlots, !layoutRows.isEmpty(),
                 pagedSlots, warn);
         List<GuiItemDef> items = new ArrayList<>();
+        Set<Integer> inputSlots = new HashSet<>();
+        boolean inputDeclared = false;
         ConfigurationSection itemsSection = root.getConfigurationSection("items");
         if (itemsSection != null) {
             for (String key : itemsSection.getKeys(false)) {
@@ -187,6 +202,12 @@ public final class GuiDef {
                     }
                     continue;
                 }
+                if (item.input()) {
+                    inputDeclared = true;
+                    for (int slot : item.slots()) {
+                        inputSlots.add(slot);
+                    }
+                }
                 items.add(item);
             }
         }
@@ -196,16 +217,38 @@ public final class GuiDef {
             for (String key : templatesSection.getKeys(false)) {
                 GuiItemDef item = GuiItemDef.parse(yml, "templates." + key, key, keySlots, warn);
                 if (item != null) {
+                    // A template's cells come from the bind, not from here, so only the FLAG
+                    // is read at parse: GuiSession registers the slot when it binds one.
+                    inputDeclared |= item.input();
                     templates.put(key, new GuiTemplate(item));
                 }
             }
         }
+        noteUnreachableInputs(inputDeclared, playerInventory, warn);
         // The regions map keeps its insertion order on purpose (regionIds() renders in file
         // order), so it is wrapped instead of copied through Map.copyOf, which does not.
         return new GuiDef(id, title, rows, type, openSound, closeSound, closeActions,
-                updateInterval, pagination, strictClicks, pagedSlots,
-                Collections.unmodifiableMap(regions), List.copyOf(items),
+                updateInterval, pagination, strictClicks, playerInventory, pagedSlots,
+                Collections.unmodifiableMap(regions), Set.copyOf(inputSlots), List.copyOf(items),
                 Map.copyOf(templates));
+    }
+
+    /**
+     * WARNs once when the menu declares an input cell but keeps the player inventory
+     * locked: under {@code player-inventory: locked} every bottom click is cancelled, so the
+     * viewer can never pick a stack up, their cursor stays empty for the whole session and
+     * no offer of any kind can ever be produced. The cell parses and renders normally - the
+     * combination is dead configuration, not a broken file - and the WARN is what tells the
+     * owner which half of the pair is missing, mirroring the paged-key/pagination warning.
+     */
+    private static void noteUnreachableInputs(boolean inputDeclared,
+                                              PlayerInventoryPolicy playerInventory,
+                                              Consumer<String> warn) {
+        if (inputDeclared && playerInventory != PlayerInventoryPolicy.OPEN) {
+            warn.accept("input: true declared with player-inventory: locked; the viewer can"
+                    + " never pick a stack up, so nothing can be offered - set"
+                    + " player-inventory: open");
+        }
     }
 
     /**
@@ -506,6 +549,26 @@ public final class GuiDef {
      */
     public boolean strictClicks() {
         return strictClicks;
+    }
+
+    /**
+     * What this menu lets its viewer do with their OWN inventory while it is open
+     * ({@code player-inventory:}, 1.28.0); {@link PlayerInventoryPolicy#LOCKED} by default,
+     * which is the behaviour of every release before it. Governs the BOTTOM inventory only:
+     * clicks over the menu's own cells are cancelled under either policy.
+     */
+    public PlayerInventoryPolicy playerInventory() {
+        return playerInventory;
+    }
+
+    /**
+     * Whether a DECLARED item makes {@code slot} an input cell ({@code input: true},
+     * 1.28.0). Structural and cheap on purpose - no requirement is evaluated here: the
+     * session adds the cells its binds contribute and answers the live question through
+     * {@link GuiSession#isInputSlot(int)}, which is what the click listener calls.
+     */
+    boolean inputSlot(int slot) {
+        return inputSlots.contains(slot);
     }
 
     /**

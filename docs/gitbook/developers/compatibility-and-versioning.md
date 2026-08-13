@@ -125,11 +125,18 @@ surface (new public methods or classes). Its history:
 - LEVEL 11 = release 1.18.0 - config-driven template placement (`GuiSession.bind(String, Ph...)`)
 - LEVEL 12 = release 1.20.0 - runtime layout regions (`regions:` + `GuiSession.bindEach`)
 - LEVEL 13 = release 1.21.0 - plugin-supplied stacks in menus (`GuiSession.bind(int, GuiTemplate, ItemStack, Ph...)`, `PhCollector.stack`, `GuiEntry.stack`)
+- LEVEL 14 = release 1.22.0 - per-session menu titles (`GuiSession.titlePlaceholders`, the `Gui.open(Player, Ph...)` overloads)
+- LEVEL 15 = release 1.23.0 - placeholders on an event thread (`SnPapi.applyHere`, the viewer-aware `SnLang.get(String, Player, Ph...)`)
+- LEVEL 16 = release 1.24.0 - a bounded teardown wait (`SnFuture.joinWithin`, `DbConfig.connectTimeoutSeconds`/`socketTimeoutSeconds`)
+- LEVEL 17 = release 1.25.0 - placeholders that need no player (`ExpansionBuilder.global`/`globalPrefixed`, `LeaderboardCache.exposePlaceholders`)
+- LEVEL 18 = release 1.27.0 - a continuation a caller can chain onto (`SnFuture.chainSync`)
+- LEVEL 19 = release 1.28.0 - menus can receive an item (`input:` cells, the `player-inventory:` policy, `ItemOffer` + `GuiSession.onOffer`/`handleOffer`/`isInputSlot`)
 
-The current value is 13. Releases that change only behaviour do not bump it:
-1.3.0 removed the experimental SnBridge and added the separate Velocity base, and
-1.19.0/1.19.1 changed marker and warning behaviour, none of which grows the Paper
-handshake surface. The source of truth is the history javadoc on `SnApi` itself.
+The current value is 19. Releases that change only behaviour do not bump it:
+1.3.0 removed the experimental SnBridge and added the separate Velocity base,
+1.19.0/1.19.1 changed marker and warning behaviour, and 1.26.0 changed no public
+surface, none of which grows the Paper handshake surface. The source of truth is
+the history javadoc on `SnApi` itself.
 
 Because `SnApi.LEVEL` is a compile-time constant, javac inlines its literal value
 into each consumer's bytecode. A consumer's `requiredApiLevel()` therefore records

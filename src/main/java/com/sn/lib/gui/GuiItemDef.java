@@ -86,6 +86,7 @@ public final class GuiItemDef {
     private final String path;
     private final int[] slots;
     private final int updateInterval;
+    private final boolean input;
     private final Requirement viewRequirement;
     private final Requirement clickRequirement;
     private final List<String> clickActions;
@@ -96,7 +97,7 @@ public final class GuiItemDef {
     private final boolean keyAbsentFromLayout;
 
     private GuiItemDef(String id, SnYml yml, String path, int[] slots, int updateInterval,
-                       Requirement viewRequirement, Requirement clickRequirement,
+                       boolean input, Requirement viewRequirement, Requirement clickRequirement,
                        List<String> clickActions, List<String> denyActions,
                        Map<ClickKey, PerClick> perClick,
                        NavKind navKind, @Nullable GuiItemDef navDisabled,
@@ -106,6 +107,7 @@ public final class GuiItemDef {
         this.path = path;
         this.slots = slots;
         this.updateInterval = updateInterval;
+        this.input = input;
         this.viewRequirement = viewRequirement;
         this.clickRequirement = clickRequirement;
         this.clickActions = clickActions;
@@ -183,6 +185,7 @@ public final class GuiItemDef {
             }
         }
         int updateInterval = Math.max(0, sec.getInt("update-interval", 0));
+        boolean input = sec.getBoolean("input", false);
         Requirement viewReq = RequirementEngine.parse(sec.getStringList("view-requirements"),
                 message -> warn.accept("Item '" + id + "': " + message));
         Requirement clickReq = RequirementEngine.parse(sec.getStringList("click-requirements"),
@@ -195,7 +198,7 @@ public final class GuiItemDef {
         if (navKind != NavKind.NONE && sec.getConfigurationSection("nav-disabled") != null) {
             navDisabled = parse(yml, path + ".nav-disabled", id + ".nav-disabled", null, warn);
         }
-        return new GuiItemDef(id, yml, path, slots, updateInterval, viewReq, clickReq,
+        return new GuiItemDef(id, yml, path, slots, updateInterval, input, viewReq, clickReq,
                 clickActions, denyActions, perClick, navKind, navDisabled, keyAbsentFromLayout);
     }
 
@@ -319,6 +322,24 @@ public final class GuiItemDef {
     /** Per-item re-render interval in ticks; 0 disables the item timer. */
     public int updateInterval() {
         return updateInterval;
+    }
+
+    /**
+     * Whether this cell RECEIVES an item ({@code input: true}, 1.28.0; default false).
+     * The cells it resolves to - its {@code slots:} or its layout {@code key:} - are input
+     * slots of the menu: a viewer who clicks one with a stack on the cursor, or drags a
+     * stack over one, has the stack reported to the session as an {@link ItemOffer}
+     * instead of it firing the cell's click actions. Templates carry the flag too, and a
+     * template bound to a slot makes THAT slot an input slot for the session that bound it.
+     *
+     * <p>The event is always cancelled, so SnLib reads the offered stack and never moves
+     * it; what the offer means is the consumer's to decide in
+     * {@link GuiSession#onOffer(java.util.function.Consumer)}. A click with an EMPTY cursor
+     * is not an offer and still runs the cell's click actions, so one cell can be a button
+     * and a drop target at once.</p>
+     */
+    public boolean input() {
+        return input;
     }
 
     /** Requirement gating whether the item renders for a viewer; always passes when absent. */

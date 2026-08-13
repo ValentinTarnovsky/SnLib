@@ -6,7 +6,7 @@
 
     <groupId>com.sn</groupId>
     <artifactId>snlib</artifactId>
-    <version>1.27.0</version>
+    <version>1.28.0</version>
     <packaging>jar</packaging>
 
     <name>SnLib</name>
@@ -19,7 +19,7 @@
         <!-- Informative manifest value; the real handshake constant is com.sn.lib.SnApi.LEVEL.
              Nothing reads it, so it had drifted (13 while the constant was 15); keep it in
              step with SnApi.LEVEL on every release that bumps the level. -->
-        <sn.api.level>18</sn.api.level>
+        <sn.api.level>19</sn.api.level>
     </properties>
 
     <repositories>

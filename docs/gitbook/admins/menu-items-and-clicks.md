@@ -25,7 +25,7 @@ items:
 | --- | --- | --- |
 | Placement | `slots:` or `key:` | This page |
 | Appearance | `material`, `display-name`, `lore`, `glow`, `skull-owner` and the rest of the shared schema | [Item Appearance Reference](item-appearance.md) |
-| Behaviour | `view-requirements`, `click-requirements`, `click-actions`, `deny-actions`, the per-click matrix, `update-interval` | This page |
+| Behaviour | `view-requirements`, `click-requirements`, `click-actions`, `deny-actions`, the per-click matrix, `update-interval`, `input` | This page |
 
 {% hint style="info" %}
 Appearance is re-read on every render, and placeholders resolve per viewer. Two players looking at the same menu can see different names, lore and heads. A per-item `update-interval:` (in ticks) re-renders just that item on a timer; 0 disables it.
@@ -162,6 +162,35 @@ With `strict-clicks: true`, the generic lists only answer the four basic mouse c
 > A discarded click runs nothing at all: no click actions and no deny actions. The discard happens before the requirement test, and the click is still cancelled.
 
 A vanilla double click is two left clicks, so a declared `left-click-actions` deliberately enables DOUBLE_CLICK even in strict mode.
+
+## Cells that receive an item (1.28.0)
+
+Some buttons are not buttons: they are a place to put an item. A shop asking which item you are selling, a kit editor asking what goes in a slot, a deposit cell. `input: true` marks such a cell.
+
+```yaml
+player-inventory: open        # menu-level: the viewer may use their own inventory
+
+items:
+  drop-here:
+    material: LIGHT_GRAY_STAINED_GLASS_PANE
+    display-name: "&eDrop an item here"
+    slots: [13]
+    input: true
+    click-actions:            # still fires when the cursor is EMPTY
+      - "[message] &7Hold the item you want to place."
+```
+
+A viewer who clicks that cell while holding a stack, or drags a stack onto it, hands the item to the plugin. With `player-inventory: open`, shift-clicking a stack in their own inventory does the same.
+
+| Rule | Behavior |
+| --- | --- |
+| The item is never taken | Every such click is cancelled. The stack goes straight back to the cursor or the inventory; the plugin decides what to do next. |
+| Needs `player-inventory: open` | With the inventory locked the viewer can never pick a stack up, so nothing can be offered. Declaring `input: true` without it WARNs on load. |
+| Empty cursor is a normal click | Clicking the cell empty-handed runs its `click-actions` as usual. One cell can be a button and a drop target. |
+| The plugin owns the other half | This is the one menu field whose effect is not purely config: the yml declares which cells accept an item, the plugin decides what accepting means. On a plugin that handles no offers the click is simply cancelled. |
+| Templates too | A `templates:` entry can declare `input: true`; the cell it applies to is the one the plugin binds it into. |
+
+> `input: true` and `player-inventory: open` are a pair. A menu shipping one of them ships both, and removing either one breaks the feature that needed it.
 
 ## View requirements
 

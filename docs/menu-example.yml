@@ -125,6 +125,32 @@ pagination: true/false # default: false
 #                         fires the resolved actions list.
 strict-clicks: true/false # default: false
 
+# ═══════════════════════════════════════════════════════════════════
+# PLAYER INVENTORY - what the viewer may do with their OWN items (1.28.0)
+# ═══════════════════════════════════════════════════════════════════
+# player-inventory: locked -> (default) every click and drag over the
+#                             viewer's own inventory is cancelled while the
+#                             menu is open. Nothing moves, nothing can be
+#                             picked up, and their cursor stays empty for
+#                             the whole session. Exactly how every menu
+#                             behaved before 1.28.0.
+# player-inventory: open   -> the viewer uses their own inventory normally:
+#                             plain clicks, number keys, Q drops, F offhand
+#                             swaps and drags that stay inside their
+#                             inventory all work again. Two things stay
+#                             cancelled and are what keeps this safe: every
+#                             click over THIS menu's cells, and the
+#                             double-click gather, so no menu item can ever
+#                             reach the cursor.
+#                             With it open, a SHIFT-CLICK on one of their
+#                             own stacks is reported to the plugin as an
+#                             offer (see input: below) instead of moving the
+#                             item: the menu never receives items by itself.
+# Unknown values WARN and fall back to locked.
+# This key governs the BOTTOM inventory only; which CELLS of the menu accept
+# an item is the per-item input: key.
+player-inventory: locked/open # default: locked
+
 items:
   item-id: #can be anything as long it is unique
     display-name: string # default: ""
@@ -149,6 +175,7 @@ items:
     trim-material: string (armor only; any trim material id the server registry knows, ex QUARTZ, IRON, NETHERITE, REDSTONE, COPPER, GOLD, EMERALD, DIAMOND, LAPIS, AMETHYST; NONE or empty disables; must be set together with trim-pattern) # default: ""
     potion-effects: list ex: [effect-id, level, duration] or [effect-id, level, duration, effect-id, level, duration] # default: []
     update-interval: int (in ticks) # every update-interval ticks, the item will update all its information, including items, title, and rows. If set to 0, the item will not update automatically. # defalt: 0
+    input: true/false # 1.28.0; the cell RECEIVES an item (see example-input-item below) # default: false
     lore: list (each line of lore) # default: []
     click-requirements: list of requirements to click this item, placeholders that have to match in order to click this item, if it doesn't match, the action will not be performed # default: []
       - "%placeholder% > 0 && %placeholder% < 10" #ex: %player_level% > 0 && %player_level% < 10
@@ -344,6 +371,45 @@ items:
       - "[player] clan create"
 
   # ═══════════════════════════════════════════════════════════════════
+  # INPUT CELL - the menu RECEIVES an item (1.28.0)
+  # ═══════════════════════════════════════════════════════════════════
+  # input: true turns this item's cells into INPUT SLOTS. A viewer who
+  # clicks one while holding a stack, or drags a stack onto one, has that
+  # stack reported to the plugin; with player-inventory: open a shift-click
+  # on one of their own stacks is reported the same way. The item still
+  # renders exactly as declared: this is a normal button that also accepts
+  # an item.
+  #
+  # WHAT SNLIB GUARANTEES: the item is READ, never consumed. Every one of
+  # those events is CANCELLED, so the stack goes straight back to the
+  # player's cursor or inventory. SnLib never moves it, never shrinks it and
+  # never puts it into the menu.
+  #
+  # THIS IS THE ONE FIELD WHOSE OTHER HALF IS PLUGIN CODE. Everything else
+  # in this file works with zero Java; here the yml DECLARES which cells
+  # accept an item, and the plugin decides what accepting one means
+  # (session.onOffer(...) in the developer docs). Set input: true on a menu
+  # whose plugin does not handle offers and the click is simply cancelled -
+  # nothing is lost, nothing happens.
+  #
+  # A click with an EMPTY cursor is not an offer: it runs the click-actions
+  # below as usual, so one cell can be a button AND a drop target.
+  #
+  # NEEDS player-inventory: open. With the inventory locked the viewer can
+  # never pick a stack up in the first place, so nothing can ever be
+  # offered; declaring input: true without it WARNs on load.
+  example-input-item:
+    display-name: "&eDrop an item here"
+    material: LIGHT_GRAY_STAINED_GLASS_PANE
+    slots: [13]
+    input: true
+    lore:
+      - "&7Click while holding an item"
+      - "&7or shift-click it from your inventory"
+    click-actions: # fired only by a click with an EMPTY cursor
+      - "[message] &7Hold the item you want to place."
+
+  # ═══════════════════════════════════════════════════════════════════
   # PLAYER HEAD ITEM - skull-owner resolves placeholders PER VIEWER
   # ═══════════════════════════════════════════════════════════════════
   # skull-owner accepts a player name or UUID; with a placeholder each viewer
@@ -439,6 +505,7 @@ templates:
     trim-material: string # default: "NONE"
     potion-effects: list # default: []
     update-interval: int # default: 0
+    input: true/false # 1.28.0; the cell the plugin binds this template to RECEIVES an item # default: false
     lore: list # default: []
     click-requirements: list # default: []
     view-requirements: list # default: []

@@ -240,6 +240,129 @@ Your instance is never mutated and never ends up in the inventory: the stack is 
 
 > A supplied stack narrows what the server owner can restyle to the name, the extra lore and the behaviour. Use it for contents you did not author; for a cell that is genuinely yours to describe, a plain template bind gives the owner the whole appearance.
 
+## Receiving an item from the player (1.28.0)
+
+Everything above puts items INTO a menu. This is the other direction: a cell that takes an item OUT of the player's hands - the shop that asks which item you are selling, the kit editor that asks what goes in slot 4, the deposit chest. Before 1.28.0 that could not be expressed at all: SnLib cancelled every click and drag, so a menu that needed a stack from the player had to be a hand-rolled Bukkit inventory with its own listener.
+
+Two YAML keys and one callback:
+
+```yaml
+# guis/editor.yml
+title: "&8Kit editor"
+player-inventory: open      # the viewer may use their own inventory
+
+layout:
+  - "fffffffff"
+  - "ffffiffff"
+  - "fffffffff"
+
+items:
+  slot:
+    key: i
+    input: true             # THIS cell receives an item
+    material: LIGHT_GRAY_STAINED_GLASS_PANE
+    display-name: "&eDrop an item here"
+    click-actions:          # fires only when the cursor is EMPTY
+      - "[message] &7Hold the item you want to place."
+```
+
+```java
+GuiSession s = gui.session(player);
+s.onOffer(offer -> {
+    kit.setIcon(offer.stack());                       // a copy, with its real amount
+    s.bind(offer.slot(), gui.template("filled"), offer.stack());
+});
+```
+
+That is the whole item-assignment flow. `input: true` marks the cell, `player-inventory: open` is what lets the viewer pick a stack up in the first place, and the handler decides what the offer means.
+
+### The guarantee: the item is read, never consumed
+
+Every event behind an offer is **cancelled before your handler runs**, and the offer carries a defensive clone. SnLib does not move, shrink, delete or store the offered stack, and never writes it into the menu. The stack is back on the player's cursor (or in their inventory) by the time you see it.
+
+That is deliberate, and it is where the line sits: what accepting an offer means - how much you take, where it goes, what the cell then shows - is your plugin's decision, and a library that guessed it would own the money-shaped half of every deposit flow. If you accept the whole stack, you clear it yourself. If you accept part of it, you write the remainder back yourself.
+
+### The three kinds
+
+```java
+s.onOffer(offer -> {
+    switch (offer.kind()) {
+        case CURSOR      -> ...   // clicked an input cell holding a stack
+        case DRAG        -> ...   // dragged a stack onto one input cell
+        case SHIFT_CLICK -> ...   // shift-clicked a stack in their own inventory
+    }
+});
+```
+
+| Kind | `slot()` | `playerSlot()` | `click()` |
+| --- | --- | --- | --- |
+| `CURSOR` | the input cell clicked | `-1` | `LEFT` or `RIGHT` |
+| `DRAG` | the single input cell covered | `-1` | `RIGHT` for a single-item drag, `LEFT` for an even spread |
+| `SHIFT_CLICK` | `-1` | the player-inventory slot the stack came from | `SHIFT_LEFT` or `SHIFT_RIGHT` |
+
+`click()` is there so the vanilla convention is expressible: right click deposits one, left click deposits the stack. `stack()` always carries its real amount, which is what a deposit needs.
+
+### A deposit, with the write-back
+
+`SHIFT_CLICK` is the deposit gesture, and `playerSlot()` is what makes it expressible without SnLib ever touching an inventory: you compute how much you accepted and write the remainder back to the slot it came from.
+
+```java
+s.onOffer(offer -> {
+    if (offer.kind() != ItemOffer.Kind.SHIFT_CLICK) {
+        return;
+    }
+    ItemStack offered = offer.stack();
+    int accepted = vault.deposit(player, offered);       // however much fits
+    if (accepted <= 0) {
+        sn.lang().send(player, "vault.full");
+        return;
+    }
+    ItemStack remainder = offered.getAmount() > accepted
+            ? offered.asQuantity(offered.getAmount() - accepted)
+            : null;
+    player.getInventory().setItem(offer.playerSlot(), remainder);
+    player.updateInventory();                            // see below
+    s.refreshMenu();
+});
+```
+
+{% hint style="warning" %}
+**Always follow a write-back with `updateInventory()`.** The click was cancelled, so the client is still drawing the stack it had before the event. When you then change that slot server-side, the client does not know: it keeps painting a stale stack the player can seem to click on. One resend right after the write fixes it. This is the single most common way to get this wrong.
+{% endhint %}
+
+### What each key actually controls
+
+The two keys are orthogonal, and the split matters:
+
+- `player-inventory: locked | open` is menu-level and governs the **bottom** inventory. `locked` is the default and is exactly what every menu did before 1.28.0. `open` leaves the viewer's own clicks, number keys, drops, offhand swaps and drags alone - stack splitting inside their own inventory works again - and turns a shift-click there into an offer.
+- `input: true` is per item (and per template) and governs **individual menu cells**. It applies to the cells the item resolves to, through `slots:` or its layout `key:`.
+
+A cell is an input slot when any definition that can occupy it declares `input: true`: the item declared on it, a template you bound to it, or the template a region entry painted there. So a plugin painting the *current contents* of an input cell over the declared one does not have to re-declare that the cell accepts an item:
+
+```java
+// The yml declares slot 13 as input; this bind only changes what it LOOKS like.
+s.bind(13, gui.template("filled"), currentIcon);
+```
+
+In practice `input: true` needs `player-inventory: open` to be reachable at all - with the bottom inventory locked the viewer can never pick a stack up, so their cursor is always empty. SnLib WARNs on load if a menu declares one without the other.
+
+An input cell clicked with an **empty cursor** is not an offer: it runs the cell's `click-actions` as usual. One cell can be a button and a drop target at once. Offers also never pass through `strict-clicks`, which filters actions - an offer is not one.
+
+### What stays cancelled, always
+
+`player-inventory: open` does not open the menu itself. Under both policies:
+
+- every click over a cell of the **menu** is cancelled - as a plain click, as an offer, it makes no difference;
+- `COLLECT_TO_CURSOR` (the double-click gather) is cancelled unconditionally, before anything else;
+- a drag that touches two or more menu cells is cancelled rather than split;
+- the anti-theft marker and its listener are untouched.
+
+Those together are why no rendered GUI stack can reach the cursor, which is what makes leaving the player's own inventory alone safe. A menu that declares neither new key behaves byte-identically to 1.27.0.
+
+{% hint style="info" %}
+The handler runs on the main thread, inside the inventory event: keep it cheap and never block. Database work belongs behind a scheduler hop. Registering a handler is last-write-wins, `null` clears it, and it is dropped when the session closes. With no handler registered, offers are silently dropped with a debug note - the event was already cancelled, so nothing is lost.
+{% endhint %}
+
 ## Paginated content
 
 Pagination is OPT-IN per menu with `pagination: true`. With it on, each viewer has real per-player page state, and you fill the paged slots with `bindPaged`:
@@ -406,6 +529,7 @@ close-sound: BLOCK_CHEST_CLOSE
 update-interval: 100
 pagination: true
 strict-clicks: false
+player-inventory: locked          # 1.28.0: "open" lets the viewer use their own inventory
 
 layout:
   - "fffffffff"

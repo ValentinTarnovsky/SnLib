@@ -80,6 +80,17 @@ import com.sn.lib.util.TagIo;
  * shop stock - whose NBT no yml item definition can re-express. A null stack is exactly the
  * template-rendered behaviour.</p>
  *
+ * <p><b>Menus can RECEIVE an item since 1.28.0</b>: a cell the yml declared
+ * {@code input: true} - or one holding a bound template that did - reports the stack a
+ * viewer aims at it to the handler registered through {@link #onOffer}, as an
+ * {@link ItemOffer}, instead of firing the cell's click actions. The menu-level
+ * {@code player-inventory: open} additionally leaves the viewer's own inventory usable and
+ * turns a shift-click there into an offer. Every event behind an offer is CANCELLED before
+ * the handler runs and the offer carries a clone, so SnLib reads the item and never
+ * consumes it; what accepting one means, and writing back the remainder of a partial
+ * deposit, belong to the consumer. A menu declaring neither key behaves exactly as it did
+ * before 1.28.0.</p>
+ *
  * <p><b>View requirements gate interaction, not only rendering</b>: a click resolves what
  * the slot actually shows to this viewer, under the same precedence, the same
  * declaration-order fallthrough on shared slots and the same requirement test the render
@@ -105,6 +116,7 @@ public final class GuiSession implements PageTarget {
     private final Map<Integer, Binding> binds = new ConcurrentHashMap<>();
     private final Map<Integer, Ph[]> pagedPhs = new ConcurrentHashMap<>();
     private final Map<Integer, Binding> regionCells = new ConcurrentHashMap<>();
+    private final Set<Integer> inputBinds = ConcurrentHashMap.newKeySet();
     private final List<TaskHandle> tasks = new CopyOnWriteArrayList<>();
 
     private volatile Inventory inventory;
@@ -117,6 +129,7 @@ public final class GuiSession implements PageTarget {
     private volatile Map<String, RegionBind<?>> regionBinds = Map.of();
     private volatile int manualTotalPages;
     private volatile Ph[] titlePhs = NO_LOCALS;
+    private volatile @Nullable Consumer<ItemOffer> offerHandler;
     private boolean typeWarned;
     private boolean navUnknownNoted;
 
@@ -290,6 +303,14 @@ public final class GuiSession implements PageTarget {
         Binding binding = new Binding(template, phs == null ? NO_LOCALS : phs.clone(),
                 stack == null ? null : stack.clone());
         binds.put(slot, binding);
+        // A bind OWNS the input state of the cell it takes: binding a template that declares
+        // input: true makes the slot an input slot of THIS session, and binding a plain one
+        // over it takes the cell back out of the offer path.
+        if (template.item().input()) {
+            inputBinds.add(slot);
+        } else {
+            inputBinds.remove(slot);
+        }
         Inventory current = inventory;
         if (current != null && slot < current.getSize()) {
             renderBinding(current, slot, binding);
@@ -463,6 +484,83 @@ public final class GuiSession implements PageTarget {
     }
 
     /**
+     * Registers what THIS session does with an item its viewer offers it (1.28.0): the
+     * handler runs on the main thread, inside the inventory event, for every
+     * {@link ItemOffer} the menu produces - a cursor click on an input cell, a drag over
+     * one, or a shift-click from a player inventory the menu declared
+     * {@code player-inventory: open}.
+     *
+     * <p>Last write wins and null clears; the handler is dropped when the session closes.
+     * With none registered, offers are silently dropped with a debug note, which is a safe
+     * no-op: the event was cancelled before the dispatch, so the stack is already back
+     * where it came from. SnLib itself never moves an offered stack - see {@link ItemOffer}
+     * for the read-not-consume guarantee and for how to write the remainder of a partial
+     * deposit back.</p>
+     *
+     * <p>Main-thread only, like the whole GUI module: the handler runs inside the event, so
+     * it must stay cheap and must never block - hop to a scheduler for anything else.</p>
+     */
+    public void onOffer(@Nullable Consumer<ItemOffer> handler) {
+        this.offerHandler = handler;
+    }
+
+    /**
+     * Offer dispatch invoked by the shared click listener, the parallel of
+     * {@link #handleClick}: hands {@code offer} to the handler registered through
+     * {@link #onOffer}, or drops it with a debug note when there is none. The event that
+     * produced the offer is ALREADY cancelled by the time this runs - that is what returns
+     * the stack to the viewer - and nothing here writes it anywhere. No-op on a closed
+     * session. Main-thread only.
+     */
+    public void handleOffer(ItemOffer offer) {
+        if (closed || offer == null) {
+            return;
+        }
+        Consumer<ItemOffer> handler = offerHandler;
+        if (handler == null) {
+            ctx.debug().log(() -> "GUI '" + def.id() + "': " + offer.kind() + " offer of "
+                    + offer.stack().getType() + " dropped, no offer handler registered"
+                    + " (session.onOffer)");
+            return;
+        }
+        handler.accept(offer);
+    }
+
+    /**
+     * Whether {@code slot} RECEIVES an item for this session (1.28.0): a cell is an input
+     * slot when any definition that can occupy it declares {@code input: true} - the item
+     * declared on it in the yml, a template bound to it through
+     * {@link #bind(int, GuiTemplate, Ph...)}, or the template a region entry painted there.
+     * The yml declaration is therefore never revoked by a bind: a plugin painting the
+     * current contents of an input cell does not have to re-declare that the cell accepts
+     * an item.
+     *
+     * <p>Structural on purpose - no view requirement is evaluated, no placeholder resolved:
+     * this runs inside the click listener for every click over a menu, so it is three
+     * lookups over collections that are empty in a menu with no input cell. What the cell
+     * SHOWS is still resolved the usual way for everything else it does.</p>
+     */
+    public boolean isInputSlot(int slot) {
+        if (slot < 0) {
+            return false;
+        }
+        if (def.inputSlot(slot) || inputBinds.contains(slot)) {
+            return true;
+        }
+        Binding cell = regionCells.get(slot);
+        return cell != null && cell.template().item().input();
+    }
+
+    /**
+     * What this menu lets the viewer do with their OWN inventory while it is open
+     * ({@code player-inventory:}, 1.28.0), read by the shared click listener; the
+     * definition's value, so every session of the menu answers the same.
+     */
+    public PlayerInventoryPolicy playerInventory() {
+        return def.playerInventory();
+    }
+
+    /**
      * Close handling invoked by the shared click listener when the viewer's client closed
      * the inventory: same teardown as {@link #close()} without force-closing the screen,
      * plus the menu's optional {@code close-sound} (inline) and {@code close-actions}
@@ -632,6 +730,10 @@ public final class GuiSession implements PageTarget {
             task.cancel();
         }
         tasks.clear();
+        // The offer handler is a consumer lambda that may capture the whole plugin state of
+        // whatever this menu was editing; a closed session must not keep it alive.
+        offerHandler = null;
+        inputBinds.clear();
         gui.removeSession(viewer.getUniqueId(), this);
         GuiManager.SESSIONS.remove(ctx.plugin(), this);
         TenantSweeper.untrackInventory(holder);

@@ -116,6 +116,7 @@ Every string supports colors, gradients and placeholders: see [Text, Colors and 
 | `paged-key` | The one layout letter whose cells receive paged content. Same page. |
 | `regions` | Named cell groups the plugin fills, one entry per cell. Same page. |
 | `strict-clicks` | Opt-in filter that discards exotic clicks. Default: `false`. Owned by [Menu Items and Clicks](menu-items-and-clicks.md). |
+| `player-inventory` | Whether the viewer may use their own inventory while the menu is open: `locked` or `open`. Default: `locked`. Covered below. |
 | `items` | The buttons of the menu. Owned by [Menu Items and Clicks](menu-items-and-clicks.md). |
 | `templates` | Button definitions the plugin fills with runtime data. Owned by [Pagination, Regions and Templates](pagination-regions-templates.md). |
 
@@ -178,6 +179,25 @@ close-actions:
 Click guards inside these lines, like `[right-click]`, are skipped with a debug note: there is no click on a close.
 
 > There are `close-actions`, but there are no `open-actions`. Nothing in a menu file runs actions on open; only `open-sound` greets the viewer.
+
+## The viewer's own inventory (1.28.0)
+
+While a menu is open, the bottom half of the screen is the viewer's own inventory. `player-inventory:` decides whether they may touch it:
+
+```yaml
+player-inventory: locked   # default
+```
+
+| Value | What the viewer can do with their own items |
+| --- | --- |
+| `locked` | Nothing. Every click and drag over their inventory is cancelled. This is the default and how every menu behaved before 1.28.0. |
+| `open` | Everything they normally can: move stacks, split them with a drag, use number keys, drop with Q, swap with F. |
+
+Whatever the value, clicks over the **menu's own cells** stay cancelled, and so does the double-click gather. A menu item can never end up in a player's inventory.
+
+There is one change to how the viewer's inventory behaves under `open`: **shift-clicking one of their stacks does not move it**. A shift-click aims into the menu, and only the plugin can decide what the menu does with an item, so the stack is offered to the plugin instead. If the plugin has no use for it, nothing happens and the stack stays exactly where it was.
+
+An unknown value WARNs and falls back to `locked`. Some menus need `open` to work at all - see the `input:` field in [Menu Items and Clicks](menu-items-and-clicks.md) - and those menus ship with it already set; changing it back to `locked` breaks them.
 
 ## Automatic refresh
 

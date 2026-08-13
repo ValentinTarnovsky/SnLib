@@ -60,12 +60,14 @@ package com.sn.lib;
  * settled from inside that same task, so a method that publishes state in a continuation of
  * its own can hand back a future whose caller is a successor - thenSync, exceptionally and
  * orDisablePlugin all register sibling dependents on one CompletableFuture and return this,
- * and sibling order is unspecified, so the caller's step ran before the publish).</p>
+ * and sibling order is unspecified, so the caller's step ran before the publish); LEVEL 19 =
+ * release 1.28.0 (menus can receive an item: input slots, player-inventory policy,
+ * ItemOffer/onOffer).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 18;
+    public static final int LEVEL = 19;
 
     private SnApi() {
     }

@@ -193,6 +193,20 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   items, shop stock, lootbox previews - whose NBT no yml item definition can
   re-express. The stack is copied in and per render, the anti-theft marker is
   still stamped, and a null stack is byte-for-byte the pre-1.21 behaviour.
+- Item offers (v1.28.0): a menu can RECEIVE an item. `input: true` on an item or
+  template marks its cells as INPUT SLOTS and the menu-level
+  `player-inventory: open` leaves the viewer's own inventory usable (plain
+  clicks, number keys, drops, offhand swaps and drags inside it), so a stack the
+  viewer aims at the menu - by cursor click, by drag, or by shift-click from
+  their inventory - reaches the plugin as an `ItemOffer` through
+  `session.onOffer(...)`. The item is READ, never consumed: every one of those
+  events is cancelled BEFORE the handler runs and the offer carries a clone, so
+  SnLib never moves, shrinks or stores it; the offer's `playerSlot()` is what
+  lets a consumer write the remainder of a partial deposit back itself. Clicks
+  over the menu's cells and the double-click gather stay cancelled under both
+  policies, which is what keeps a rendered stack off the cursor. A menu
+  declaring neither key routes byte-identically to v1.27.0, and the whole
+  decision table is a pure unit-tested core (`gui/internal/OfferRouting`).
 - Per-click matrix (v1.1): `right/left/shift-right/shift-left/middle` x
   `*-click-actions` / `*-click-requirements` / `*-click-deny-actions` with
   specific-over-generic resolution and fallback to `click-actions`;

@@ -146,6 +146,8 @@ Placement works three ways:
 | Region-driven | Nothing; the cell comes from a `regions:` entry | You: edit `regions:` or the layout. |
 | Plugin-driven | Nothing; the plugin picks the slot in code | The plugin only. A slot decided in Java is a slot you cannot move. |
 
+A template can also declare `input: true` (1.28.0), exactly like an item: the cell the plugin binds it into then RECEIVES an item instead of only firing click actions. The rules, and the `player-inventory: open` it needs, live in [Menu Items and Clicks](menu-items-and-clicks.md#cells-that-receive-an-item-1280).
+
 Region-driven placement is the one for state variants of the same button, such as an on and an off look. Several templates then share one region, so none of them owns the placement. Keep those templates keyless: a region-painted cell ignores the template's own `slots:`/`key:` anyway.
 
 When several sources target the same cell, one order decides:
