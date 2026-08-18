@@ -693,3 +693,9 @@ rolling the jar to production.
   the `SnApi` javadoc, which is the source of truth). The Velocity base (`com.sn.lib.velocity.*`) is a separate,
   Velocity-only surface kept outside the Paper `SnApi.LEVEL` handshake and
   outside the japicmp gate while it settles.
+
+## License
+
+Proprietary. All rights reserved. See [LICENSE](LICENSE).
+
+Redistribution, resale and reverse engineering are not permitted.
