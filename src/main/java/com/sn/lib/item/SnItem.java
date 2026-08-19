@@ -66,10 +66,11 @@ import com.sn.lib.yml.SnYml;
  * via Registry/NamespacedKey with legacy-name fallbacks; an unresolvable id logs one WARN
  * and is skipped, never thrown.</p>
  *
- * <p>Compat: {@code setEnchantmentGlintOverride} and {@code setMaxStackSize} (1.20.5+) and
- * {@code setItemModel} (1.21.2+) go
+ * <p>Compat: {@code setEnchantmentGlintOverride}, {@code setMaxStackSize} and
+ * {@code setHideTooltip} (1.20.5+) and {@code setItemModel} (1.21.2+) go
  * through {@link SnCompat#probe}; on 1.20.4 glow degrades to a real vanilla enchant plus
- * {@code HIDE_ENCHANTS} and max-stack-size is skipped, each with one WARN; below 1.21.2
+ * {@code HIDE_ENCHANTS} and max-stack-size and the {@code HIDE_TOOLTIP} flag are skipped,
+ * each with one WARN; below 1.21.2
  * item-model is skipped the same way. Trim lookup
  * prefers {@link RegistryAccess} ({@code Registry.TRIM_*} is deprecated since 1.20.6) and
  * falls back to the legacy fields on older servers. {@link ItemFlag} is treated as an open
@@ -272,9 +273,12 @@ public final class SnItem {
     }
 
     /**
-     * Adds item flags by name. {@code HIDE_ALL} expands to every {@link ItemFlag#values()}
-     * of this server; unknown names try the {@code HIDE_POTION_EFFECTS}/
-     * {@code HIDE_ADDITIONAL_TOOLTIP} alias before one WARN.
+     * Adds item flags by name. Two of the names are SnLib's own, not {@link ItemFlag}
+     * constants: {@code HIDE_ALL} expands to every {@link ItemFlag#values()} of this
+     * server, and {@code HIDE_TOOLTIP} hides the whole tooltip box (display name
+     * included) through the {@code hide_tooltip} component, 1.20.5+. Unknown names try
+     * the {@code HIDE_POTION_EFFECTS}/{@code HIDE_ADDITIONAL_TOOLTIP} alias before one
+     * WARN.
      */
     public SnItem flags(List<String> names) {
         if (names != null) {
@@ -610,10 +614,34 @@ public final class SnItem {
                 meta.addItemFlags(ItemFlag.values());
                 continue;
             }
+            if (flagName.equals("HIDE_TOOLTIP")) {
+                applyHideTooltip(meta);
+                continue;
+            }
             ItemFlag flag = resolveFlag(flagName);
             if (flag != null) {
                 meta.addItemFlags(flag);
             }
+        }
+    }
+
+    /**
+     * SnLib flag {@code HIDE_TOOLTIP}: hides the WHOLE tooltip box, display name included.
+     * It is the {@code hide_tooltip} item component, not an {@link ItemFlag}, so it is
+     * applied through {@link SnCompat#probe} (1.20.5+); on 1.20.4 the item keeps its
+     * tooltip after one WARN. Deliberately NOT part of {@code HIDE_ALL}, which only
+     * expands the real {@link ItemFlag} values and must keep showing the name.
+     */
+    private static void applyHideTooltip(ItemMeta meta) {
+        Method hideTooltip = SnCompat.probe(ItemMeta.class, "setHideTooltip", boolean.class);
+        if (hideTooltip == null) {
+            return;
+        }
+        try {
+            hideTooltip.invoke(meta, Boolean.TRUE);
+        } catch (ReflectiveOperationException e) {
+            warnOnce("hide-tooltip-invoke", "setHideTooltip failed (" + e
+                    + "); the tooltip stays visible");
         }
     }
 

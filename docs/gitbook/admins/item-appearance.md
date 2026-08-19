@@ -121,8 +121,18 @@ A missing level defaults to 1. Ids resolve leniently: registry keys and legacy B
 | `HIDE_PLACED_ON` | the can-place-on list |
 | `HIDE_POTION_EFFECTS` | potion and extra tooltip info |
 | `HIDE_ALL` | everything: expands to every flag this server knows |
+| `HIDE_TOOLTIP` | the whole tooltip box, display name included |
 
 Any `ItemFlag` name your server knows is accepted; the table lists the common ones. `HIDE_POTION_EFFECTS` and `HIDE_ADDITIONAL_TOOLTIP` alias each other automatically, so whichever name your Minecraft version lacks still resolves.
+
+`HIDE_ALL` and `HIDE_TOOLTIP` are SnLib names, not real `ItemFlag`s, and they are not the same thing. `HIDE_ALL` empties the tooltip of every flagged line but the item still shows its name on hover; `HIDE_TOOLTIP` removes the box entirely, so nothing is shown at all - the right choice for a decorative filler or a background item in a menu. Because it would silently erase the names of items that only asked for `HIDE_ALL`, `HIDE_TOOLTIP` is never implied by `HIDE_ALL`: list it yourself.
+
+```yaml
+flags:
+  - HIDE_TOOLTIP
+```
+
+`HIDE_TOOLTIP` needs Minecraft 1.20.5 or newer (it is the `hide_tooltip` item component). On 1.20.4 it is skipped with one WARN and the item keeps its tooltip.
 
 ## color
 

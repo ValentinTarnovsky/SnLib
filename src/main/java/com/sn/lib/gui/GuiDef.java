@@ -53,8 +53,9 @@ import com.sn.lib.yml.SnYml;
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, item-model (1.21.2+),           (re-read per viewer: locals,
  *       amount, glow, enchantments,
- *       flags (HIDE_ALL, HIDE_POTION_EFFECTS alias),        PAPI, [small], [rgb], [center],
- *       color RGB/HEX, trim-pattern, trim-material,         MiniMessage + legacy)
+ *       flags (HIDE_ALL, HIDE_TOOLTIP,                      PAPI, [small], [rgb], [center],
+ *       HIDE_POTION_EFFECTS alias),                         MiniMessage + legacy)
+ *       color RGB/HEX, trim-pattern, trim-material,
  *       potion-effects, skull-owner (per-viewer
  *       placeholders), attributes, damage
  *     slots (int, list, ranges "0-8", mixed) or key     -> GuiItemDef.parse via SlotParser

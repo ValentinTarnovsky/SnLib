@@ -252,6 +252,14 @@ sn.items().give(player, "wand", 1);
   UUID or cached name, never a blocking lookup), `attributes:` /
   `attribute(...)` (modifiers with lenient resolution and a UUID fallback on
   1.20.4) and `damage:` / `damage(int)` (clamped vanilla durability).
+- `HIDE_TOOLTIP` flag (v1.29.0): the second SnLib-only name in `flags:`, next to
+  `HIDE_ALL` and doing a different job - `HIDE_ALL` expands to every real
+  `ItemFlag` and the item still shows its name on hover, while `HIDE_TOOLTIP`
+  sets the `hide_tooltip` component so no tooltip box is drawn at all (the
+  usual want for a filler pane or a menu background). Never implied by
+  `HIDE_ALL`, which would silently erase the name of every item already using
+  it. Works in menus and in items; needs 1.20.5+ and is skipped with one WARN
+  below that.
 - Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
   into one lore line per segment, so a list value flows through a single
   `{placeholder}` in menu templates and items.
@@ -558,8 +566,8 @@ spec, it ALREADY works without plugin code.
 
 | Spec | Fields |
 |------|--------|
-| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
-| `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, glow, lore, enchantments, flags, color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
+| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL, HIDE_TOOLTIP v1.29), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
+| `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, glow, lore, enchantments, flags (HIDE_ALL, HIDE_TOOLTIP v1.29), color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
 | `docs/selection-example.yml` (v1.1) | item (full SnItem appearance schema), permission, particle (type/color/size), step, interval-ticks, render-distance, visibility (OWNER_ONLY/WORLD), particle-budget, max-render-volume, max-volume, timeout-ticks, silent |
 
 The headers of `GuiDef.java`, `GuiItemDef.java` and `ItemDef.java` carry the

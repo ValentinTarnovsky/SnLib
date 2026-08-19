@@ -30,6 +30,7 @@ item-id: # can be anything as long it is unique
   flags: # default: []
     - string (can be any of the following: HIDE_ENCHANTS, HIDE_ATTRIBUTES, HIDE_UNBREAKABLE, HIDE_DESTROYS, HIDE_PLACED_ON, HIDE_POTION_EFFECTS)
     - create a HIDE_ALL flag by adding all of the above flags to the list
+    - HIDE_TOOLTIP hides the WHOLE tooltip box, display name included; NOT part of HIDE_ALL (1.29.0; needs 1.20.5+, skipped with one WARN below that)
   color: RGB # 235, 64, 52 or HEX # FF0000 (for any item that supports color, like leather armor) # default: ""
   trim-pattern: string (armor only; any trim pattern id the server registry knows, ex SENTRY, DUNE, COAST, WILD, WARD, EYE, VEX, TIDE, SNOUT, RIB, SPIRE, WAYFINDER, SHAPER, SILENCE, RAISER, HOST; NONE or empty disables; must be set together with trim-material) # default: ""
   trim-material: string (armor only; any trim material id the server registry knows, ex QUARTZ, IRON, NETHERITE, REDSTONE, COPPER, GOLD, EMERALD, DIAMOND, LAPIS, AMETHYST; NONE or empty disables; must be set together with trim-pattern) # default: ""

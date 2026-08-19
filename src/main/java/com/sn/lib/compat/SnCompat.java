@@ -14,8 +14,9 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Every use of Paper/Adventure API newer than 1.20.4 must go through {@link #probe} or
  * {@link #since} so older servers degrade with a single WARN instead of throwing. Known
- * version-sensitive points: {@code ItemMeta#setMaxStackSize} and
- * {@code ItemMeta#setEnchantmentGlintOverride} (1.20.5+), and
+ * version-sensitive points: {@code ItemMeta#setMaxStackSize},
+ * {@code ItemMeta#setEnchantmentGlintOverride} and {@code ItemMeta#setHideTooltip}
+ * (1.20.5+), and
  * {@code ItemFlag.HIDE_ADDITIONAL_TOOLTIP} (alias of the legacy
  * {@code HIDE_POTION_EFFECTS}).</p>
  *
