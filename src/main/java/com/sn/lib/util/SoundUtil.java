@@ -19,9 +19,14 @@ import org.jetbrains.annotations.Nullable;
  * <p>Resolution treats {@link Sound} as an open set (never switch/EnumSet): first
  * {@link Sound#valueOf(String)} for enum-style ids ({@code ENTITY_PLAYER_LEVELUP}), then
  * {@link Registry#SOUNDS} by {@link NamespacedKey} for key-style ids
- * ({@code minecraft:entity.player.levelup}), so ids added by newer servers keep working.
- * An unresolvable id logs one WARN and the play call becomes a no-op. Null, blank and
- * {@code "none"} specs are silent no-ops.</p>
+ * ({@code minecraft:entity.player.levelup}), so ids added by newer servers keep working.</p>
+ *
+ * <p>An id that carries an explicit namespace and resolves to nothing on the server
+ * ({@code okimc:click-2}, a sound that only exists inside a resource pack) is NOT an error:
+ * it is sent to the client by name through the raw-string {@code playSound} overload, which
+ * is the only way a custom pack sound can ever play. Writing the namespace is the opt-in;
+ * a bare id that resolves to nothing ({@code ENTITY_PLAYER_LEVELUPP}) is still a typo and
+ * logs one WARN. Null, blank and {@code "none"} specs are silent no-ops.</p>
  *
  * <p>Server-wide statics allowed by the SnLib contract: whether a sound id resolves is a
  * fact about the server, not about a consumer.</p>
@@ -42,7 +47,11 @@ public final class SoundUtil {
         if (parsed == null) {
             return;
         }
-        player.playSound(player.getLocation(), parsed.sound(), parsed.volume(), parsed.pitch());
+        if (parsed.sound() != null) {
+            player.playSound(player.getLocation(), parsed.sound(), parsed.volume(), parsed.pitch());
+        } else {
+            player.playSound(player.getLocation(), parsed.customId(), parsed.volume(), parsed.pitch());
+        }
     }
 
     /**
@@ -58,7 +67,8 @@ public final class SoundUtil {
         if (trimmed.isEmpty() || trimmed.equalsIgnoreCase("none")) {
             return true;
         }
-        return resolve(trimmed.split("\\s+")[0]) != null;
+        String id = trimmed.split("\\s+")[0];
+        return resolve(id) != null || customId(id) != null;
     }
 
     /** Plays {@code spec} to every player near {@code location}. */
@@ -74,7 +84,11 @@ public final class SoundUtil {
         if (parsed == null) {
             return;
         }
-        world.playSound(location, parsed.sound(), parsed.volume(), parsed.pitch());
+        if (parsed.sound() != null) {
+            world.playSound(location, parsed.sound(), parsed.volume(), parsed.pitch());
+        } else {
+            world.playSound(location, parsed.customId(), parsed.volume(), parsed.pitch());
+        }
     }
 
     private static @Nullable Parsed parse(String spec) {
@@ -87,14 +101,17 @@ public final class SoundUtil {
         }
         String[] parts = trimmed.split("\\s+");
         Sound sound = resolve(parts[0]);
-        if (sound == null) {
+        String custom = sound == null ? customId(parts[0]) : null;
+        if (sound == null && custom == null) {
             warnOnce("id:" + parts[0], "Invalid sound '" + parts[0]
-                    + "': not resolved by enum nor by Registry.SOUNDS; ignored");
+                    + "': not resolved by enum nor by Registry.SOUNDS, and it carries no"
+                    + " namespace, so it cannot be a resource pack sound either; ignored."
+                    + " A custom pack sound must be written as 'namespace:id'");
             return null;
         }
         float volume = parts.length > 1 ? parseFloat(parts[1], trimmed) : 1.0f;
         float pitch = parts.length > 2 ? parseFloat(parts[2], trimmed) : 1.0f;
-        return new Parsed(sound, volume, pitch);
+        return new Parsed(sound, custom, volume, pitch);
     }
 
     private static @Nullable Sound resolve(String id) {
@@ -109,6 +126,20 @@ public final class SoundUtil {
             NamespacedKey key = NamespacedKey.fromString(id.toLowerCase(Locale.ROOT));
             return key == null ? null : Registry.SOUNDS.get(key);
         }
+    }
+
+    /**
+     * The resource pack sound name for {@code id}, or {@code null} when {@code id} is not an
+     * explicitly namespaced key. Only an id the author namespaced by hand is trusted to the
+     * client by name; a bare unresolved id stays a typo.
+     */
+    private static @Nullable String customId(String id) {
+        int colon = id.indexOf(':');
+        if (colon <= 0 || colon == id.length() - 1) {
+            return null;
+        }
+        String lower = id.toLowerCase(Locale.ROOT);
+        return NamespacedKey.fromString(lower) == null ? null : lower;
     }
 
     private static float parseFloat(String token, String spec) {
@@ -126,6 +157,7 @@ public final class SoundUtil {
         }
     }
 
-    private record Parsed(Sound sound, float volume, float pitch) {
+    /** Exactly one of {@code sound} and {@code customId} is non-null. */
+    private record Parsed(@Nullable Sound sound, @Nullable String customId, float volume, float pitch) {
     }
 }

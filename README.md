@@ -260,6 +260,13 @@ sn.items().give(player, "wand", 1);
   `HIDE_ALL`, which would silently erase the name of every item already using
   it. Works in menus and in items; needs 1.20.5+ and is skipped with one WARN
   below that.
+- Custom resource pack sounds (v1.30.0): every place that takes a sound spec
+  (`[sound]` actions, `open-sound`, `close-sound`, `SoundUtil.play/playAt`)
+  accepts an id from a resource pack, written with its namespace
+  (`okimc:click-2`). It resolves nowhere on the server, so it is sent to the
+  client by name through the raw-string `playSound` overload - the only way a
+  pack sound can play at all. The namespace is the opt-in: a bare id that
+  resolves nowhere is still treated as a typo and still WARNs once.
 - Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
   into one lore line per segment, so a list value flows through a single
   `{placeholder}` in menu templates and items.

@@ -19,8 +19,20 @@ Both id styles work, in any letter case:
 | --- | --- |
 | Enum name | `ENTITY_PLAYER_LEVELUP` |
 | Namespaced key | `minecraft:entity.player.levelup` |
+| Custom pack sound | `okimc:click-2` |
 
-Ids resolve against the running server's registry, so sounds added by newer Minecraft versions keep working. An id that resolves nowhere logs one WARN and plays nothing. A volume or pitch that is not a number logs one WARN and plays with `1.0`.
+Ids resolve against the running server's registry, so sounds added by newer Minecraft versions keep working. A volume or pitch that is not a number logs one WARN and plays with `1.0`.
+
+### Custom sounds from a resource pack
+
+A sound that only exists inside your resource pack (Nexo, Oraxen, ItemsAdder or a hand-made pack) is not in the server registry, so it can only be played by name. Write it **with its namespace** and it is sent to the client as-is:
+
+```yaml
+click-actions:
+  - "[sound] okimc:click-2 1 1"
+```
+
+The namespace is the opt-in. That is why an id with no namespace that resolves nowhere (`ENTITY_PLAYER_LEVELUPP`) is still treated as a typo: it logs one WARN and plays nothing, while `okimc:click-2` is played without complaint. If a namespaced sound stays silent, the id is missing from the pack the player has loaded (check `sounds.json`); the server cannot tell the difference and will not warn.
 
 > `none` and `""` mean silence on purpose. Deleting the key does not: a managed file restores it on the next restart.
 

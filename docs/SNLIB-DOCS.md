@@ -8,6 +8,12 @@
 > bundled `guis/*.yml` are seeded into the data folder (section 12), config-driven command
 > aliases plus arg-name tab hints and sender-aware / suggest-only args (section 13), and a
 > one-time WARN when a lang value embeds the literal prefix placeholder token (section 05).
+> Updated on 2026-08-19 for the 1.30.0 change (no API level bump, behavior only): a sound id
+> written with an explicit namespace that resolves nowhere on the server is played by name
+> through the raw-string `playSound` overload instead of being warned about and dropped, so a
+> resource pack sound (`okimc:click-2`) finally works everywhere a sound spec is accepted -
+> `[sound]` actions, `open-sound`/`close-sound`, `SoundUtil.play`/`playAt`. The namespace is
+> the opt-in, so a bare unresolved id stays a typo and still WARNs once (section 06).
 > Updated on 2026-07-20 for the 1.8.0 additions (API level 4): `ItemRegistry.take`/`removeAll`
 > symmetric removal (section 11), `SnYml.setComments`/`setInlineComments` write surface
 > (section 04), and a one-time WARN when a lang value lost the `<click:>`/`<hover:>` tag its
@@ -1264,7 +1270,7 @@ Notes and gotchas:
 
 `src/main/java/com/sn/lib/util/SoundUtil.java`
 
-Plays sounds from YML-style specs: `"SOUND_ID [volume] [pitch]"` (whitespace-separated; volume and pitch default to 1.0). Resolution treats `Sound` as an open set (never switch/EnumSet): first `Sound.valueOf` for enum-style ids (`ENTITY_PLAYER_LEVELUP`), then `Registry.SOUNDS` by `NamespacedKey` for key-style ids (`minecraft:entity.player.levelup`), so ids added by newer servers keep working. An unresolvable id logs a single WARN and the call becomes a no-op. Null, blank and `"none"` (case-insensitive) specs are silent no-ops.
+Plays sounds from YML-style specs: `"SOUND_ID [volume] [pitch]"` (whitespace-separated; volume and pitch default to 1.0). Resolution treats `Sound` as an open set (never switch/EnumSet): first `Sound.valueOf` for enum-style ids (`ENTITY_PLAYER_LEVELUP`), then `Registry.SOUNDS` by `NamespacedKey` for key-style ids (`minecraft:entity.player.levelup`), so ids added by newer servers keep working. Since 1.30.0 an id that resolves nowhere but carries an explicit namespace (`okimc:click-2`, a resource pack sound that exists only on the client) is NOT an error: it is passed to the raw-string `playSound(Location, String, float, float)` overload, the only way a pack sound can ever play. The namespace is the opt-in, so a bare unresolved id (`ENTITY_PLAYER_LEVELUPP`) is still a typo and still logs a single WARN with the call becoming a no-op. Null, blank and `"none"` (case-insensitive) specs are silent no-ops.
 
 - `public static void play(Player player, String spec)` - plays the spec for that player only, at the player's own location; a null player is a no-op.
 - `public static void playAt(Location location, String spec)` - plays the spec for all players near the location (via `World.playSound`); a null location or one without a world is a no-op.
@@ -1272,13 +1278,16 @@ Plays sounds from YML-style specs: `"SOUND_ID [volume] [pitch]"` (whitespace-sep
 Internal logic:
 
 - `resolve(String)`: uppercases, strips the `MINECRAFT:` prefix and replaces `.` with `_` to try `Sound.valueOf`; on failure, tries `NamespacedKey.fromString(id.toLowerCase())` against `Registry.SOUNDS`.
+- `customId(String)` (1.30.0): returns the lowercased id when it has a non-empty namespace and is a valid `NamespacedKey`, else null. `parse` stores it in `Parsed.customId` (exactly one of `sound`/`customId` is non-null) and both `play` and `playAt` pick the matching `playSound` overload.
+- `resolves(String)` also accepts a namespaced custom id, so a consumer validating a spec does not flag a pack sound as invalid.
 - Malformed volume/pitch do not cancel the sound: a WARN is logged ("Invalid volume/pitch in '...'; using 1.0") and 1.0 is used.
 - `warnOnce`: WARNs deduplicate in a static concurrent `Set` (`WARNED`) with tags `"id:..."` / `"num:..."`; each problem logs once per server lifetime, with the `[SnLib]` prefix on `Bukkit.getLogger()`.
 
 Notes and gotchas:
 
 - Server-wide static state allowed by the SnLib contract: whether a sound id resolves is a fact about the server, not the consumer.
-- WARN messages read e.g. "Invalid sound '...': it did not resolve via enum nor Registry.SOUNDS; ignored".
+- WARN messages read e.g. "Invalid sound '...': not resolved by enum nor by Registry.SOUNDS, and it carries no namespace, so it cannot be a resource pack sound either; ignored. A custom pack sound must be written as 'namespace:id'".
+- A namespaced pack sound that stays silent produces NO warning of any kind: the server cannot see inside the client's resource pack, so a missing `sounds.json` entry, a pack the player never downloaded and a typo in the id are indistinguishable to it.
 
 ### HeadUtil
 

@@ -135,9 +135,11 @@ surface (new public methods or classes). Its history:
 The current value is 19. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
-surface, and 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing
-`flags:` key and `SnItem.flags(List)` already accept, not a new method - none of
-which grows the Paper handshake surface. The source of truth is
+surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing
+`flags:` key and `SnItem.flags(List)` already accept, not a new method - and
+1.30.0 made namespaced custom sound ids play instead of warning, inside the
+`SoundUtil` methods that already existed - none of which grows the Paper
+handshake surface. The source of truth is
 the history javadoc on `SnApi` itself.
 
 Because `SnApi.LEVEL` is a compile-time constant, javac inlines its literal value

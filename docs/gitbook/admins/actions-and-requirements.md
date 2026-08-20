@@ -65,7 +65,7 @@ Leave a timing part empty (or off the end) to keep its default: `[title] Hi;;5` 
 
 ### `[sound]`
 
-`[sound]` plays a sound to the player: `[sound] SOUND_ID [volume] [pitch]`, both numbers optional. The full sound value grammar is shared across SnLib and lives in [Shared Value Formats](value-formats.md).
+`[sound]` plays a sound to the player: `[sound] SOUND_ID [volume] [pitch]`, both numbers optional. A sound from your resource pack works too, as long as you write its namespace (`[sound] okimc:click-2`). The full sound value grammar is shared across SnLib and lives in [Shared Value Formats](value-formats.md).
 
 ### `[particle]`
 

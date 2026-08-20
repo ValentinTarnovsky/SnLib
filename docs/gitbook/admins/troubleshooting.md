@@ -121,12 +121,18 @@ skull-owner and base64 texture defined at the same time for PLAYER_HEAD; skull-o
 ## A sound name is rejected
 
 ```
-[SnLib] Invalid sound '<id>': not resolved by enum nor by Registry.SOUNDS; ignored
+[SnLib] Invalid sound '<id>': not resolved by enum nor by Registry.SOUNDS, and it carries no namespace, so it cannot be a resource pack sound either; ignored. A custom pack sound must be written as 'namespace:id'
 ```
 
 **What it means:** the sound ID matches nothing on this server version. The sound is skipped; nothing else breaks. A bad volume or pitch logs `Invalid volume/pitch in '<value>'; using 1.0` instead.
 
-**The fix:** use a real sound ID, or `none` to silence deliberately. See [Shared Value Formats](value-formats.md).
+**The fix:** use a real sound ID, or `none` to silence deliberately. If you meant a sound from your resource pack, write it with its namespace (`okimc:click-2`) - a namespaced id is never rejected, it is sent to the client by name. See [Shared Value Formats](value-formats.md).
+
+## A custom resource pack sound plays nothing
+
+**What it means:** a namespaced id such as `okimc:click-2` is always sent to the client, so there is no WARN to look for. Silence means the player's loaded pack has no such entry.
+
+**The fix:** check the id exists in the pack's `sounds.json` (Nexo/Oraxen/ItemsAdder generate it), that the player actually downloaded the pack, and that you wrote the namespace exactly. An id with no namespace never reaches the pack at all.
 
 ## A cron schedule is rejected
 
