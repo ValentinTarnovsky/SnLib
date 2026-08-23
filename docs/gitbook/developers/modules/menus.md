@@ -453,17 +453,18 @@ int[] border = GuiMask.slots('f', "fffffffff", "f       f", "fffffffff");
 
 ### Per-click action matrix
 
-Besides the generic `click-actions` / `click-requirements` / `deny-actions`, five click keys each accept three optional lists (15 keys total): `right`, `left`, `shift-right`, `shift-left` and `middle`, each with `-click-actions`, `-click-requirements` and `-click-deny-actions`.
+Besides the generic `click-actions` / `click-requirements` / `deny-actions`, six click keys each accept three optional lists (18 keys total): `right`, `left`, `shift-right`, `shift-left`, `middle` and, since 1.31.0, `drop`, each with `-click-actions`, `-click-requirements` and `-click-deny-actions`.
 
 Resolution is **specific-over-generic** and **field by field** (actions, requirement and deny list resolve independently):
 
 1. the exact shift list of the click, when declared (`SHIFT_RIGHT` / `SHIFT_LEFT`);
 2. the side list, when declared (right covers RIGHT and SHIFT_RIGHT; left covers LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE; middle covers MIDDLE);
-3. fallback to the generic `click-*` list.
+3. the drop list, when declared (1.31.0: drop covers DROP and CONTROL_DROP, the way a side covers its shift twin);
+4. fallback to the generic `click-*` list.
 
-A list counts as "declared" only when it is non-empty, so you can declare `right-click-actions` and still inherit the generic `click-requirements`.
+The three specific tiers are disjoint: a click that has a shift or a side key never has a drop key, so the drop entry only ever competes with the generic fallback. A list counts as "declared" only when it is non-empty, so you can declare `right-click-actions` and still inherit the generic `click-requirements`.
 
-`strict-clicks: true` (opt-in per menu, default false) discards any click outside the four basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) unless a specific list covers it: `middle-click-actions` enables MIDDLE, and a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE. NUMBER_KEY, DROP, CONTROL_DROP and SWAP_OFFHAND have no possible specific list and stay discarded in strict mode. With strict off (the default), any ClickType fires the resolved list, exactly as it always has.
+`strict-clicks: true` (opt-in per menu, default false) discards any click outside the four basic mouse clicks (LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT) unless a specific list covers it: `middle-click-actions` enables MIDDLE, a declared `left-click-actions` enables DOUBLE_CLICK and CREATIVE, and a declared `drop-click-actions` enables DROP and CONTROL_DROP (1.31.0). A Q press over an item with no drop list stays discarded, and NUMBER_KEY, SWAP_OFFHAND and UNKNOWN have no possible specific list at all, so they stay discarded in strict mode whatever the item declares. With strict off (the default), any ClickType fires the resolved list, exactly as it always has.
 
 ### View requirements gate the click too
 
@@ -597,6 +598,10 @@ items:
     middle-click-actions: []
     middle-click-requirements: []
     middle-click-deny-actions: []
+    drop-click-actions:                # 1.31.0 - Q and Ctrl+Q
+      - "[message] &7Dropped from the menu."
+    drop-click-requirements: []
+    drop-click-deny-actions: []
 
   filler:
     display-name: " "

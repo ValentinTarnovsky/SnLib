@@ -136,9 +136,11 @@ The current value is 19. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
 surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing
-`flags:` key and `SnItem.flags(List)` already accept, not a new method - and
+`flags:` key and `SnItem.flags(List)` already accept, not a new method -
 1.30.0 made namespaced custom sound ids play instead of warning, inside the
-`SoundUtil` methods that already existed - none of which grows the Paper
+`SoundUtil` methods that already existed, and 1.31.0 added the `drop-click-*`
+keys to the menu click matrix, which are yml the existing `GuiItemDef` readers
+pick up with no new public method - none of which grows the Paper
 handshake surface. The source of truth is
 the history javadoc on `SnApi` itself.
 

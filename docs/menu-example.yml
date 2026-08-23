@@ -116,11 +116,16 @@ pagination: true/false # default: false
 #                         without running anything (no click nor deny actions).
 #                         Per-click specific lists still match their exact type
 #                         even in strict mode: middle-click-actions enables
-#                         MIDDLE, and a declared left-click-actions enables
+#                         MIDDLE, a declared left-click-actions enables
 #                         DOUBLE_CLICK and CREATIVE (the left side groups
-#                         them). NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND
-#                         and UNKNOWN have no possible specific list and stay
-#                         always discarded in strict mode.
+#                         them), and since 1.31.0 a declared drop-click-actions
+#                         enables DROP and CONTROL_DROP - which is how the Q
+#                         key becomes usable in a strict menu, one item at a
+#                         time. A Q press over an item that declares no drop
+#                         list stays discarded exactly as before, and
+#                         NUMBER_KEY, SWAP_OFFHAND and UNKNOWN have no
+#                         possible specific list at all, so they stay always
+#                         discarded in strict mode.
 # strict-clicks: false -> (default) historic v1.0.0 behaviour: any ClickType
 #                         fires the resolved actions list.
 strict-clicks: true/false # default: false
@@ -228,7 +233,7 @@ items:
     # PER-CLICK MATRIX - specific lists per click type (all optional)
     # ═══════════════════════════════════════════════════════════════════
     # Besides the generic click-actions / click-requirements / deny-actions,
-    # five click keys each accept three optional lists (15 keys total).
+    # six click keys each accept three optional lists (18 keys total).
     # Resolution is specific-over-generic and FIELD BY FIELD (actions,
     # requirement and deny list each resolve independently):
     #   1) the exact shift list of the click, when declared
@@ -236,12 +241,21 @@ items:
     #   2) the side list, when declared (right covers RIGHT and SHIFT_RIGHT;
     #      left covers LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE; middle
     #      covers MIDDLE)
-    #   3) fallback to the generic click-actions / click-requirements /
+    #   3) the drop list, when declared (1.31.0: drop covers DROP and
+    #      CONTROL_DROP - the Q key with and without control, grouped the way
+    #      a side groups its shift twin). It is the only KEYBOARD key of the
+    #      matrix: hotbar keys 1-9, F and unknown clicks stay outside it on
+    #      purpose and have no list to declare.
+    #   4) fallback to the generic click-actions / click-requirements /
     #      deny-actions
     # A list counts as declared only when it is non-empty. An item may declare
     # right-click-actions without right-click-requirements and its requirement
     # still resolves from the generic click-requirements. No existing menu
     # changes: every new key is optional.
+    #
+    # Careful with the ACTION guards: they are a different mechanism and stay
+    # exact. [drop-click] inside an action line matches DROP only, never
+    # CONTROL_DROP, while the drop-click-* keys below cover both.
     right-click-actions: list # default: []
     right-click-requirements: list # default: []
     right-click-deny-actions: list # default: []
@@ -257,6 +271,9 @@ items:
     middle-click-actions: list # default: []
     middle-click-requirements: list # default: []
     middle-click-deny-actions: list # default: []
+    drop-click-actions: list # default: [] (1.31.0 - the Q key: DROP + CONTROL_DROP)
+    drop-click-requirements: list # default: [] (1.31.0)
+    drop-click-deny-actions: list # default: [] (1.31.0)
 
   # ═══════════════════════════════════════════════════════════════════
   # PAGINATION NAVIGATION ITEMS (only meaningful with pagination: true)

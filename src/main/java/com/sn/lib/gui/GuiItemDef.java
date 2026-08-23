@@ -38,7 +38,7 @@ import com.sn.lib.yml.SnYml;
  * engine, which resolves them at run time.</p>
  *
  * <p>Per-click matrix: besides the generic {@code click-actions} /
- * {@code click-requirements} / {@code deny-actions}, five click keys each read three
+ * {@code click-requirements} / {@code deny-actions}, six click keys each read three
  * optional lists:
  * {@code right-click-actions}, {@code right-click-requirements},
  * {@code right-click-deny-actions},
@@ -49,14 +49,22 @@ import com.sn.lib.yml.SnYml;
  * {@code shift-left-click-actions}, {@code shift-left-click-requirements},
  * {@code shift-left-click-deny-actions},
  * {@code middle-click-actions}, {@code middle-click-requirements},
- * {@code middle-click-deny-actions}.
+ * {@code middle-click-deny-actions},
+ * {@code drop-click-actions}, {@code drop-click-requirements},
+ * {@code drop-click-deny-actions} (1.31.0).
  * A list counts as declared only when it is non-empty. Resolution is field by field and
  * specific-over-generic: the shift entry of the click wins first, then the side entry
  * (RIGHT groups RIGHT/SHIFT_RIGHT; LEFT groups LEFT/SHIFT_LEFT/DOUBLE_CLICK/CREATIVE,
- * consistent with {@link ClickType#isLeftClick()}; MIDDLE stands alone), then the generic
- * field. Each field falls back independently, so an item may declare
- * {@code right-click-actions} without {@code right-click-requirements} and its
- * requirement still resolves from the generic {@code click-requirements}.</p>
+ * consistent with {@link ClickType#isLeftClick()}; MIDDLE stands alone), then the drop
+ * entry (DROP groups DROP and CONTROL_DROP), then the generic field. Each field falls
+ * back independently, so an item may declare {@code right-click-actions} without
+ * {@code right-click-requirements} and its requirement still resolves from the generic
+ * {@code click-requirements}.</p>
+ *
+ * <p>The three specific tiers are disjoint by construction: a click that has a shift or a
+ * side key never has a drop key and the other way round, so the drop entry only ever
+ * competes with the generic fallback. That is what keeps a menu with no
+ * {@code drop-click-*} declared behaving exactly as it did before 1.31.0.</p>
  */
 public final class GuiItemDef {
 
@@ -67,13 +75,24 @@ public final class GuiItemDef {
         NEXT
     }
 
-    /** Keys of the per-click matrix; shift keys win over side keys on resolution. */
+    /**
+     * Keys of the per-click matrix; shift keys win over side keys on resolution. The yml
+     * prefix of each key is its name lowercased with underscores turned into hyphens, so
+     * the enum constant IS the {@code <key>-click-actions} family it reads.
+     */
     enum ClickKey {
         RIGHT,
         LEFT,
         SHIFT_RIGHT,
         SHIFT_LEFT,
-        MIDDLE
+        MIDDLE,
+        /**
+         * The Q key (1.31.0): covers {@link ClickType#DROP} and
+         * {@link ClickType#CONTROL_DROP} alike, the way a side key covers its shift twin.
+         * The only keyboard click of the matrix; NUMBER_KEY, SWAP_OFFHAND and UNKNOWN
+         * deliberately stay outside it.
+         */
+        DROP
     }
 
     /** Per-click fields of one matrix entry; null means the field was not declared. */
@@ -228,7 +247,7 @@ public final class GuiItemDef {
     }
 
     /**
-     * Scans every action list (the generic one plus the five per-click entries) for the
+     * Scans every action list (the generic one plus the six per-click entries) for the
      * pagination tags that make this a navigation item.
      */
     private static NavKind detectNav(List<String> clickActions, Map<ClickKey, PerClick> perClick) {
@@ -274,7 +293,8 @@ public final class GuiItemDef {
      * LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE (consistent with
      * {@link ClickType#isLeftClick()}); MIDDLE stands alone. Keyboard and unknown clicks
      * (NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND, UNKNOWN, window border clicks) have
-     * no side and return null.
+     * no side and return null - DROP and CONTROL_DROP are not a side and never became one:
+     * since 1.31.0 they resolve their own entry through {@link #dropKey(ClickType)}.
      */
     static @Nullable ClickKey sideKey(@Nullable ClickType click) {
         if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
@@ -288,6 +308,17 @@ public final class GuiItemDef {
             return ClickKey.MIDDLE;
         }
         return null;
+    }
+
+    /**
+     * Matrix key of a drop click (1.31.0): {@link ClickType#DROP} (Q) and
+     * {@link ClickType#CONTROL_DROP} (Ctrl+Q) both resolve the DROP entry, the way a side
+     * key covers its shift twin. Every other click returns null, so this mapping is
+     * disjoint from {@link #shiftKey(ClickType)} and {@link #sideKey(ClickType)} and the
+     * other keyboard clicks (NUMBER_KEY, SWAP_OFFHAND, UNKNOWN) keep having no entry at all.
+     */
+    static @Nullable ClickKey dropKey(@Nullable ClickType click) {
+        return click == ClickType.DROP || click == ClickType.CONTROL_DROP ? ClickKey.DROP : null;
     }
 
     /** True only for the four basic mouse clicks: LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT. */
@@ -364,7 +395,8 @@ public final class GuiItemDef {
 
     /**
      * Action lines for {@code click}: the declared shift entry wins, then the side entry,
-     * then the generic {@link #clickActions()}. A null click resolves to the generic list.
+     * then the drop entry (1.31.0), then the generic {@link #clickActions()}. A null click
+     * resolves to the generic list.
      */
     public List<String> clickActionsFor(@Nullable ClickType click) {
         PerClick shift = entry(shiftKey(click));
@@ -375,13 +407,18 @@ public final class GuiItemDef {
         if (side != null && !side.actions().isEmpty()) {
             return side.actions();
         }
+        PerClick drop = entry(dropKey(click));
+        if (drop != null && !drop.actions().isEmpty()) {
+            return drop.actions();
+        }
         return clickActions;
     }
 
     /**
      * Requirement for {@code click}: the declared shift entry wins, then the side entry,
-     * then the generic {@link #clickRequirement()}. Never null; each field resolves
-     * independently, so a specific actions list may pair with the generic requirement.
+     * then the drop entry (1.31.0), then the generic {@link #clickRequirement()}. Never
+     * null; each field resolves independently, so a specific actions list may pair with
+     * the generic requirement.
      */
     public Requirement clickRequirementFor(@Nullable ClickType click) {
         PerClick shift = entry(shiftKey(click));
@@ -392,12 +429,16 @@ public final class GuiItemDef {
         if (side != null && side.requirement() != null) {
             return side.requirement();
         }
+        PerClick drop = entry(dropKey(click));
+        if (drop != null && drop.requirement() != null) {
+            return drop.requirement();
+        }
         return clickRequirement;
     }
 
     /**
      * Deny action lines for {@code click}: the declared shift entry wins, then the side
-     * entry, then the generic {@link #denyActions()}.
+     * entry, then the drop entry (1.31.0), then the generic {@link #denyActions()}.
      */
     public List<String> denyActionsFor(@Nullable ClickType click) {
         PerClick shift = entry(shiftKey(click));
@@ -408,12 +449,23 @@ public final class GuiItemDef {
         if (side != null && side.denyActions() != null) {
             return side.denyActions();
         }
+        PerClick drop = entry(dropKey(click));
+        if (drop != null && drop.denyActions() != null) {
+            return drop.denyActions();
+        }
         return denyActions;
     }
 
     /**
-     * True when {@code click} resolves its actions from a declared specific list (shift
-     * or side entry) instead of the generic fallback; consumed by the strict-clicks gate.
+     * True when {@code click} resolves its actions from a declared specific list (shift,
+     * side or - since 1.31.0 - drop entry) instead of the generic fallback; consumed by
+     * the strict-clicks gate.
+     *
+     * <p>This method IS the gate's whole notion of "the item covers this click", so
+     * teaching it the drop entry is what lets a declared {@code drop-click-actions} carry
+     * a Q press through strict mode. An item that declares no drop actions answers false
+     * for DROP exactly as before, and NUMBER_KEY, SWAP_OFFHAND and UNKNOWN - which map to
+     * no entry at all - can never answer anything but false.</p>
      */
     boolean specificActionsFor(@Nullable ClickType click) {
         PerClick shift = entry(shiftKey(click));
@@ -421,7 +473,11 @@ public final class GuiItemDef {
             return true;
         }
         PerClick side = entry(sideKey(click));
-        return side != null && !side.actions().isEmpty();
+        if (side != null && !side.actions().isEmpty()) {
+            return true;
+        }
+        PerClick drop = entry(dropKey(click));
+        return drop != null && !drop.actions().isEmpty();
     }
 
     /** Navigation role of the item; sessions gate disabled arrows through it. */

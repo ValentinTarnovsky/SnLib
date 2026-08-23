@@ -747,11 +747,17 @@ public final class GuiSession implements PageTarget {
      * (specific-over-generic, field by field). With {@code strict-clicks: true} a click
      * outside the four basic mouse clicks is discarded BEFORE the requirement test (no
      * click nor deny actions; the listener already cancelled the event) unless a declared
-     * specific actions list covers it: {@code middle-click-actions} enables MIDDLE and a
+     * specific actions list covers it: {@code middle-click-actions} enables MIDDLE, a
      * declared {@code left-click-actions} enables DOUBLE_CLICK and CREATIVE (a vanilla
-     * double click is two lefts, deliberate). NUMBER_KEY, DROP, CONTROL_DROP,
-     * SWAP_OFFHAND and UNKNOWN have no possible specific list and stay always discarded
-     * in strict mode. With strict false (the default) behaviour is identical to v1.0.0.
+     * double click is two lefts, deliberate) and, since 1.31.0, a declared
+     * {@code drop-click-actions} enables DROP and CONTROL_DROP. NUMBER_KEY, SWAP_OFFHAND
+     * and UNKNOWN have no possible specific list and stay always discarded in strict mode,
+     * and so does a DROP over an item that declared no drop actions. With strict false
+     * (the default) behaviour is identical to v1.0.0.
+     *
+     * <p>The gate itself is unchanged since 1.1.0: {@link GuiItemDef#specificActionsFor}
+     * is its whole notion of coverage, so the drop key entered strict mode by teaching
+     * that one method about it rather than by carving an exception here.</p>
      */
     private void runClick(GuiItemDef item, Ph[] phs, ClickType click) {
         if (def.strictClicks() && !GuiItemDef.basicClick(click) && !item.specificActionsFor(click)) {

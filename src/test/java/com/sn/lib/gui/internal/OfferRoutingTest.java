@@ -234,6 +234,34 @@ class OfferRoutingTest {
                 OfferRouting.drag(PlayerInventoryPolicy.OPEN, 1, INPUT, EMPTY));
     }
 
+    // ---------------------------------------------------- the drop key (1.31.0)
+
+    /**
+     * The drop key of the click matrix is a resolution change inside {@code GuiItemDef},
+     * not a routing one: a Q press over a cell of the menu was already delivered to the
+     * session as CANCEL_AND_CLICK and still is, with its real DROP actions rather than the
+     * stand-in the other cases use, under both policies and on every kind of cell.
+     */
+    @Test
+    void theDropKeyChangedNothingAboutRouting() {
+        for (ClickType click : new ClickType[] {ClickType.DROP, ClickType.CONTROL_DROP}) {
+            for (InventoryAction action : new InventoryAction[] {InventoryAction.DROP_ONE_SLOT,
+                    InventoryAction.DROP_ALL_SLOT, InventoryAction.DROP_ONE_CURSOR,
+                    InventoryAction.DROP_ALL_CURSOR}) {
+                for (PlayerInventoryPolicy policy : PlayerInventoryPolicy.values()) {
+                    for (boolean cell : new boolean[] {INPUT, PLAIN}) {
+                        for (boolean cursor : new boolean[] {HELD, EMPTY}) {
+                            assertEquals(Decision.CANCEL_AND_CLICK,
+                                    OfferRouting.click(policy, Zone.TOP, action, click, cell,
+                                            cursor, HELD),
+                                    click + " / " + action + " / " + policy);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /** Click with the action that click type would realistically carry outside a gather. */
     private static Decision click(PlayerInventoryPolicy policy, Zone zone, ClickType type,
                                   boolean inputSlot, boolean cursorEmpty) {

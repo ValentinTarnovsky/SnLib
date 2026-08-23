@@ -267,6 +267,13 @@ sn.items().give(player, "wand", 1);
   client by name through the raw-string `playSound` overload - the only way a
   pack sound can play at all. The namespace is the opt-in: a bare id that
   resolves nowhere is still treated as a typo and still WARNs once.
+- Drop key in the menu click matrix (v1.31.0): an item may declare
+  `drop-click-actions` / `drop-click-requirements` / `drop-click-deny-actions`
+  and answer the Q key (DROP and Ctrl+Q alike), resolved like every other key -
+  specific over generic, field by field. In a `strict-clicks: true` menu a Q
+  press gets through exactly on the items that declare the list; the other
+  keyboard clicks (hotbar 1-9, offhand swap, unknown) stay always discarded, and
+  a menu that declares no drop list behaves exactly as it did before.
 - Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
   into one lore line per segment, so a list value flows through a single
   `{placeholder}` in menu templates and items.

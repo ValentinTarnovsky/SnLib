@@ -77,7 +77,7 @@ You have two ways to branch on the click type. Click guards like `[right-click]`
 
 ### The per-click matrix
 
-Besides the three generic lists, five click keys each accept three optional lists: 15 keys in total.
+Besides the three generic lists, six click keys each accept three optional lists: 18 keys in total.
 
 | Click | Actions | Requirements | Deny actions |
 | --- | --- | --- | --- |
@@ -86,6 +86,7 @@ Besides the three generic lists, five click keys each accept three optional list
 | Shift-right | `shift-right-click-actions` | `shift-right-click-requirements` | `shift-right-click-deny-actions` |
 | Shift-left | `shift-left-click-actions` | `shift-left-click-requirements` | `shift-left-click-deny-actions` |
 | Middle | `middle-click-actions` | `middle-click-requirements` | `middle-click-deny-actions` |
+| Drop (Q, 1.31.0) | `drop-click-actions` | `drop-click-requirements` | `drop-click-deny-actions` |
 
 The side lists group related click types. The shift lists match only their exact click.
 
@@ -96,12 +97,18 @@ The side lists group related click types. The shift lists match only their exact
 | `right-click-*` | RIGHT and SHIFT_RIGHT |
 | `left-click-*` | LEFT, SHIFT_LEFT, DOUBLE_CLICK and CREATIVE |
 | `middle-click-*` | MIDDLE only |
+| `drop-click-*` | DROP and CONTROL_DROP (Q and Ctrl+Q) |
 
-Each click resolves in three steps:
+`drop-click-*` (1.31.0) is the only KEYBOARD key of the matrix. Hotbar keys 1-9, the offhand swap and unknown clicks stay outside it deliberately: they have no list to declare, and pressing them over a menu still does nothing.
+
+> Do not confuse it with the `[drop-click]` action guard, which is a different mechanism and stays exact: the guard filters one line and matches DROP only, while `drop-click-*` swaps whole lists and covers Ctrl+Q too.
+
+Each click resolves in four steps:
 
 1. The exact shift list of the click, when declared.
 2. The side list of the click, when declared.
-3. The generic list.
+3. The drop list, when declared and the click was Q or Ctrl+Q (1.31.0).
+4. The generic list.
 
 > Resolution is specific over generic and field by field: actions, requirements and deny actions each fall back independently. A list counts as declared only when it is non-empty. An item may declare `right-click-actions` alone, and its requirement still resolves from the generic `click-requirements`.
 
@@ -138,7 +145,7 @@ How each click resolves:
 | RIGHT | `right-click-actions` | `right-click-requirements` | `right-click-deny-actions` |
 | SHIFT_RIGHT | `right-click-actions` (the right side covers it) | `right-click-requirements` | `right-click-deny-actions` |
 
-Every matrix key is optional, so existing menus keep working unchanged. Templates support the same 15 keys with the same resolution.
+Every matrix key is optional, so existing menus keep working unchanged. Templates support the same 18 keys with the same resolution.
 
 ### strict-clicks
 
@@ -157,7 +164,8 @@ With `strict-clicks: true`, the generic lists only answer the four basic mouse c
 | LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT | Always allowed. |
 | MIDDLE | Only with a non-empty `middle-click-actions`. |
 | DOUBLE_CLICK, CREATIVE | Only with a non-empty `left-click-actions` (the left side groups them). |
-| NUMBER_KEY, DROP, CONTROL_DROP, SWAP_OFFHAND, UNKNOWN | Always discarded: no specific list can cover them. |
+| DROP, CONTROL_DROP | Only with a non-empty `drop-click-actions` (1.31.0). Without it, discarded as before. |
+| NUMBER_KEY, SWAP_OFFHAND, UNKNOWN | Always discarded: no specific list can cover them. |
 
 > A discarded click runs nothing at all: no click actions and no deny actions. The discard happens before the requirement test, and the click is still cancelled.
 
