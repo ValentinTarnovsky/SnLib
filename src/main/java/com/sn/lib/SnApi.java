@@ -62,12 +62,16 @@ package com.sn.lib;
  * orDisablePlugin all register sibling dependents on one CompletableFuture and return this,
  * and sibling order is unspecified, so the caller's step ran before the publish); LEVEL 19 =
  * release 1.28.0 (menus can receive an item: input slots, player-inventory policy,
- * ItemOffer/onOffer).</p>
+ * ItemOffer/onOffer); LEVEL 20 = release 1.32.0 (bind-time locals before PAPI: the
+ * SnYml.getString/getStringList overloads taking Ph pairs resolve them ahead of the PAPI
+ * pass, and every appearance field of SnItem.fromConfig reads through them, so a bound
+ * placeholder may sit inside a PAPI token - %math_1_{buff-value}/100% - and the expansion
+ * still receives a finished argument).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 19;
+    public static final int LEVEL = 20;
 
     private SnApi() {
     }

@@ -131,8 +131,9 @@ surface (new public methods or classes). Its history:
 - LEVEL 17 = release 1.25.0 - placeholders that need no player (`ExpansionBuilder.global`/`globalPrefixed`, `LeaderboardCache.exposePlaceholders`)
 - LEVEL 18 = release 1.27.0 - a continuation a caller can chain onto (`SnFuture.chainSync`)
 - LEVEL 19 = release 1.28.0 - menus can receive an item (`input:` cells, the `player-inventory:` policy, `ItemOffer` + `GuiSession.onOffer`/`handleOffer`/`isInputSlot`)
+- LEVEL 20 = release 1.32.0 - bind-time locals before PAPI (the `SnYml.getString`/`getStringList` overloads taking `Ph...`, read by every appearance field of `SnItem.fromConfig`, so a bound placeholder may sit inside a PAPI token)
 
-The current value is 19. Releases that change only behaviour do not bump it:
+The current value is 20. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
 surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing

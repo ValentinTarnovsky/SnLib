@@ -153,33 +153,36 @@ public final class SnItem {
      * equipment-slot, skull-owner (placeholder-resolved per viewer), attributes (static
      * definition values, no placeholders) and damage (only when set). Strings resolve
      * through the yml pipeline with {@code viewer} plus the extra local placeholders
-     * {@code phs}.
+     * {@code phs}; the locals resolve BEFORE PAPI (1.32.0), so a pair may sit inside a
+     * PAPI token ({@code %math_1_{buff-value}/100%}) and the expansion still receives a
+     * finished argument.
      *
      * @param path section path inside the file; null or empty reads from the root
      */
     public static SnItem fromConfig(SnYml yml, @Nullable String path, @Nullable Player viewer,
                                     Ph... phs) {
         String p = path == null || path.isEmpty() ? "" : path + ".";
-        String rawMaterial = SnText.applyLocals(yml.getString(p + "material", "STONE", viewer), phs);
+        // The bind-time phs travel INTO the yml getters (1.32.0) so they resolve before
+        // PAPI, letting a pair sit inside a PAPI token: %math_1_{buff-value}/100%.
+        String rawMaterial = yml.getString(p + "material", "STONE", viewer, phs);
         SnItem item;
         if (HeadUtil.extractTextureValue(rawMaterial) != null) {
             item = builder(Material.PLAYER_HEAD).headBase64(rawMaterial);
         } else {
             item = builder(resolveMaterial(rawMaterial));
         }
-        String displayName = SnText.applyLocals(yml.getString(p + "display-name", "", viewer), phs);
+        String displayName = yml.getString(p + "display-name", "", viewer, phs);
         if (!displayName.isEmpty()) {
             item.name(displayName);
         }
-        List<String> loreLines = yml.getStringList(p + "lore", List.of(), viewer);
-        for (String line : loreLines) {
-            item.lore(SnText.applyLocals(line, phs));
+        for (String line : yml.getStringList(p + "lore", List.of(), viewer, phs)) {
+            item.lore(line);
         }
         item.amount(yml.getInt(p + "amount", 1));
         if (yml.isSet(p + "custom-model-data")) {
             item.modelData(yml.getInt(p + "custom-model-data", 0));
         }
-        String rawItemModel = SnText.applyLocals(yml.getString(p + "item-model", "", viewer), phs);
+        String rawItemModel = yml.getString(p + "item-model", "", viewer, phs);
         if (!rawItemModel.isEmpty()) {
             item.itemModel(rawItemModel);
         }
@@ -204,7 +207,7 @@ public final class SnItem {
         if (!slot.isEmpty()) {
             item.equipmentSlot(slot);
         }
-        String owner = SnText.applyLocals(yml.getString(p + "skull-owner", "", viewer), phs);
+        String owner = yml.getString(p + "skull-owner", "", viewer, phs);
         if (!owner.isEmpty()) {
             item.skullOwner(owner);
         }

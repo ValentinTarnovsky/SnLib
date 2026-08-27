@@ -21,6 +21,7 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
+import com.sn.lib.Ph;
 import com.sn.lib.Sn;
 import com.sn.lib.debug.SnDebug;
 import com.sn.lib.papi.SnPapi;
@@ -35,8 +36,11 @@ import com.sn.lib.text.SnText;
  * single warning instead of failing.</p>
  *
  * <p>Getter resolution: local placeholders registered via {@link #placeholder} are applied
- * first; PAPI tokens are applied only on the primary thread (off the main thread they are
- * left intact so async callers never trigger a PAPI lookup). Getters without a viewer
+ * first, then the bind-time {@link Ph} pairs of the getters that take them (1.32.0), and
+ * only then PAPI - so a local may expand INSIDE a PAPI token
+ * ({@code %math_1_{buff-value}/100%}) and the expansion still receives a finished
+ * argument. PAPI tokens are applied only on the primary thread (off the main thread they
+ * are left intact so async callers never trigger a PAPI lookup). Getters without a viewer
  * resolve PAPI against the server (null player). A value of the wrong type falls back to
  * the given default and logs one WARN; an absent key returns the default silently, and
  * {@code isSet} keeps an explicit 0/false distinguishable from an absent key.</p>
@@ -98,6 +102,17 @@ public final class SnYml {
 
     /** Resolved string value; PAPI tokens resolve per-viewer when one is given. */
     public String getString(String key, String def, Player viewer) {
+        return getString(key, def, viewer, (Ph[]) null);
+    }
+
+    /**
+     * Resolved string value with extra bind-time locals (1.32.0): {@code phs} resolve
+     * after the registered locals and BEFORE PAPI, so a pair may sit inside a PAPI token
+     * ({@code %math_1_{buff-value}/100%}) and the expansion still receives a finished
+     * argument. This is the getter behind every appearance field of
+     * {@link com.sn.lib.item.SnItem#fromConfig}.
+     */
+    public String getString(String key, String def, Player viewer, Ph... phs) {
         Object raw = yaml.get(key);
         if (raw == null) {
             if (!yaml.isSet(key)) {
@@ -107,10 +122,10 @@ public final class SnYml {
             return def;
         }
         if (raw instanceof String s) {
-            return resolve(s, viewer);
+            return resolve(s, viewer, phs);
         }
         warnInvalid(key, raw, def);
-        return resolve(String.valueOf(raw), viewer);
+        return resolve(String.valueOf(raw), viewer, phs);
     }
 
     /** Integer value; numbers are read directly, strings are resolved then parsed. */
@@ -223,6 +238,15 @@ public final class SnYml {
 
     /** String list resolved per-viewer when one is given. */
     public List<String> getStringList(String key, List<String> def, Player viewer) {
+        return getStringList(key, def, viewer, (Ph[]) null);
+    }
+
+    /**
+     * String list with extra bind-time locals (1.32.0), element by element; same
+     * resolution order as {@link #getString(String, String, Player, Ph...)}: registered
+     * locals, then {@code phs}, then PAPI.
+     */
+    public List<String> getStringList(String key, List<String> def, Player viewer, Ph... phs) {
         Object raw = yaml.get(key);
         if (raw == null) {
             if (!yaml.isSet(key)) {
@@ -237,7 +261,7 @@ public final class SnYml {
         }
         List<String> out = new ArrayList<>(rawList.size());
         for (Object elem : rawList) {
-            out.add(resolve(elem == null ? "" : String.valueOf(elem), viewer));
+            out.add(resolve(elem == null ? "" : String.valueOf(elem), viewer, phs));
         }
         return out;
     }
@@ -417,15 +441,22 @@ public final class SnYml {
         }
     }
 
-    /**
-     * Locals first, then PAPI only on the primary thread. Off the main thread PAPI tokens
-     * are left intact and the skip is recorded through the context debug service.
-     */
     private String resolve(String s, Player viewer) {
+        return resolve(s, viewer, null);
+    }
+
+    /**
+     * Registered locals first, then the bind-time {@code phs} (null for the getters that
+     * take none), then PAPI only on the primary thread - the order that lets a local
+     * expand inside a PAPI token. Off the main thread PAPI tokens are left intact and the
+     * skip is recorded through the context debug service.
+     */
+    private String resolve(String s, Player viewer, Ph[] phs) {
         if (s == null || s.isEmpty()) {
             return s;
         }
         String out = SnText.applyLocals(s, this::localValue);
+        out = SnText.applyLocals(out, phs);
         if (out.indexOf('%') >= 0) {
             if (Bukkit.isPrimaryThread()) {
                 out = applyPapi(viewer, out);

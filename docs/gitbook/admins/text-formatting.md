@@ -161,6 +161,17 @@ display-name: "[rgb]&lWelcome, %player_name%!"
 Some PlaceholderAPI expansions return text already colored with section-sign (`§`) codes. That is fine: Sn plugins normalize `§` output back into the same coloring system before rendering. A pre-colored placeholder displays correctly instead of breaking the line. You do not have to do anything.
 {% endhint %}
 
+### Plugin placeholders inside PAPI tokens (1.32.0)
+
+Plugin-supplied placeholders (`{owner}`, `{buff-value}`, whatever the plugin documents for that menu or message) resolve BEFORE PlaceholderAPI runs. That order means you can feed one into a PAPI expansion as an argument and the expansion receives the finished number, not the raw token:
+
+```yaml
+lore:
+  - " &f- &7Improves you by &c%math_1:half-up_{buff-value}/100%%"
+```
+
+`{buff-value}` becomes its number first, then `%math_...%` computes over it. This works in item names, lore and every other appearance field of menus, templates and items files.
+
 ### Number hints (1.26.0)
 
 Any placeholder that holds a number can be rendered in three ways, by adding a hint after a colon. This works in message values, item names, item lore and menu titles. It needs no change to the plugin.

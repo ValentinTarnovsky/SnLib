@@ -8,6 +8,14 @@
 > bundled `guis/*.yml` are seeded into the data folder (section 12), config-driven command
 > aliases plus arg-name tab hints and sender-aware / suggest-only args (section 13), and a
 > one-time WARN when a lang value embeds the literal prefix placeholder token (section 05).
+> Updated on 2026-08-27 for the 1.32.0 change (API level 20): bind-time `Ph` pairs resolve
+> BEFORE PAPI in every appearance field. `SnYml` grew `getString(key, def, viewer, Ph...)` and
+> `getStringList(key, def, viewer, Ph...)`, whose resolution order is registered locals, then
+> the given pairs, then PAPI - and `SnItem.fromConfig` reads material, display-name, lore,
+> item-model and skull-owner through them instead of applying the pairs as an after-pass. A
+> bound placeholder may therefore sit inside a PAPI token (`%math_1:half-up_{buff-value}/100%`)
+> and the expansion receives a finished argument; this also aligns item appearance with the
+> title/action/requirement paths, which always resolved locals first (sections 04, 11, 12).
 > Updated on 2026-08-23 for the 1.31.0 addition (no API level bump, yml surface only): the
 > per-click matrix of a menu item grew a sixth key, `drop-click-actions` /
 > `drop-click-requirements` / `drop-click-deny-actions`, covering the Q key (DROP and
@@ -629,12 +637,14 @@ A YAML file owned by a consumer context (`Sn ctx`): tab-tolerant loading, placeh
 - `public File file()` - the backing file on disk.
 - `public String getString(String key, String def)` - resolved string; a missing key returns `def` silently. Delegates to the null-viewer variant.
 - `public String getString(String key, String def, Player viewer)` - resolved string; PAPI tokens resolve per-viewer when one is passed.
+- `public String getString(String key, String def, Player viewer, Ph... phs)` (1.32.0) - resolved string with extra bind-time locals; resolution order is registered locals, then `phs`, then PAPI, so a pair may sit inside a PAPI token and the expansion receives a finished argument. The getter behind every appearance field of `SnItem.fromConfig`.
 - `public int getInt(String key, int def)` - integer; `Number`s are read directly (`intValue()`), strings are resolved (null viewer) and parsed with `Integer.parseInt(trim())`.
 - `public double getDouble(String key, double def)` - same with `doubleValue()` / `Double.parseDouble`.
 - `public long getLong(String key, long def)` - same with `longValue()` / `Long.parseLong`.
 - `public boolean getBoolean(String key, boolean def)` - boolean; `Boolean` directly; from a string only the literals `true`/`false` parse (case-insensitive, after resolving and trimming).
 - `public List<String> getStringList(String key, List<String> def)` - string list with each element resolved; a missing key returns `def` silently.
 - `public List<String> getStringList(String key, List<String> def, Player viewer)` - same, resolving per-viewer; a null element is converted to `""` before resolving.
+- `public List<String> getStringList(String key, List<String> def, Player viewer, Ph... phs)` (1.32.0) - same with extra bind-time locals, element by element; the order of the `getString` overload.
 - `public ConfigurationSection getSection(String key)` - raw section or null if it does not exist; values read through it do NOT go through `resolve` (no placeholders).
 - `public boolean isSet(String key)` - true when the key exists in the file, even with a 0/false/empty value; keeps "explicit 0" distinguishable from "missing key".
 - `public void set(String key, Object value)` - sets the value in memory; `save()` must be called to persist.

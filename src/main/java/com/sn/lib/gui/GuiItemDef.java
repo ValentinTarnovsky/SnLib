@@ -31,8 +31,9 @@ import com.sn.lib.yml.SnYml;
  *
  * <p>Appearance is NOT pre-built: the definition keeps its yml section and re-reads it on
  * every {@link #render}, so name, lore and every other string resolve per viewer through
- * the SnYml pipeline (locals, PAPI, {@code [small]}, {@code [rgb]}, {@code [center]},
- * MiniMessage).
+ * the SnYml pipeline (locals - the registered ones and the bind-time {@link Ph} pairs -
+ * then PAPI, {@code [small]}, {@code [rgb]}, {@code [center]}, MiniMessage; locals before
+ * PAPI since 1.32.0, so a pair may expand inside a PAPI token).
  * Requirements are parsed ONCE at load from the raw section (bypassing placeholder
  * resolution, so tokens reach evaluation intact); action lines stay raw for the action
  * engine, which resolves them at run time.</p>
@@ -529,7 +530,9 @@ public final class GuiItemDef {
      */
     ItemStack renderOver(ItemStack supplied, @Nullable Player viewer, Ph... phs) {
         String p = path + ".";
-        return StackOverlay.apply(supplied, yml.getString(p + "display-name", "", viewer),
-                yml.getStringList(p + "lore", List.of(), viewer), phs);
+        // The phs resolve inside the yml getters (before PAPI, 1.32.0), so the overlay
+        // receives finished strings and applies no locals of its own here.
+        return StackOverlay.apply(supplied, yml.getString(p + "display-name", "", viewer, phs),
+                yml.getStringList(p + "lore", List.of(), viewer, phs));
     }
 }

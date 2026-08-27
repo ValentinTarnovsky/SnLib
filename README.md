@@ -274,6 +274,12 @@ sn.items().give(player, "wand", 1);
   press gets through exactly on the items that declare the list; the other
   keyboard clicks (hotbar 1-9, offhand swap, unknown) stay always discarded, and
   a menu that declares no drop list behaves exactly as it did before.
+- Bind-time placeholders before PAPI (v1.32.0): the `Ph` pairs a plugin hands
+  to a menu bind or an item render resolve BEFORE PlaceholderAPI in every
+  appearance field (name, lore, material, item-model, skull-owner), so a pair
+  may sit inside a PAPI token - `%math_1:half-up_{buff-value}/100%` - and the
+  expansion receives the finished number. New `SnYml.getString` /
+  `getStringList` overloads taking `Ph...` carry the pairs into the pipeline.
 - Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
   into one lore line per segment, so a list value flows through a single
   `{placeholder}` in menu templates and items.

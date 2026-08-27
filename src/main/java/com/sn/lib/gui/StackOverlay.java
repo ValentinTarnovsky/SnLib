@@ -33,9 +33,10 @@ import com.sn.lib.text.SnText;
  * material, amount, enchantments, model data and every other appearance field stay the
  * stack's, because a stack the plugin did not author (a crate reward, a kit item, shop
  * stock) carries NBT that no yml item definition can re-express.
- * Both strings resolve through the normal pipeline: PAPI per viewer while the yml is read,
- * then the local placeholders, then colour, rgb and the rest of {@link SnText}, and each
- * line renders non-italic unless it asks for italics - exactly what
+ * Both strings resolve through the normal pipeline: the local placeholders, then PAPI per
+ * viewer (locals before PAPI since 1.32.0 - {@code renderOver} resolves both inside the
+ * yml getters and passes no phs here), then colour, rgb and the rest of {@link SnText},
+ * and each line renders non-italic unless it asks for italics - exactly what
  * {@link com.sn.lib.item.SnItem} does for a template-rendered stack.</p>
  *
  * <p>Split into pure rules ({@link #name}, {@link #lore}) plus the one Bukkit step
