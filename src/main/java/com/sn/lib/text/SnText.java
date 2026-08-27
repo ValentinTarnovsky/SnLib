@@ -38,7 +38,10 @@ import com.sn.lib.util.NumberFormatter;
  * pure MiniMessage semantics (a MiniMessage color tag never triggers the reset).</p>
  *
  * <p>{@code [rgb]} targets titles and short lines: it emits one hex code per visible
- * character. SnLang caches statically resolved lines so that cost is paid once.</p>
+ * character. SnLang caches statically resolved lines so that cost is paid once.
+ * {@code [rgb]} and {@code [small]} are span tags: they open anywhere in the line and
+ * {@code [/rgb]} / {@code [/small]} close them; unclosed they run to the end of the line,
+ * which is exactly the historical prefix behavior. See {@link #applyPrefixTags(String)}.</p>
  */
 public final class SnText {
 
@@ -71,7 +74,9 @@ public final class SnText {
 
     private static final String CENTER_TAG = "[center]";
     private static final String RGB_TAG = "[rgb]";
+    private static final String RGB_CLOSE_TAG = "[/rgb]";
     private static final String SMALL_TAG = "[small]";
+    private static final String SMALL_CLOSE_TAG = "[/small]";
     /** Consumed and discarded here; its semantics (skip the lang prefix) live in SnLang. */
     private static final String NOPREFIX_TAG = "[noprefix]";
     private static final char SECTION = (char) 0xA7;
@@ -368,14 +373,27 @@ public final class SnText {
      * prefix tags, case-insensitive and in any order, at the start of the line.
      * {@code [noprefix]} is stripped without effect here: it is SnLang's marker for
      * "do not prepend the configured prefix", consumed by every render so the literal
-     * tag never reaches the player. Fixed internal
-     * application order: {@code [small]} runs BEFORE {@code [rgb]} so the gradient colors
-     * the final glyphs and the small pass operates on the short string (not on the string
-     * inflated 9x by the gradient hex codes); the gradient's visible count is unchanged
-     * because the small mapping is 1:1 and never touches spaces, so every tag permutation
-     * renders identically. {@code [small]} also runs before {@code [center]} so centering
-     * measures the final glyphs: {@code [center]} is re-emitted as a single normalized
-     * leading mark consumed by the final legacy phase.
+     * tag never reaches the player.
+     *
+     * <p>{@code [rgb]} and {@code [small]} are SPAN tags since 1.33.0: they also open
+     * mid-line, and {@code [/rgb]} / {@code [/small]} close them, MiniMessage-style. An
+     * unclosed span runs to the end of the line, so the historical prefix form renders
+     * byte-identical. Each {@code [rgb]} span receives the COMPLETE gradient (all anchors
+     * interpolated over that span's visible characters). Closing a gradient span re-emits
+     * the legacy color/format codes that were active OUTSIDE the span (or {@code &r} when
+     * there were none), so the surrounding style survives the span; a MiniMessage-tag
+     * outer style is not tracked and falls back to that {@code &r}. A close tag with no
+     * open span is consumed silently. {@code [center]} and {@code [noprefix]} stay
+     * prefix-only: mid-line they render literally.</p>
+     *
+     * <p>Fixed internal application order per segment: {@code [small]} runs BEFORE
+     * {@code [rgb]} so the gradient colors the final glyphs and the small pass operates on
+     * the short string (not on the string inflated 9x by the gradient hex codes); the
+     * gradient's visible count is unchanged because the small mapping is 1:1 and never
+     * touches spaces, so every tag permutation renders identically. {@code [small]} also
+     * runs before {@code [center]} so centering measures the final glyphs: {@code [center]}
+     * is re-emitted as a single normalized leading mark consumed by the final legacy
+     * phase.</p>
      */
     public static String applyPrefixTags(String line) {
         if (line == null) {
@@ -405,13 +423,144 @@ public final class SnText {
                 consumed = true;
             }
         }
+        String body = applySpans(rest, small, rgb);
+        return center ? CENTER_TAG + body : body;
+    }
+
+    /**
+     * Span scanner behind {@link #applyPrefixTags(String)}: walks the line toggling the
+     * small/rgb state on {@code [rgb]}/{@code [/rgb]}/{@code [small]}/{@code [/small]}
+     * tags (case-insensitive) and transforms each constant-state segment. Small caps are
+     * applied per segment; contiguous rgb-on text (which may cross {@code [small]}
+     * boundaries) is gathered into one run so the gradient interpolates over the whole
+     * span. The {@code '['}-free fast path reproduces the pre-span whole-line behavior
+     * exactly and keeps the common case allocation-free.
+     */
+    private static String applySpans(String s, boolean small, boolean rgb) {
+        if (s.indexOf('[') < 0) {
+            String flat = small ? SmallCapsUtil.applySmallTag(s) : s;
+            return rgb ? RgbGradientUtil.applyRgbTag(flat) : flat;
+        }
+        StringBuilder out = new StringBuilder(s.length() + 16);
+        StringBuilder gradient = rgb ? new StringBuilder() : null;
+        StringBuilder seg = new StringBuilder(s.length());
+        OuterStyle outer = new OuterStyle();
+        int i = 0;
+        while (i < s.length()) {
+            if (s.charAt(i) == '[') {
+                if (s.regionMatches(true, i, RGB_TAG, 0, RGB_TAG.length())) {
+                    flushSegment(seg, small, gradient, out, outer);
+                    if (gradient == null) {
+                        gradient = new StringBuilder();
+                    }
+                    i += RGB_TAG.length();
+                    continue;
+                }
+                if (s.regionMatches(true, i, RGB_CLOSE_TAG, 0, RGB_CLOSE_TAG.length())) {
+                    flushSegment(seg, small, gradient, out, outer);
+                    if (gradient != null) {
+                        if (gradient.length() > 0) {
+                            out.append(RgbGradientUtil.applyRgbTag(gradient.toString()));
+                            if (i + RGB_CLOSE_TAG.length() < s.length()) {
+                                outer.appendRestore(out);
+                            }
+                        }
+                        gradient = null;
+                    }
+                    i += RGB_CLOSE_TAG.length();
+                    continue;
+                }
+                if (s.regionMatches(true, i, SMALL_TAG, 0, SMALL_TAG.length())) {
+                    flushSegment(seg, small, gradient, out, outer);
+                    small = true;
+                    i += SMALL_TAG.length();
+                    continue;
+                }
+                if (s.regionMatches(true, i, SMALL_CLOSE_TAG, 0, SMALL_CLOSE_TAG.length())) {
+                    flushSegment(seg, small, gradient, out, outer);
+                    small = false;
+                    i += SMALL_CLOSE_TAG.length();
+                    continue;
+                }
+            }
+            seg.append(s.charAt(i));
+            i++;
+        }
+        flushSegment(seg, small, gradient, out, outer);
+        if (gradient != null && gradient.length() > 0) {
+            out.append(RgbGradientUtil.applyRgbTag(gradient.toString()));
+        }
+        return out.toString();
+    }
+
+    /**
+     * Emits the accumulated segment under the state it was accumulated with: small caps
+     * first, then either into the pending gradient run or straight to the output (tracking
+     * the outer legacy style so a later {@code [/rgb]} can restore it).
+     */
+    private static void flushSegment(StringBuilder seg, boolean small, StringBuilder gradient,
+            StringBuilder out, OuterStyle outer) {
+        if (seg.length() == 0) {
+            return;
+        }
+        String text = seg.toString();
+        seg.setLength(0);
         if (small) {
-            rest = SmallCapsUtil.applySmallTag(rest);
+            text = SmallCapsUtil.applySmallTag(text);
         }
-        if (rgb) {
-            rest = RgbGradientUtil.applyRgbTag(rest);
+        if (gradient != null) {
+            gradient.append(text);
+        } else {
+            outer.track(text);
+            out.append(text);
         }
-        return center ? CENTER_TAG + rest : rest;
+    }
+
+    /**
+     * Legacy style state of the text OUTSIDE rgb spans: the last active color code plus
+     * the format codes opened since it, with vanilla semantics (a color or {@code &r}
+     * clears the accumulated formats). {@code [/rgb]} re-emits this state so the gradient
+     * does not bleed into the following text; when no legacy code was seen the restore is
+     * a bare {@code &r}.
+     */
+    private static final class OuterStyle {
+
+        private String color = "";
+        private final StringBuilder formats = new StringBuilder(4);
+
+        void track(String text) {
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) != '&' || i + 1 >= text.length()) {
+                    continue;
+                }
+                char next = text.charAt(i + 1);
+                if (next == '#' && isHex(text, i + 2)) {
+                    color = text.substring(i, i + 8);
+                    formats.setLength(0);
+                    i += 7;
+                    continue;
+                }
+                char code = Character.toLowerCase(next);
+                if ((code >= '0' && code <= '9') || (code >= 'a' && code <= 'f')) {
+                    color = "&" + code;
+                    formats.setLength(0);
+                    i++;
+                } else if (code == 'r') {
+                    color = "";
+                    formats.setLength(0);
+                    i++;
+                } else if (isLegacyFormatCode(code)) {
+                    if (formats.indexOf("&" + code) < 0) {
+                        formats.append('&').append(code);
+                    }
+                    i++;
+                }
+            }
+        }
+
+        void appendRestore(StringBuilder out) {
+            out.append(color.isEmpty() ? "&r" : color).append(formats);
+        }
     }
 
     private static String consumeCenterMark(String line) {

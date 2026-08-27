@@ -21,8 +21,9 @@ import org.jetbrains.annotations.Nullable;
  * {@link Capability#STRIKETHROUGH}/{@link Capability#OBFUSCATED}. MiniMessage tags are
  * governed by {@link Capability#MINIMESSAGE} as a whole (a {@code <red>} color tag or a
  * {@code <bold>} decoration tag is MiniMessage usage, not legacy color or bold usage), and
- * gradient forms - the {@code [rgb]} prefix tag and the MiniMessage {@code <gradient>} /
- * {@code <rainbow>} tags - are governed specifically by {@link Capability#GRADIENT}.</p>
+ * gradient forms - the {@code [rgb]} span tag (prefix or mid-line, closed by
+ * {@code [/rgb]}) and the MiniMessage {@code <gradient>} / {@code <rainbow>} tags - are
+ * governed specifically by {@link Capability#GRADIENT}.</p>
  *
  * <p>SAFETY: only the COSMETIC MiniMessage subset can ever be acceptable (colors,
  * decorations, gradient, rainbow, reset). Interactive and metadata tags - click, hover,
@@ -54,7 +55,7 @@ public final class StylePolicy {
         OBFUSCATED,
         /** Cosmetic MiniMessage tags (colors and decorations); non-cosmetic tags are never allowed. */
         MINIMESSAGE,
-        /** Gradient forms: the {@code [rgb]} prefix tag and MiniMessage {@code <gradient>}/{@code <rainbow>}. */
+        /** Gradient forms: the {@code [rgb]} span tag (any position) and MiniMessage {@code <gradient>}/{@code <rainbow>}. */
         GRADIENT
     }
 
@@ -271,6 +272,24 @@ public final class StylePolicy {
                     continue;
                 }
             }
+            if (c == '[') {
+                // [rgb] opens mid-line and [/rgb] closes it (span tags): both are gradient
+                // usage, kept or dropped together. [small]/[/small] are never gated.
+                if (regionTag(s, i, "[rgb]")) {
+                    if (allowed.contains(Capability.GRADIENT)) {
+                        out.append(s, i, i + 5);
+                    }
+                    i += 5;
+                    continue;
+                }
+                if (regionTag(s, i, "[/rgb]")) {
+                    if (allowed.contains(Capability.GRADIENT)) {
+                        out.append(s, i, i + 6);
+                    }
+                    i += 6;
+                    continue;
+                }
+            }
             out.append(c);
             i++;
         }
@@ -370,6 +389,13 @@ public final class StylePolicy {
                     i = end;
                     continue;
                 }
+            }
+            if (c == '[' && regionTag(s, i, "[rgb]")) {
+                // Span form: [rgb] also opens mid-line. A bare [/rgb] applies nothing
+                // (the renderer strips a stray close silently), so it is not usage.
+                u.gradient = true;
+                i += 5;
+                continue;
             }
             i++;
         }

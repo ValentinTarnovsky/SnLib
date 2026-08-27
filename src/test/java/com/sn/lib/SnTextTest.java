@@ -160,6 +160,76 @@ class SnTextTest {
     }
 
     @Test
+    void rgbSpanClosesAndOuterLegacyColorIsRestored() {
+        Component c = SnText.color("&7Hola [rgb]Mundo[/rgb] chau");
+        assertEquals("Hola Mundo chau", plain(c));
+        assertEquals(NamedTextColor.GRAY, find(c, "Hola").color());
+        assertEquals(TextColor.color(0xF300F3), find(c, "M").color(),
+                "the span's first glyph is the first gradient anchor");
+        assertEquals(NamedTextColor.GRAY, find(c, "chau").color(), "[/rgb] restores the outer &7");
+    }
+
+    @Test
+    void closedRgbSpanWithNoOuterCodesRestoresDefault() {
+        Component c = SnText.color("hola [rgb]x[/rgb] chau");
+        assertEquals("hola x chau", plain(c));
+        assertEquals(null, find(c, "hola").color());
+        assertEquals(null, find(c, "chau").color(), "no outer code -> [/rgb] resets to default");
+    }
+
+    @Test
+    void eachRgbSpanGetsTheFullGradient() {
+        Component c = SnText.color("[rgb]Ab[/rgb] x [rgb]Cd");
+        assertEquals(TextColor.color(0xF300F3), find(c, "A").color());
+        assertEquals(TextColor.color(0xFF5327), find(c, "b").color());
+        assertEquals(null, find(c, "x").color());
+        assertEquals(TextColor.color(0xF300F3), find(c, "C").color(),
+                "the second span restarts at the first anchor");
+        assertEquals(TextColor.color(0xFF5327), find(c, "d").color());
+    }
+
+    @Test
+    void closingRgbRestoresOuterColorAndFormat() {
+        Component c = SnText.color("&7&lHola [rgb]X[/rgb] chau");
+        Span chau = find(c, "chau");
+        assertEquals(NamedTextColor.GRAY, chau.color());
+        assertTrue(chau.bold(), "[/rgb] re-emits the outer &l too");
+    }
+
+    @Test
+    void smallSpanClosesMidLine() {
+        Component c = SnText.color("Hola [small]mundo[/small] chau");
+        assertEquals("Hola " + SnText.smallCaps("mundo") + " chau", plain(c));
+    }
+
+    @Test
+    void rgbAndSmallSpansNest() {
+        Component c = SnText.color("[rgb][small]hi[/small] yo[/rgb] end");
+        assertEquals(SnText.smallCaps("hi") + " yo end", plain(c));
+        assertEquals(TextColor.color(0xF300F3), find(c, SnText.smallCaps("h")).color());
+        assertEquals(null, find(c, "end").color());
+    }
+
+    @Test
+    void unclosedMidLineRgbRunsToEndOfLine() {
+        Component c = SnText.color("&7a [rgb]bc");
+        assertEquals(NamedTextColor.GRAY, find(c, "a").color());
+        assertEquals(TextColor.color(0xF300F3), find(c, "b").color());
+        assertEquals(TextColor.color(0xFF5327), find(c, "c").color());
+    }
+
+    @Test
+    void strayCloseTagsAreConsumedSilently() {
+        assertEquals("hola chau", plain(SnText.color("hola [/rgb][/small]chau")));
+    }
+
+    @Test
+    void spanTagsAreCaseInsensitive() {
+        assertEquals(plain(SnText.color("a [rgb]b[/rgb] c")),
+                plain(SnText.color("a [RGB]b[/RGB] c")));
+    }
+
+    @Test
     void noPrefixTagIsStrippedFromTheRender() {
         Component c = SnText.color("[noprefix]&7Hello");
         assertEquals("Hello", plain(c));

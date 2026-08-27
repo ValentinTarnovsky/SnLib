@@ -31,14 +31,31 @@ The order is not incidental, it is load-bearing:
 
 Because the prefix tags are consumed together at the start of the line, they compose in ANY order: `[center][rgb]`, `[rgb][center]`, `[small][rgb][center]` all render identically. A fourth tag, `[noprefix]` (1.9.0), is consumed in the same leading run but has no effect on the render itself: it is SnLang's marker for "do not prepend the configured lang prefix" (see [lang](lang.md)), stripped by every render so the literal tag never reaches the player.
 
+## Closing tags: `[/rgb]` and `[/small]` (1.33.0)
+
+`[rgb]` and `[small]` are SPAN tags: they also open mid-line, and `[/rgb]` / `[/small]` close them, MiniMessage-style. The semantics, all handled inside `SnText.applyPrefixTags`:
+
+- An **unclosed** span runs to the end of the line, so the historical prefix form renders byte-identical - full backwards compatibility, no consumer change needed.
+- Each `[rgb]...[/rgb]` span receives the **complete** seven-anchor gradient interpolated over that span's visible characters; two spans on one line each run the full anchor chain.
+- Closing a gradient span **restores the outer legacy style**: the `&` color/format codes active before the span are re-emitted after it (or `&r` when there were none), so the gradient never bleeds forward. An outer style set by MiniMessage tags is not tracked and falls back to that `&r`.
+- A close tag with no open span is consumed silently. `[center]` and `[noprefix]` stay prefix-only; mid-line they render literally.
+- Spans nest and cross freely: `[rgb][small]hi[/small] yo[/rgb]` gradients the small-caps glyphs and the plain text as one run.
+
+```yaml
+lore:
+  - "&7The [rgb]legendary[/rgb] &7sword"
+  - "Rank: [small]legend[/small] since 2024"
+```
+
 ## `[small]` - small caps
 
-`[small]` at the start of a line substitutes `a-z` and `A-Z` with small-capital glyphs, one glyph per character (a 1:1 mapping). Accented vowels are de-accented before mapping; the enye keeps its default glyph. Digits, symbols, color codes and MiniMessage tags pass through untouched.
+`[small]` substitutes `a-z` and `A-Z` with small-capital glyphs, one glyph per character (a 1:1 mapping). Accented vowels are de-accented before mapping; the enye keeps its default glyph. Digits, symbols, color codes and MiniMessage tags pass through untouched.
 
 ```yaml
 display-name: "[small]Welcome to the shop"
 lore:
   - "[small]&7Small caps lore line"
+  - "&7Mode: [small]hardcore[/small] &8(span form, 1.33.0)"
 ```
 
 For programmatic use without the tag - scoreboards, tab list, entity names - call `SnText.smallCaps(String)`:
@@ -51,7 +68,7 @@ The transform skips legacy color codes, section-sign sequences and MiniMessage t
 
 ## `[rgb]` - per-character gradient
 
-`[rgb]` at the start of a line paints the text with a gradient interpolated per character across seven fixed anchor colors:
+`[rgb]` paints the text with a gradient interpolated per character across seven fixed anchor colors (whole line from the prefix position, or a closed span - see above):
 
 ```
 #F300F3  #5555FF  #55FFFF  #55FF55  #FCFF21  #FF9B00  #FF5327
@@ -120,7 +137,7 @@ Never render untrusted player input through `color`/`mini`: full MiniMessage inc
 
 ### `StylePolicy` - the gate
 
-`StylePolicy` (in `com.sn.lib.text`) decides *which* styling forms a piece of input is even allowed to carry, and what to do when it carries a disallowed one. Capabilities are fine-grained: `LEGACY_COLOR` (`&0`-`&f`), `HEX` (`&#RRGGBB`), `BOLD`/`ITALIC`/`UNDERLINE`/`STRIKETHROUGH`/`OBFUSCATED`, `MINIMESSAGE` (cosmetic tags as a whole) and `GRADIENT` (the `[rgb]` prefix tag and the `<gradient>`/`<rainbow>` tags).
+`StylePolicy` (in `com.sn.lib.text`) decides *which* styling forms a piece of input is even allowed to carry, and what to do when it carries a disallowed one. Capabilities are fine-grained: `LEGACY_COLOR` (`&0`-`&f`), `HEX` (`&#RRGGBB`), `BOLD`/`ITALIC`/`UNDERLINE`/`STRIKETHROUGH`/`OBFUSCATED`, `MINIMESSAGE` (cosmetic tags as a whole) and `GRADIENT` (the `[rgb]` span tag in any position and the `<gradient>`/`<rainbow>` tags).
 
 ```java
 StylePolicy policy = StylePolicy.builder()

@@ -128,6 +128,12 @@ color -> `[center]` -> MiniMessage render to Component.
 - `[rgb]` interpolates a per-character gradient over 7 fixed anchors
   (`#F300F3,#5555FF,#55FFFF,#55FF55,#FCFF21,#FF9B00,#FF5327`); it overrides
   pre-existing COLOR codes and PRESERVES formatting (`&l &o &n &m &k`).
+- `[rgb]` and `[small]` are SPAN tags (v1.33): they also open mid-line and
+  `[/rgb]` / `[/small]` close them; unclosed they run to end of line (the
+  historical prefix form renders identically). Each `[rgb]` span gets the FULL
+  anchor chain, and `[/rgb]` restores the outer legacy color/format (or `&r`).
+  A stray close tag is consumed silently; `[center]`/`[noprefix]` stay
+  prefix-only.
 - `[center]` centers to 154px by measuring the already-colored legacy string
   (small caps glyphs measure with their own widths); the three prefix tags are
   composable in ANY order.
@@ -280,6 +286,10 @@ sn.items().give(player, "wand", 1);
   may sit inside a PAPI token - `%math_1:half-up_{buff-value}/100%` - and the
   expansion receives the finished number. New `SnYml.getString` /
   `getStringList` overloads taking `Ph...` carry the pairs into the pipeline.
+- Closeable span tags (v1.33.0): `[rgb]` and `[small]` open anywhere in the
+  line and `[/rgb]` / `[/small]` close them; unclosed they run to end of line,
+  so the prefix form renders identically. Each `[rgb]` span gets the full
+  gradient and `[/rgb]` restores the outer legacy color/format.
 - Multi-line lore placeholders (v1.12): a lore line containing `\n` splits
   into one lore line per segment, so a list value flows through a single
   `{placeholder}` in menu templates and items.

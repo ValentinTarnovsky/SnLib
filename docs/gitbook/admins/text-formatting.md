@@ -82,16 +82,34 @@ If you are not familiar with MiniMessage, you do not need it. The legacy `&` cod
 
 ## The special tags
 
-Sn plugins add four tags written at the very START of a line:
+Sn plugins add four special tags:
 
 | Tag | Effect |
 |-----|--------|
-| `[small]` | Turns letters into small-capital glyphs. |
-| `[rgb]` | Paints the line with a fixed seven-color gradient. |
-| `[center]` | Centers the line in lore, titles and chat. |
-| `[noprefix]` | Sends a lang message without the chat prefix. Full rules in [Language Files](language-files.md). |
+| `[small]` | Turns letters into small-capital glyphs. Closeable with `[/small]`. |
+| `[rgb]` | Paints the text with a fixed seven-color gradient. Closeable with `[/rgb]`. |
+| `[center]` | Centers the line in lore, titles and chat. Start of the line only. |
+| `[noprefix]` | Sends a lang message without the chat prefix. Start of the line only. Full rules in [Language Files](language-files.md). |
 
 > Tag order never matters: `[center][rgb]` and `[rgb][center]` render identically.
+
+### Closing a tag (1.33.0)
+
+`[small]` and `[rgb]` no longer have to cover the whole line. They open anywhere, and `[/small]` / `[/rgb]` close them, MiniMessage-style:
+
+```yaml
+lore:
+  - "&7Welcome to [rgb]OkiMC[/rgb] &7enjoy your stay"
+  - "Rank: [small]legend[/small] since 2024"
+```
+
+Three rules cover everything:
+
+- **A tag you never close runs to the end of the line.** `[rgb]Title` still paints the whole line - every existing file renders exactly as before.
+- **Each `[rgb]...[/rgb]` span gets the COMPLETE gradient**, all seven colors interpolated across just that span. Two spans on one line each run purple to red.
+- **After `[/rgb]` your previous color comes back.** The `&` color and format codes that were active before the span are restored; if there were none, the text returns to plain. A stray close tag with no opening disappears silently.
+
+`[center]` and `[noprefix]` remain start-of-line tags: written mid-line they show literally.
 
 ### `[small]` - small caps
 
@@ -101,24 +119,27 @@ Turns normal letters into small-capital glyphs. Accented vowels lose the accent.
 display-name: "[small]Welcome to the shop"
 lore:
   - "[small]&7Small caps lore line"
+  - "&7Mode: [small]hardcore[/small] &8(closeable since 1.33.0)"
 ```
 
 ### `[rgb]` - gradient coloring
 
-Paints the line with a smooth gradient over seven fixed anchor colors, left to right. The anchors are not configurable:
+Paints the text with a smooth gradient over seven fixed anchor colors, left to right. The anchors are not configurable:
 
 ```
 purple -> blue -> cyan -> green -> yellow -> orange -> red
 ```
 
-Color codes already on the line are overridden. Format codes (`&l`, `&o`, `&n`, `&m`, `&k`) are preserved. Formatting behaves exactly like outside the gradient: a color code still cancels earlier formats, so a bold prefix never bleeds forward.
+Color codes already inside the gradient are overridden. Format codes (`&l`, `&o`, `&n`, `&m`, `&k`) are preserved. Formatting behaves exactly like outside the gradient: a color code still cancels earlier formats, so a bold prefix never bleeds forward.
 
 ```yaml
 display-name: "[rgb]&lEpic Gradient Title"
+lore:
+  - "&7The [rgb]legendary[/rgb] &7sword"
 ```
 
 {% hint style="warning" %}
-`[rgb]` colors the line character by character, so it is meant for titles and short lines, not long paragraphs.
+`[rgb]` colors the text character by character, so it is meant for titles and short spans, not long paragraphs.
 {% endhint %}
 
 ### `[center]` - centered text

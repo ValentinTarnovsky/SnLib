@@ -172,6 +172,23 @@ class StylePolicyTest {
     }
 
     @Test
+    void midLineRgbIsGradientUsageButAStrayCloseIsNot() {
+        assertEquals(List.of(Capability.GRADIENT), StylePolicy.disabled().violations("hola [rgb]x"));
+        assertTrue(StylePolicy.disabled().violations("hola [/rgb]x").isEmpty(),
+                "a bare close applies nothing and the renderer strips it silently");
+    }
+
+    @Test
+    void stripHandlesRgbSpanTagsByGradientToggle() {
+        StylePolicy legacyOnly = StylePolicy.builder()
+                .allow(Capability.LEGACY_COLOR)
+                .onDisallowed(OnDisallowed.STRIP)
+                .build();
+        assertEquals("hola x", legacyOnly.strip("hola [rgb]x[/rgb]"));
+        assertEquals("hola [rgb]x[/rgb]", allowing(Capability.GRADIENT).strip("hola [rgb]x[/rgb]"));
+    }
+
+    @Test
     void stripKeepsResetCode() {
         assertEquals("&rhi", StylePolicy.disabled().strip("&r&ahi"));
     }
