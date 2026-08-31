@@ -156,6 +156,13 @@ A root can take its aliases from three sources, in priority order:
   `plugin.yml`. These are the **fallback**, used only while no authoritative source has an
   opinion.
 
+{% hint style="warning" %}
+An alias declared in your `plugin.yml` is bound by Bukkit at load time, outside the dynamic
+layer, so `command.aliases` can never remove or replace it - it is stripped from the dynamic
+set instead. If you want `config.yml` to hold **full** authority over the alias list, including
+the power to remove one, leave `aliases:` out of your `plugin.yml` entirely.
+{% endhint %}
+
 ```java
 sn.commands().root("warp")
         .aliasesFromConfig()        // reads command.aliases; authoritative when set

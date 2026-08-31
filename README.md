@@ -286,6 +286,16 @@ sn.items().give(player, "wand", 1);
   may sit inside a PAPI token - `%math_1:half-up_{buff-value}/100%` - and the
   expansion receives the finished number. New `SnYml.getString` /
   `getStringList` overloads taking `Ph...` carry the pairs into the pipeline.
+- Config-driven aliases actually dispatch (v1.33.1): an alias coming from
+  `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
+  after a reload, in its bare and its `plugin:alias` form. It never was on
+  Paper 1.20.6+: the known-commands map became a view over the Brigadier
+  dispatcher, and the `putIfAbsent` this layer used is one of the methods that
+  view does not override, so every alias went into a dead table and reported
+  success. Registration now writes through the map's own `get`/`put`, teardown
+  removes by key instead of through the entry set (which refuses removal
+  there), and a pass that mutated the map re-syncs the server dispatcher so
+  the 1.20.4 / 1.20.5 reload path works too.
 - Closeable span tags (v1.33.0): `[rgb]` and `[small]` open anywhere in the
   line and `[/rgb]` / `[/small]` close them; unclosed they run to end of line,
   so the prefix form renders identically. Each `[rgb]` span gets the full

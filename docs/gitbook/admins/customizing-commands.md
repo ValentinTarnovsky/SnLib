@@ -25,6 +25,14 @@ With that config, a root command named `/clans` also answers to `/clan` and `/c`
 
 The list is re-read on every reload. An alias you remove is unregistered and disappears from the client command tree; no restart is needed.
 
+> An alias that the plugin declares in its own `plugin.yml` is bound by the server itself and is not part of this list, so `command.aliases` cannot remove it. If an alias keeps working after you took it out of the config, that is why - it belongs to the plugin, not to you.
+
+> An alias already taken by another plugin is not stolen: the existing command keeps it and the console logs a collision warning. Pick a different one, or remove the alias on the other side and reload.
+
+{% hint style="info" %}
+Requires SnLib 1.33.1 or newer. On earlier versions this list was read correctly but never reached the server on Minecraft 1.20.6+, so aliases set here silently did nothing.
+{% endhint %}
+
 ## Every root has reload and help
 
 Every SnLib command tree ships two subcommands the plugin did not have to write:
