@@ -88,6 +88,30 @@ the tags in those values to bring the buttons back.
 sn.lang().broadcast("event.started", Ph.of("event", eventName));
 ```
 
+### Broadcast about a player (1.34.0)
+
+A broadcast has no viewer, and a placeholder bound through `ExpansionBuilder.placeholder`
+leaves its token unresolved for a null requester. So a per-player token in an announcement,
+such as a rank `display-name` that holds `%snrankperks_prefix%` spliced in through a `Ph`
+value, reaches every chat as literal text. When the announcement is ABOUT a player, pass that
+player as the subject and PAPI resolves against them once, the same for every recipient:
+
+```java
+// config: display-name: '%snrankperks_prefix%'
+sn.lang().broadcast("redeem-broadcast", player,
+        Ph.of("player", player.getName()),
+        Ph.of("rango", rank.displayName()));
+```
+
+The subject is not a viewer. For per-viewer values, where each recipient must see their own
+balance or their own prefix, loop `send` over the online players instead:
+
+```java
+for (Player online : Bukkit.getOnlinePlayers()) {
+    sn.lang().send(online, "jackpot.result", Ph.of("currency", currency.displayNameRaw()));
+}
+```
+
 ## Action bars and titles
 
 ```java

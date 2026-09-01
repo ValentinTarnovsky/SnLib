@@ -66,12 +66,16 @@ package com.sn.lib;
  * SnYml.getString/getStringList overloads taking Ph pairs resolve them ahead of the PAPI
  * pass, and every appearance field of SnItem.fromConfig reads through them, so a bound
  * placeholder may sit inside a PAPI token - %math_1_{buff-value}/100% - and the expansion
- * still receives a finished argument).</p>
+ * still receives a finished argument); LEVEL 21 = release 1.34.0 (a broadcast about a
+ * player: SnLang.broadcast(String, Player, Ph...) resolves PAPI against the subject once, so
+ * a per-player token spliced through a Ph value or written in the line - a rank prefix in a
+ * redeem announcement - renders for everyone instead of surviving as literal text against
+ * the null server viewer).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 20;
+    public static final int LEVEL = 21;
 
     private SnApi() {
     }

@@ -286,6 +286,15 @@ sn.items().give(player, "wand", 1);
   may sit inside a PAPI token - `%math_1:half-up_{buff-value}/100%` - and the
   expansion receives the finished number. New `SnYml.getString` /
   `getStringList` overloads taking `Ph...` carry the pairs into the pipeline.
+- Broadcast about a player (v1.34.0): `sn.lang().broadcast(key, subject, phs)`
+  resolves PlaceholderAPI against the SUBJECT once, so every recipient sees the
+  values of the player the announcement is about. The plain `broadcast` delivers
+  with a null viewer, and a player-bound expansion placeholder answers a null
+  requester by leaving its token literal: a rank `display-name` holding
+  `%snrankperks_prefix%`, spliced through `Ph.of("rango", ...)` into a redeem
+  announcement, reached every chat as that raw text. The subject is not a
+  viewer: for per-viewer values (each recipient sees their own balance) loop
+  `send(recipient, ...)` over the online players instead.
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on

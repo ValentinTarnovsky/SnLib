@@ -133,12 +133,47 @@ public final class SnLang {
         deliver(target, target instanceof Player p ? p : null, key, phs);
     }
 
-    /** Broadcasts the message to the whole server; PAPI resolves against the server. */
+    /**
+     * Broadcasts the message to the whole server; PAPI resolves against the server, so a
+     * player-bound token has nobody to answer for. A broadcast ABOUT a player goes through
+     * {@link #broadcast(String, Player, Ph...)}.
+     */
     public void broadcast(String key, Ph... phs) {
         if (key == null) {
             return;
         }
         deliver(Bukkit.getServer(), null, key, phs);
+    }
+
+    /**
+     * Broadcasts a message ABOUT a player to the whole server.
+     *
+     * <p>The subject is not a viewer: it is the player the announcement is about, and
+     * PlaceholderAPI resolves against it ONCE, so every recipient sees the subject's values.
+     * That is what a redeem announcement, a clan broadcast or a jackpot line needs: the rank
+     * prefix, the balance or the clan tag of the player who did the thing, rendered the same
+     * for everybody. The token may sit in the line itself or arrive spliced through a
+     * {@link Ph} value - a config {@code display-name} holding {@code %snrankperks_prefix%},
+     * handed in as {@code Ph.of("rango", ...)} - because locals resolve before the PAPI pass
+     * either way.
+     *
+     * <p>The plain {@link #broadcast(String, Ph...)} delivers with a null viewer, and a
+     * placeholder bound through {@code ExpansionBuilder.placeholder} answers a null requester
+     * by leaving the token unresolved, so the same line rendered through it keeps
+     * {@code %snrankperks_prefix%} as literal text. A null subject here behaves exactly like
+     * that overload.
+     *
+     * <p>This is the wrong tool for per-VIEWER values, where each recipient must see their
+     * own balance or their own prefix: loop {@code sn.lang().send(recipient, key, phs)} over
+     * the online players instead, the way an announcement whose currency name is a viewer
+     * placeholder already does. Prefix, cache and multiline rules are those of every
+     * delivery, and off the main thread PAPI is skipped like everywhere else.
+     */
+    public void broadcast(String key, @Nullable Player subject, Ph... phs) {
+        if (key == null) {
+            return;
+        }
+        deliver(Bukkit.getServer(), subject, key, phs);
     }
 
     /**
