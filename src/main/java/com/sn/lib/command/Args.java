@@ -50,15 +50,24 @@ import com.sn.lib.util.TimeUtil;
  */
 public final class Args {
 
-    /** Cap of list-backed suggestions (online players, oneOf options). */
-    private static final int SUGGESTION_CAP = 100;
+    /**
+     * Cap of list-backed suggestions (online players, oneOf options), applied to the list that
+     * MATCHES the typed prefix - never to the option set before filtering. Until 1.34.1 it was
+     * the other way round: the first 100 options were kept and the prefix filtered those, so an
+     * option past the cap could never be reached by typing its own first letters (a 165-pet
+     * registry sorted A..Z stopped at its 100th entry and {@code p} over it matched nothing).
+     * 500 because the cap exists to bound the suggestion packet on an EMPTY prefix over a
+     * pathological set, not to hide a real one: the first consumer past 100 was 165 entries,
+     * which the vanilla client scrolls without trouble.
+     */
+    private static final int SUGGESTION_CAP = 500;
 
     private Args() {
     }
 
     /**
      * Online player by exact name; rejects with {@code snlib.player-not-found} and
-     * suggests up to 100 online names.
+     * suggests the online names matching the typed prefix (up to 500 of them).
      */
     public static SnArg<Player> onlinePlayer() {
         return new SnArg<Player>(List.of(), false) {
@@ -109,8 +118,9 @@ public final class Args {
 
     /**
      * One value of a dynamic option set, matched case-insensitively and returned in its
-     * canonical form; rejects with {@code snlib.invalid-value} and suggests up to 100
-     * of the current options.
+     * canonical form; rejects with {@code snlib.invalid-value} and suggests the current
+     * options matching the typed prefix (up to 500 of them - the cap lands AFTER the filter,
+     * so an option is always reachable by typing its own first letters).
      */
     public static SnArg<String> oneOf(Supplier<Collection<String>> options) {
         Objects.requireNonNull(options, "options");
@@ -121,8 +131,9 @@ public final class Args {
      * Sender-aware {@link #oneOf(Supplier)}: the option set is computed per invoking sender
      * (for example the caller's clan members), so both the suggestions and the parse-time
      * validation are scoped to that sender. Matched case-insensitively and returned in its
-     * canonical form; rejects with {@code snlib.invalid-value} and suggests up to 100
-     * options. The parse fallback without a sender queries the function with {@code null}.
+     * canonical form; rejects with {@code snlib.invalid-value} and suggests the options
+     * matching the typed prefix (up to 500). The parse fallback without a sender queries the
+     * function with {@code null}.
      */
     public static SnArg<String> oneOf(Function<CommandSender, Collection<String>> options) {
         Objects.requireNonNull(options, "options");
@@ -147,7 +158,7 @@ public final class Args {
 
             @Override
             protected List<String> options(CommandSender sender) {
-                return capped(options.apply(sender));
+                return nonNull(options.apply(sender));
             }
         };
     }
@@ -156,7 +167,7 @@ public final class Args {
      * Free-form single token whose only role is to SUGGEST a dynamic set: it parses any
      * input as-is (no restriction), so the handler keeps its own not-found handling. Use it
      * when the valid set is dynamic and the handler already resolves and validates the token
-     * itself. Suggests up to 100 of the current options.
+     * itself. Suggests the current options matching the typed prefix (up to 500).
      */
     public static SnArg<String> suggesting(Supplier<Collection<String>> options) {
         Objects.requireNonNull(options, "options");
@@ -177,7 +188,7 @@ public final class Args {
 
             @Override
             protected List<String> options(CommandSender sender) {
-                return capped(options.apply(sender));
+                return nonNull(options.apply(sender));
             }
         };
     }
@@ -409,16 +420,18 @@ public final class Args {
         return arg;
     }
 
-    /** Non-null options of the collection capped at {@link #SUGGESTION_CAP}, order kept. */
-    private static List<String> capped(Collection<String> options) {
+    /**
+     * The non-null options of the collection, order kept, UNCAPPED: the whole set has to reach
+     * {@link SnArg#suggest} so the typed prefix is matched against every option, and the cap is
+     * applied there, to the matches. A null entry is dropped because both the prefix filter and
+     * the sort would throw on it.
+     */
+    private static List<String> nonNull(Collection<String> options) {
         List<String> out = new ArrayList<>();
         if (options == null) {
             return out;
         }
         for (String option : options) {
-            if (out.size() >= SUGGESTION_CAP) {
-                break;
-            }
             if (option != null) {
                 out.add(option);
             }
@@ -426,13 +439,10 @@ public final class Args {
         return out;
     }
 
-    /** Online player names capped at {@link #SUGGESTION_CAP}. */
+    /** Every online player name, uncapped for the same reason as {@link #nonNull}. */
     private static List<String> onlineNames() {
         List<String> names = new ArrayList<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (names.size() >= SUGGESTION_CAP) {
-                break;
-            }
             names.add(player.getName());
         }
         return names;
@@ -502,14 +512,24 @@ public final class Args {
                     out.add(example);
                 }
             }
+            // The FULL option set is matched against the prefix, sorted, and only THEN capped.
+            // Capping first - what this did until 1.34.1 - made every option past the cap
+            // unreachable: it was never in the list the prefix filtered, so typing its own
+            // first letters matched nothing. The cap bounds the packet on an empty prefix
+            // over a pathological set; it must never hide a match.
             List<String> base = new ArrayList<>(options(sender));
             List<String> matched = prefix.isEmpty()
                     ? base
                     : StringUtil.copyPartialMatches(prefix, base, new ArrayList<>());
             Collections.sort(matched);
+            int added = 0;
             for (String option : matched) {
+                if (added >= SUGGESTION_CAP) {
+                    break;
+                }
                 if (!containsIgnoreCase(out, option)) {
                     out.add(option);
+                    added++;
                 }
             }
             return out;

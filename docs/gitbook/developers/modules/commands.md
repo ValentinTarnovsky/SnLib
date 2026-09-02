@@ -320,10 +320,10 @@ what to suggest in tab completion.
 
 | Factory | Parses to | Rejection key | Suggestions |
 |---------|-----------|---------------|-------------|
-| `Args.onlinePlayer()` | `Player` (exact online name) | `snlib.player-not-found` | up to 100 online names |
+| `Args.onlinePlayer()` | `Player` (exact online name) | `snlib.player-not-found` | the online names matching the prefix (cap 500) |
 | `Args.offlinePlayerUuid()` | `UUID` (online, then local offline cache; never a blocking lookup) | `snlib.player-not-found` | online names |
-| `Args.oneOf(Supplier<Collection<String>>)` | `String` (canonical option, case-insensitive) | `snlib.invalid-value` | up to 100 current options |
-| `Args.oneOf(Function<CommandSender, Collection<String>>)` | `String` (canonical option, scoped to the sender) | `snlib.invalid-value` | up to 100 sender-scoped options |
+| `Args.oneOf(Supplier<Collection<String>>)` | `String` (canonical option, case-insensitive) | `snlib.invalid-value` | the current options matching the prefix (cap 500) |
+| `Args.oneOf(Function<CommandSender, Collection<String>>)` | `String` (canonical option, scoped to the sender) | `snlib.invalid-value` | the sender-scoped options matching the prefix (cap 500) |
 | `Args.intRange(min, max)` | `Integer` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
 | `Args.doubleRange(min, max)` | `Double` in range | `snlib.invalid-number` / `snlib.out-of-range` | both bounds as examples |
 | `Args.intMin(min)` | `Integer` of at least `min`, no upper bound | `snlib.invalid-number` / `snlib.number-too-small` | the arg-name hint `<argName>` |
@@ -334,7 +334,13 @@ what to suggest in tab completion.
 | `Args.string(hint)` | `String` (one token, as-is) | never | the explicit hint `<hint>` |
 | `Args.greedy()` | `String` (every remaining token, space-joined) | never | the arg-name hint `<argName>` |
 | `Args.greedy(hint)` | `String` (every remaining token, space-joined) | never | the explicit hint `<hint>` |
-| `Args.suggesting(options)` | `String` (one token, as-is; you validate) | never | up to 100 current options |
+| `Args.suggesting(options)` | `String` (one token, as-is; you validate) | never | the current options matching the prefix (cap 500) |
+
+The suggestion cap lands **after** the prefix filter (1.34.1): every option of a list-backed
+arg is matched against what the player typed, the matches are sorted, and only then are they
+cut at 500. Before 1.34.1 the first 100 options were kept and the prefix filtered those, so an
+option past the hundredth - a `Pase_15` in a 165-pet registry - could never be reached even by
+typing its own first letters. The cap only bounds an empty prefix over a very large set.
 
 Every numeric factory (`intRange`, `doubleRange`, `intMin`, `doubleMin`) accepts
 abbreviated input with the case-insensitive suffixes `k/m/b/t/qa/qi` (1.12.0): `2k` parses

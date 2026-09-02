@@ -295,6 +295,14 @@ sn.items().give(player, "wand", 1);
   announcement, reached every chat as that raw text. The subject is not a
   viewer: for per-viewer values (each recipient sees their own balance) loop
   `send(recipient, ...)` over the online players instead.
+- Suggestions filter before they cap (v1.34.1): a list-backed arg
+  (`Args.oneOf`, `Args.suggesting`, `Args.onlinePlayer`) matches the FULL option
+  set against the typed prefix, sorts the matches and only then caps them, at
+  500. Until 1.34.1 the first 100 options were kept and the prefix filtered
+  those, so an option past the hundredth could never be reached even by typing
+  its own first letters: SnPets' 165-pet registry, sorted A..Z, stopped
+  suggesting at `Orbes_4`, and `p` over it matched nothing while `Pase_15`
+  typed by hand still parsed. No public signature changed.
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on
