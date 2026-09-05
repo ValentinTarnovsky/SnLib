@@ -57,6 +57,12 @@ sn.updates().watch("owner/Sn-Releases", "myplugin-");
 
 This exists so a whole family of plugins can publish to **one** public repo instead of maintaining a dedicated public releases repo per plugin. The convention is to tag each release `<pluginId>-vX.Y.Z` (for example `myplugin-v1.4.0`) on the shared repo, so the prefix (`myplugin-`) unambiguously picks out this plugin's releases among everyone else's tags. Passing `null` (or using the single-argument overloads) keeps the old dedicated-repo behavior.
 
+### How the feed is read
+
+A GitHub releases page holds at most **100 releases of the whole repo**, so on a shared repo one request stops covering every plugin the moment the repo passes 100 releases: the plugins whose newest release has been pushed out of that window find no tag of theirs at all, and which plugins those are drifts with every release anyone publishes. The checker therefore **walks the pages** until it reaches the end of the repo, capped at the newest **1000** releases.
+
+Paging multiplies requests, and the GitHub API allows only **60 unauthenticated requests per hour per IP** - enough to be exhausted on one boot of a server running dozens of consumers. So a page is fetched **once for the whole server and shared**: every consumer reading the same repo reads the same cached pages (5-minute TTL), and consumers that want a page no one has fetched yet wait on the single in-flight request instead of firing their own. A check cycle costs **one request per page of the repo, however many plugins are installed** - three today for a repo of ~300 releases. A failed fetch is never cached, so the next check retries it.
+
 ## Timing
 
 - First check: **60 seconds** after enable (1200 ticks).
@@ -114,6 +120,12 @@ In shared-repo mode, a repo with no release tag matching your prefix WARNs the s
 
 ```
 [MyPlugin] update check of 'owner/Sn-Releases' failed: no release tag matching prefix 'myplugin-'
+```
+
+That message means the prefix is absent from the **entire** repo. In the rare case where the walk stopped at the 1000-release ceiling instead of the end of the repo, the WARN says how far it got, so a missing prefix is never confused with a repo too large to scan:
+
+```
+[MyPlugin] update check of 'owner/Sn-Releases' failed: no release tag matching prefix 'myplugin-' in the newest 1000 releases
 ```
 
 ## Private repositories

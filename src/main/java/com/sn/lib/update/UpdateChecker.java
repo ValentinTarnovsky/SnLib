@@ -6,8 +6,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -28,6 +26,7 @@ import com.sn.lib.hook.SemverComparator;
 import com.sn.lib.scheduler.TaskHandle;
 import com.sn.lib.tenant.TenantRegistry;
 import com.sn.lib.text.SnText;
+import com.sn.lib.update.internal.ReleaseFeed;
 import com.sn.lib.yml.SnYml;
 
 /**
@@ -46,8 +45,13 @@ import com.sn.lib.yml.SnYml;
  * always off the main thread). A repo dedicated to one plugin is polled against the GitHub
  * {@code releases/latest} endpoint. A repo shared by several plugins is declared with a
  * tag prefix ({@link #watch(String, String)} / {@link #checkNow(String, String)}): the
- * {@code releases} list is polled instead, only tags starting with the prefix are
- * considered, and the highest matching version wins. An optional read-only token read from
+ * {@code releases} list is read instead through {@link ReleaseFeed}, which walks every
+ * page of the repo (a single page only ever holds the 100 newest releases of the whole
+ * repo, so one request stops covering every plugin as soon as a shared repo passes 100
+ * releases) and shares each fetched page across all consumers of that repo, so the cost of
+ * a cycle is one request per page however many plugins are installed. Only tags starting
+ * with the prefix are considered, and the highest matching version wins. An optional
+ * read-only token read from
  * the consumer's main config under {@code update-check.token} on EVERY check (so it can
  * change without a restart) is sent as a Bearer header, which makes PRIVATE repos work;
  * the token is never logged. Failures WARN once per repo per enable and then stay silent.
@@ -181,18 +185,60 @@ public final class UpdateChecker {
     /**
      * One check against {@code repo}; runs off-main, WARNs once per repo on failure.
      * {@code tagPrefix == null} polls {@code releases/latest} (repo dedicated to this
-     * plugin); otherwise polls the {@code releases} list and keeps only tags starting
-     * with the prefix, picking the highest matching version.
+     * plugin); otherwise reads the shared {@code releases} feed and keeps only tags
+     * starting with the prefix, picking the highest matching version.
      */
     private void check(String repo, @Nullable String tagPrefix) {
         if (ctx.isShuttingDown()) {
             return;
         }
-        boolean shared = tagPrefix != null && !tagPrefix.isEmpty();
-        String endpoint = shared
-                ? "https://api.github.com/repos/" + repo + "/releases?per_page=100"
-                : "https://api.github.com/repos/" + repo + "/releases/latest";
         String token = config == null ? "" : config.getString(TOKEN_KEY, "");
+        if (tagPrefix != null && !tagPrefix.isEmpty()) {
+            checkShared(repo, tagPrefix, token);
+        } else {
+            checkLatest(repo, token);
+        }
+    }
+
+    /**
+     * Check against a repo shared by several plugins: the whole feed is scanned for the
+     * prefix through {@link ReleaseFeed} and the highest matching version wins. Finding no
+     * matching tag at all is reported as the failure it is, saying how much of the repo was
+     * read when the scan stopped at the page ceiling rather than at the end of the repo.
+     */
+    private void checkShared(String repo, String tagPrefix, @Nullable String token) {
+        ReleaseFeed.Scan scan;
+        try {
+            scan = ReleaseFeed.matching(repo, tagPrefix, token);
+        } catch (ReleaseFeed.FeedException e) {
+            warnOnce(repo, "update check of '" + repo + "' failed: " + e.getMessage());
+            return;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warnOnce(repo, "update check of '" + repo + "' failed: interrupted");
+            return;
+        }
+        String bestTag = null;
+        String bestUrl = "";
+        for (ReleaseFeed.ReleaseTag entry : scan.matches()) {
+            String candidate = stripTagPrefix(entry.tag().substring(tagPrefix.length()));
+            if (bestTag == null || SemverComparator.compareVersions(candidate, bestTag) > 0) {
+                bestTag = candidate;
+                bestUrl = entry.url();
+            }
+        }
+        if (bestTag == null) {
+            warnOnce(repo, "update check of '" + repo + "' failed: no release tag matching prefix '"
+                    + tagPrefix + "'"
+                    + (scan.truncated() ? " in the newest " + scan.scanned() + " releases" : ""));
+            return;
+        }
+        report(repo, bestTag, bestUrl);
+    }
+
+    /** Check against a repo dedicated to this plugin: the {@code releases/latest} endpoint. */
+    private void checkLatest(String repo, @Nullable String token) {
+        String endpoint = "https://api.github.com/repos/" + repo + "/releases/latest";
         HttpRequest.Builder builder = HttpRequest
                 .newBuilder(URI.create(endpoint))
                 .timeout(REQUEST_TIMEOUT)
@@ -220,37 +266,19 @@ public final class UpdateChecker {
             warnOnce(repo, "update check of '" + repo + "' failed: interrupted");
             return;
         }
-        String latest;
-        String url;
-        if (shared) {
-            String bestTag = null;
-            String bestUrl = "";
-            for (ReleaseTag entry : parseReleaseTags(body)) {
-                if (!entry.tag().startsWith(tagPrefix)) {
-                    continue;
-                }
-                String candidate = stripTagPrefix(entry.tag().substring(tagPrefix.length()));
-                if (bestTag == null || SemverComparator.compareVersions(candidate, bestTag) > 0) {
-                    bestTag = candidate;
-                    bestUrl = entry.url();
-                }
-            }
-            if (bestTag == null) {
-                warnOnce(repo, "update check of '" + repo + "' failed: no release tag matching prefix '"
-                        + tagPrefix + "'");
-                return;
-            }
-            latest = bestTag;
-            url = bestUrl;
-        } else {
-            String tag = jsonString(body, "tag_name");
-            if (tag == null) {
-                warnOnce(repo, "update check of '" + repo + "' failed: response without tag_name");
-                return;
-            }
-            latest = stripTagPrefix(tag);
-            url = jsonString(body, "html_url");
+        String tag = jsonString(body, "tag_name");
+        if (tag == null) {
+            warnOnce(repo, "update check of '" + repo + "' failed: response without tag_name");
+            return;
         }
+        report(repo, stripTagPrefix(tag), jsonString(body, "html_url"));
+    }
+
+    /**
+     * Records the published version {@code repo} reports and announces it once when it is
+     * newer than the installed one; a version that is no longer ahead drops the finding.
+     */
+    private void report(String repo, String latest, @Nullable String url) {
         String current = ctx.plugin().getPluginMeta().getVersion();
         if (SemverComparator.compareVersions(latest, current) > 0) {
             Finding finding = new Finding(latest, current, url == null ? "" : url);
@@ -328,42 +356,6 @@ public final class UpdateChecker {
             return null;
         }
         return stringValueAt(body, at, field);
-    }
-
-    /**
-     * Scans a GitHub {@code releases} array (as returned by the list endpoint) for every
-     * {@code tag_name}, pairing each with the nearest preceding {@code html_url}. This
-     * pairing is safe because each release object emits its own {@code html_url} once,
-     * before its {@code tag_name}, and asset entries never carry an {@code html_url} key
-     * (only a plain {@code url}), so no other release's field can land in between.
-     * Same hand-scanned-JSON caveats as {@link #jsonString}: a release body containing
-     * the literal text {@code "tag_name"} would confuse this scan.
-     */
-    static List<ReleaseTag> parseReleaseTags(String body) {
-        List<ReleaseTag> out = new ArrayList<>();
-        if (body == null) {
-            return out;
-        }
-        int searchFrom = 0;
-        while (true) {
-            int tagAt = body.indexOf("\"tag_name\"", searchFrom);
-            if (tagAt < 0) {
-                break;
-            }
-            searchFrom = tagAt + "\"tag_name\"".length();
-            String tag = stringValueAt(body, tagAt, "tag_name");
-            if (tag == null) {
-                continue;
-            }
-            int htmlAt = body.lastIndexOf("\"html_url\"", tagAt);
-            String url = htmlAt < 0 ? "" : stringValueAt(body, htmlAt, "html_url");
-            out.add(new ReleaseTag(tag, url == null ? "" : url));
-        }
-        return out;
-    }
-
-    /** One {@code (tag_name, html_url)} pair scanned out of a releases list entry. */
-    record ReleaseTag(String tag, String url) {
     }
 
     private static @Nullable String stringValueAt(String body, int at, String field) {
