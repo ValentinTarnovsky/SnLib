@@ -12,16 +12,25 @@ cross-version resilience, and the two mechanisms that govern API stability: the
 | | Version |
 |---|---------|
 | Runtime floor | 1.20.4 |
-| Target | 1.21.8 |
 | Compilation baseline | 1.21.1 |
-| Unknown future versions | 1.22+ start with one forward-compatibility warning |
+| Recognized schemes | the classic 1.20.4-1.21.x line and Mojang's year-based numbering (26.1+) |
+| Latest verified live | 26.2 |
+| Unparseable version string | starts with one forward-compatibility warning, never a hard-fail |
 
-The floor is 1.20.4: SnLib runs on any Paper server from there up to the 1.21.8
-target. The jar is compiled against the 1.21.1 Paper API (for methods such as
-`setMaxStackSize`) but only requires the 1.20.4 runtime, bridging the gap with
-reflective probing (below). When SnLib detects a server version it does not know
-about - 1.22 and later - it emits a single forward-compatibility warning and
-keeps running, rather than hard-failing. The philosophy is that a newer server
+The floor is 1.20.4: SnLib runs on any Paper server from there onwards. The jar
+is compiled against the 1.21.1 Paper API (for methods such as `setMaxStackSize`)
+but only requires the 1.20.4 runtime, bridging the gap with reflective probing
+(below).
+
+Minecraft changed its numbering in 2026: after 1.21.11 the versions are
+`YEAR.DROP[.PATCH]` (26.1, 26.2, 26.1.2), and Paper reports them as
+`26.2.build.2632-stable`. SnLib reads both schemes from `Bukkit.getBukkitVersion()`
+and treats every year-based version as newer than the whole 1.x line, so each
+`supports(minor)` gate passes there. Nothing is pinned to a "highest known"
+version: a future 26.3 or 27.1 starts silently, and the `Detected server:` line
+on boot tells you what SnLib saw. Only a version string that carries no
+`MAJOR.MINOR` pair at all triggers the single forward-compatibility warning and
+keeps running with full support assumed. The philosophy is that a newer server
 is far more likely to be compatible than not, so an unknown version degrades to
 a warning, never a crash.
 

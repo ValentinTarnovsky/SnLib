@@ -632,8 +632,11 @@ field-by-field checklist with the exact parse point.
 
 ## Compatibility
 
-- Runtime floor: 1.20.4. Target: 1.21.8. Unknown 1.22+ versions start with a
-  forward WARN, never a hard-fail.
+- Runtime floor: 1.20.4, compiled against 1.21.1. Recognized: the classic
+  1.20.4-1.21.x line and Mojang's year-based numbering (26.1+, verified live on
+  26.2). Only a version string that cannot be parsed at all starts with a
+  forward WARN, never a hard-fail (v1.34.2; before it every non-1.x version
+  warned).
 - Java 21 MANDATORY: the 1.20.4 floor requires a Java 21 JVM; the classfiles
   are release 21 and on a Java 17 JVM it fails with
   `UnsupportedClassVersionError` before any probe.

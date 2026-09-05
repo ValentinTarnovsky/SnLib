@@ -10,7 +10,8 @@ few modules, and reaches them at runtime through its `Sn` context.
 - Java 21. SnLib's classfiles are compiled at release 21 and refuse to load on
   an older JVM (see [Compatibility and versioning](compatibility-and-versioning.md)).
 - A local build of SnLib installed in your Maven repository (next section).
-- A Paper server between 1.20.4 and 1.21.8 with `SnLib.jar` in its `plugins/`.
+- A Paper server on 1.20.4 or newer (the year-based 26.x versions included) with
+  `SnLib.jar` in its `plugins/`.
 
 ## Step 1: resolve `com.sn:snlib`
 

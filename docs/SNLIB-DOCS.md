@@ -115,7 +115,7 @@ DUAL-PLATFORM jar: the SAME `SnLib-1.3.0.jar` is a Paper plugin (`plugin.yml`, `
 provided scope) AND a Velocity plugin (`velocity-plugin.json`, entry `SnLibVelocity`). On Paper it
 provides the full module set; on Velocity it is a small homogeneity base
 (`Snv`/`SnvConfig`/`SnvScheduler` + the shared `SnText` pipeline), NOT a messaging framework. Java
-21, floor 1.20.4, target 1.21.8, forward 1.22+ with WARN. 211 green JUnit tests; smoke gate green on
+21, floor 1.20.4, compiled against 1.21.1, classic 1.20.4-1.21.x and year-based 26.1+ both recognized (v1.34.2), only an unparseable version string WARNs. 211 green JUnit tests; smoke gate green on
 Paper 1.21.8 and 1.20.4 (executed for v1.0.0, re-executed for v1.1.0 with the release jar). The
 frozen Paper API stays additive over the 1.0.0 baseline (API level 2, japicmp gate active); the
 Velocity base (`com.sn.lib.velocity.*`) is a separate Velocity-only surface, outside that gate while
@@ -363,31 +363,41 @@ None. There are no TODO/FIXME/XXX markers in any file of this scope. Design limi
 
 ## 02. Multi-version compat
 
-SnLib's multi-version compatibility module (package `com.sn.lib.compat`). It consists of two static final utility classes: `SnVersion`, which parses the server version exactly once at class initialization and exposes `supports(...)` checks plus Folia detection, and `SnCompat`, which reflectively probes API added after the 1.20.4 runtime floor so old servers degrade with a single WARN instead of throwing. The module's philosophy is "forward tolerance": an unknown or 1.22+ version never hard-fails, full target support (1.21.8) is assumed with a single WARN. Both classes use server-wide static state, allowed by the SnLib contract because they describe the server and not a consumer plugin.
+SnLib's multi-version compatibility module (package `com.sn.lib.compat`). It consists of two static final utility classes plus one package-private record: `SnVersion`, which parses the server version exactly once at class initialization and exposes `supports(...)` checks plus Folia detection; `ParsedVersion`, the parsed shape of the version string and the whole `supports` decision, kept apart so JUnit can exercise it without a server; and `SnCompat`, which reflectively probes API added after the 1.20.4 runtime floor so old servers degrade with a single WARN instead of throwing. The module's philosophy is "forward tolerance": both numbering schemes are recognized (the classic 1.20.4-1.21.x line and Mojang's year-based 26.1+), a year-based version passes every 1.x gate, and only a string that carries no version at all logs one WARN and assumes full support. Both classes use server-wide static state, allowed by the SnLib contract because they describe the server and not a consumer plugin.
 
 ### SnVersion
 `src/main/java/com/sn/lib/compat/SnVersion.java`
 
-Server version detection, parsed once in the class `static` block. Parses `Bukkit.getBukkitVersion()` (e.g. `1.21.1-R0.1-SNAPSHOT`) with the regex `(\d+)\.(\d+)(?:\.(\d+))?`; it never uses `getVersion()`, whose free-form text varies per fork. `final` class with a private constructor (non-instantiable).
+Server version detection, parsed once in the class `static` block. Parses `Bukkit.getBukkitVersion()` through `ParsedVersion.parse`; it never uses `getVersion()`, whose free-form text varies per fork. `final` class with a private constructor (non-instantiable).
 
 Public constants:
-- `public static final int MAJOR` - parsed major, or `1` when the string could not be parsed.
-- `public static final int MINOR` - parsed minor, or the target minor (`21`) when the string could not be parsed.
-- `public static final int PATCH` - parsed patch; `0` when absent from the string, target patch (`8`) when the string could not be parsed.
+- `public static final int MAJOR` - parsed major (`1` on the classic line, the year on 26.1+), or `1` when the string could not be parsed.
+- `public static final int MINOR` - parsed minor (the drop on 26.1+), or `21` when the string could not be parsed.
+- `public static final int PATCH` - parsed patch; `0` when absent from the string, `8` when the string could not be parsed.
 
 Public methods:
-- `public static boolean supports(int minor)` - true when the server runs 1.`minor` or newer. Always true on unknown versions (internal `ASSUME_TARGET` flag).
-- `public static boolean supports(int minor, int patch)` - true when the server runs 1.`minor`.`patch` or newer: `ASSUME_TARGET || MINOR > minor || (MINOR == minor && PATCH >= patch)`. Always true on unknown versions.
+- `public static boolean supports(int minor)` - true when the server runs 1.`minor` or newer: `PARSED.atLeast(minor, 0)`. Always true on a year-based version and on an unparseable string.
+- `public static boolean supports(int minor, int patch)` - true when the server runs 1.`minor`.`patch` or newer: `PARSED.atLeast(minor, patch)`. Always true on a year-based version and on an unparseable string.
 - `public static boolean isFolia()` - true when the server is Folia. Detected once and cached in the static `FOLIA` field.
 
 Internal logic:
-- `KNOWN_MAX_MINOR = 21` (private): the highest minor line recognized by this build, with target 1.21.8.
-- `static` block: applies the regex to `Bukkit.getBukkitVersion()`. On a match it takes major/minor/patch (patch `0` if the group is null). "Assume target" mode activates (`ASSUME_TARGET = true`) in two cases: (a) the string does not match the regex, or (b) `major != 1 || minor > KNOWN_MAX_MINOR`, that is any 1.22+ or a major other than 1. In that case it logs exactly one WARN: `[SnLib] '<raw>': unrecognized version, assuming target compat`. With `ASSUME_TARGET` active, both `supports(...)` always return true: forward tolerance instead of hard-fail.
+- `private static final ParsedVersion PARSED` - the parsed string, source of the three public constants and of both `supports` overloads.
+- `static` block: `ParsedVersion.parse(Bukkit.getBukkitVersion())`. Only when `parsed()` is false does it log exactly one WARN: `[SnLib] '<raw>': unrecognized version, assuming compat target`. Nothing else warns: since v1.34.2 a version SnLib was not built against (a future 26.3, 27.1) starts silently, the `Detected server:` INFO line already tells the owner what SnLib saw, and the old "known max minor" gate is gone.
 - `private static boolean detectFolia()` - tries `Class.forName("io.papermc.paper.threadedregions.RegionizedServer")`; true if the class exists, false on `ClassNotFoundException`. Runs exactly once at class initialization.
 
+### ParsedVersion
+`src/main/java/com/sn/lib/compat/ParsedVersion.java`
+
+Package-private `record ParsedVersion(int major, int minor, int patch, boolean parsed)`. Not public API (japicmp ignores it, `SnApi.LEVEL` did not move) and deliberately a separate class: its initialization never touches `Bukkit`, which is what lets `ParsedVersionTest` run it under plain JUnit while `SnVersion`'s static block would throw without a server.
+
+- `static ParsedVersion parse(String raw)` - applies the regex `(\d+)\.(\d+)(?:\.(\d+))?` to the first `MAJOR.MINOR[.PATCH]` group of the string and never throws. Recognized inputs: the classic `1.21.1-R0.1-SNAPSHOT` (1.21.1) and Paper's year-based `YEAR.DROP[.PATCH].build.N-status` form, `26.2.build.2632-stable` (26.2.0) or `26.1.2.build.63-stable` (26.1.2), whatever the channel suffix. A null or non-matching string returns the fixed fallback `(1, 21, 8, false)`.
+- `boolean yearScheme()` - `major > 1`: Mojang's year-based numbering in force since 26.1 (March 2026), newer than every 1.x by construction.
+- `boolean atLeast(int minor, int patch)` - the complete `supports` decision: true when unparseable or year-based, otherwise the numeric `minor > m || (minor == m && patch >= p)` comparison on the classic line.
+
 Notes and gotchas:
-- When parsing fails, the exposed values are NOT the real version but the target: `MAJOR=1`, `MINOR=21`, `PATCH=8`. Any code reading the constants directly instead of using `supports(...)` must account for this.
-- Detection runs at class initialization (first use), so the unknown-version WARN appears once per JVM lifetime, not per plugin.
+- When parsing fails, the exposed values are NOT the real version but the last classic target: `MAJOR=1`, `MINOR=21`, `PATCH=8`. Any code reading the constants directly instead of using `supports(...)` must account for this.
+- On 26.1+ the constants are the real year-based numbers (`26` / `2` / `0` on 26.2), so a direct `MINOR >= 20` comparison would be WRONG there; always gate through `supports(...)`, which is why the decision lives in one place.
+- Detection runs at class initialization (first use), so the unparseable-version WARN appears once per JVM lifetime, not per plugin.
 - The Javadoc justifies the server-wide statics: the server version is not per-consumer data, so it does not violate SnLib's per-plugin ownership contract.
 
 ### SnCompat

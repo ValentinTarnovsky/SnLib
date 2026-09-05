@@ -22,9 +22,9 @@ At startup you see:
 [SnLib] '<version>': unrecognized version, assuming compat target
 ```
 
-**What it means:** you run a Minecraft version newer than the one this SnLib build knows. SnLib degrades gracefully and starts normally.
+**What it means:** the server's version string carried no readable `MAJOR.MINOR` number at all, so SnLib could not tell which Minecraft version it runs on. It assumes full support, degrades gracefully and starts normally. This is rare: both numbering schemes are recognized, the classic 1.20.4-1.21.x line and the year-based 26.1+ versions (`26.2.build.2632-stable` reads as 26.2), so a plain Paper server never prints it. Before SnLib 1.34.2 every 26.x server printed this line by mistake; updating SnLib removes it.
 
-**The fix:** nothing. It logs once and is safe to ignore. Include it as context when you report a real problem on a brand-new version.
+**The fix:** on an up-to-date SnLib, nothing. It logs once and is safe to ignore. Include it as context when you report a real problem on an unusual server fork.
 
 ## A config file got renamed to `.backup-N`
 

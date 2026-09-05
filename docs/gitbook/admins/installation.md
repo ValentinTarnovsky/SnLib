@@ -25,9 +25,10 @@ SnLib targets Paper. The supported range is:
 | | Version |
 |---|---|
 | Minimum (floor) | 1.20.4 |
-| Target | 1.21.8 |
+| Recognized | the classic 1.20.4-1.21.x line and the year-based 26.1+ versions |
+| Latest verified live | 26.2 |
 
-A newer version SnLib does not recognize yet never hard-fails. The server starts normally and logs one forward-compatibility warning. See [Troubleshooting](troubleshooting.md) for that warning and why it is safe to ignore.
+Newer versions never hard-fail: a future 26.3 or 27.1 starts normally and silently. Only a server whose version string SnLib cannot read at all logs one forward-compatibility warning. See [Troubleshooting](troubleshooting.md) for that warning and why it is safe to ignore.
 
 The same `SnLib.jar` also loads on a Velocity proxy, with a reduced surface for proxy-side Sn plugins. Everything in this section describes the Paper side unless a page says otherwise.
 

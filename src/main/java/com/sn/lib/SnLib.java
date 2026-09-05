@@ -23,8 +23,10 @@ import com.sn.lib.tenant.internal.TenantSweeper;
  *       for server-wide data.</li>
  *   <li><b>(b) Internal packages.</b> Everything under a {@code *.internal} package is outside
  *       the semver contract and may change without notice.</li>
- *   <li><b>(c) Compatibility.</b> Runtime floor 1.20.4, target 1.21.8; unknown versions
- *       (1.22+) start with a WARN and never hard-fail. Java 21. 100% Paper/Adventure API:
+ *   <li><b>(c) Compatibility.</b> Runtime floor 1.20.4, compiled against 1.21.1; the classic
+ *       1.20.4-1.21.x line and Mojang's year-based numbering (26.1+) are both recognized, and
+ *       only an unparseable version string starts with a WARN, never a hard-fail. Java 21.
+ *       100% Paper/Adventure API:
  *       NMS, packets and the inventory-view class (Inventory-View) are PROHIBITED. {@code Sound},
  *       {@code Particle} and {@code ItemFlag} are treated as open sets (never
  *       switch/EnumSet over them). Lenient aliases with WARN:
