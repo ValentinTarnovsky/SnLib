@@ -1,4 +1,9 @@
-# SnLib v1.3.0 - Technical documentation of the current state
+# SnLib - Technical documentation of the current state
+
+> The title carries no version on purpose. It said `v1.3.0` while the file was being edited
+> release after release, because a version in a heading is one more number nobody remembers to
+> move. `pom.xml` is the authority on what version this is; each section's own header records
+> which release it was written against.
 
 > Generated on 2026-07-10 against the real repo code (HEAD commit of main); updated on 2026-07-11
 > for the 1.1.0 release, on 2026-07-12 for the 1.2.x releases, and on 2026-07-13 for the 1.3.0
@@ -111,7 +116,7 @@
 > tests, all green; 1.5.0 adds text, gui, command and lang tests on top).
 
 **Project summary:** SnLib is the standalone base plugin of the ~57 Sn plugins, shipped as a
-DUAL-PLATFORM jar: the SAME `SnLib-1.3.0.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
+DUAL-PLATFORM jar: the SAME `SnLib.jar` is a Paper plugin (`plugin.yml`, `depend: [SnLib]`,
 provided scope) AND a Velocity plugin (`velocity-plugin.json`, entry `SnLibVelocity`). On Paper it
 provides the full module set; on Velocity it is a small homogeneity base
 (`Snv`/`SnvConfig`/`SnvScheduler` + the shared `SnText` pipeline), NOT a messaging framework. Java
@@ -3581,11 +3586,11 @@ There are no TODO/FIXME/HACK markers in this module's code. Limitations document
 
 ## 16. Build, tests, golden specs and TODOs
 
-This module closes the documentation with the infrastructure that sustains the lib: the `pom.xml` (exact dependencies, internal shading with relocations and deliberate exclusions, an additive-only API gate with japicmp ACTIVE against the 1.0.0 baseline, and a manifest with Sn metadata), the five `docs/` files that act as golden specs and templates for consumers (the menu schema, the physical item schema, the selection wand spec, the consumer pom template and the consumer ProGuard rules), the JUnit 5 suites of `src/test/java/com/sn/lib/` (211 tests, all green, verified with `mvn test` via surefire) and the complete pending-work inventory: what the TODO/FIXME/placeholder grep over the code yields plus the known handoff pendings (1.20.4 degradation, repo/release, pilots and canary; the bStats one was resolved in v1.1 with the real service id 32541). It also records the smoke gate result on Paper 1.21.8 build 60 and 1.20.4 build 499: green on both for the 1.0.0 and 1.1.0 releases (gate re-run with each release's jar).
+This module closes the documentation with the infrastructure that sustains the lib: the `pom.xml` (exact dependencies, internal shading with relocations and deliberate exclusions, an additive-only API gate with japicmp ACTIVE against the 1.0.0 baseline, and a manifest with Sn metadata), the five `docs/` files that act as golden specs and templates for consumers (the menu schema, the physical item schema, the selection wand spec, the consumer pom template and the consumer ProGuard rules), the JUnit 5 suites of `src/test/java/com/sn/lib/` (578 tests, all green, verified with `mvn test` via surefire on the 1.35.0 release) and the complete pending-work inventory: what the TODO/FIXME/placeholder grep over the code yields plus the known handoff pendings (1.20.4 degradation, repo/release, pilots and canary; the bStats one was resolved in v1.1 with the real service id 32541). It also records the smoke gate result on Paper 1.21.8 build 60 and 1.20.4 build 499: green on both for the 1.0.0 and 1.1.0 releases (gate re-run with each release's jar).
 
 ### pom.xml (SnLib build)
 `pom.xml`
-Coordinates `com.sn:snlib:1.20.1`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=12`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (12 since the 1.20.0 release; the Velocity base is a separate surface outside the level; history in SnApi's Javadoc). Both values are hand-maintained and must be bumped in the SAME edit as the constant.
+Coordinates `com.sn:snlib:1.35.0`, packaging `jar`, name `SnLib`, description "Common library core for Sn plugins, shipped as a standalone hard-depend plugin.". Compiles with Java 21 (`maven.compiler.release=21`) and defines the property `sn.api.level=22`, which the pom itself clarifies is the manifest's informational value: the real handshake constant is `com.sn.lib.SnApi.LEVEL` (22 since the 1.35.0 release; the Velocity base is a separate surface outside the level; history in SnApi's Javadoc). Both values are hand-maintained and must be bumped in the SAME edit as the constant - and nothing READS the property, which is exactly why it drifts: the pom's own comment records it sitting at 13 while the constant was 15, and this paragraph sat at `1.20.1` / level 12 through the 23 releases that followed it. When the numbers here disagree with `pom.xml`, the pom is right.
 
 Declared repositories:
 
@@ -3612,7 +3617,7 @@ Exact dependencies:
 
 Build:
 
-- `finalName`: `SnLib-${project.version}` (produces `SnLib-1.3.0.jar`).
+- `finalName`: `SnLib-${project.version}` (produces `SnLib-<version>.jar`, e.g. `SnLib-1.35.0.jar`).
 - Resources with `filtering=true` over `src/main/resources` (Maven property expansion in `plugin.yml`/`config.yml`).
 - `maven-compiler-plugin:3.13.0` and `maven-surefire-plugin:3.2.5` without extra configuration.
 - `maven-jar-plugin:3.4.1` - a manifest with two custom entries: `Sn-Lib-Version: ${project.version}` and `Sn-Api-Level: ${sn.api.level}`.
@@ -3673,7 +3678,7 @@ Golden spec of the PHYSICAL items schema (Item Lib): items given to players (inv
 - Resolution of `com.sn:snlib`: 1) publish SnLib to the local `.m2` with `mvn install -f <path>/SnLib/pom.xml`; 2) JitPack is NOT supported (the SnLib repo is private and JitPack does not build private repos): the ONLY resolution path is the local `.m2`; 3) at runtime NOTHING of SnLib shades into the consumer: the server loads `SnLib.jar` as a standalone plugin in `plugins/` and the consumer declares `depend: [SnLib]` in its plugin.yml. That is why the scope is `provided` and the template does NOT include maven-shade-plugin for the lib; if the consumer shades its own dependencies, NEVER include `com.sn:snlib` in the shade.
 - The consumer's minimal `plugin.yml` block: `name`, `main`, `version`, `api-version: '1.20'`, `depend: [SnLib]`, the main command and the `myplugin.admin` permission tree (default op) with the child `myplugin.admin.reload`.
 - The consumer's main class (the only init path: extending `SnPlugin`), with the contract's three signatures: `protected int requiredApiLevel()` returning `SnApi.LEVEL`, `protected SnSpec buildSpec()` (example: `SnSpec.builder().config("config.yml").lang().guis().build()`) and `protected void onInnerEnable()` where commands, guis, items, db, etc register on the Sn context.
-- The pom itself: `com.sn:myplugin:1.0.0`, Java 21, the papermc repo, dependencies `com.sn:snlib:1.3.0` (provided, from the local .m2; at runtime `SnLib.jar` in `plugins/` provides it) and `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), and only `maven-compiler-plugin:3.13.0` in build (no shade).
+- The pom itself: `com.sn:myplugin:1.0.0`, Java 21, the papermc repo, dependencies `com.sn:snlib:1.31.0` (provided, from the local .m2; at runtime `SnLib.jar` in `plugins/` provides it - that pin is hand-maintained in the template file and is not raised by a release, so it trails the current version until someone bumps it) and `io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT` (provided), and only `maven-compiler-plugin:3.13.0` in build (no shade).
 
 ### docs/snlib-consumer-rules.pro (consumer ProGuard rules)
 `docs/snlib-consumer-rules.pro`
@@ -4072,7 +4077,7 @@ Public API:
 - `void stripTagPrefixStripsVOnlyBeforeDigit()` - `v1.2.3` -> `1.2.3`, `V2.0` -> `2.0`, `1.2.3` and `vanilla` intact.
 - `void parseReleaseTagsPairsEachTagWithItsOwnHtmlUrl()` (v1.4, shared-repo mode) - a two-release array, each pairing its `tag_name` with the nearest preceding `html_url`; asserts neither the nested `author.html_url` nor an asset's `url` is picked up.
 - `void parseReleaseTagsHandlesEmptyList()` (v1.4) - `"[]"` and `null` both return an empty list.
-- Handoff consistency note: the handoff mentions "114 tests"; the last count verified in this documentation was 204 tests across 21 suites (see prior revisions for the full step-by-step history). Current verified count (surefire, `mvn test`), including the two `parseReleaseTags` tests added for the v1.4 shared-releases-repo feature, is 213 tests, all green.
+- Handoff consistency note: the handoff mentions "114 tests"; the last count verified in this documentation was 204 tests across 21 suites (see prior revisions for the full step-by-step history). Current verified count (surefire, `mvn test`) is 578 tests, all green, on the 1.35.0 release.
 
 ## 17.b SelfUpdater (v1.16)
 
