@@ -31,7 +31,10 @@ import com.sn.lib.yml.SnYml;
  * {@code debug.categories} of the backing yml, and every toggle writes back through
  * {@link SnYml#set} plus {@link SnYml#save()} (coalesced async in runtime; synchronous
  * once the owning context is shutting down). Without a backing yml (no config module
- * declared) toggles work in memory only.</p>
+ * declared) toggles work in memory only. The level is read through
+ * {@link SnYml#getEnum}, so {@code level: OFF} written unquoted - which YAML resolves to
+ * the boolean {@code false}, not to the text {@code OFF} - still means {@link Level#OFF}
+ * (1.35.0).</p>
  */
 public final class SnDebug {
 
@@ -72,7 +75,7 @@ public final class SnDebug {
         this.prefixTrace = "[" + plugin.getName() + "][TRACE] ";
         if (storage != null) {
             this.enabled = storage.getBoolean(KEY_ENABLED, false);
-            this.level = parseLevel(storage.getString(KEY_LEVEL, Level.DEBUG.name()));
+            this.level = storage.getEnum(KEY_LEVEL, Level.class, Level.DEBUG);
             for (String category : storage.getStringList(KEY_CATEGORIES, List.of())) {
                 categories.add(normalize(category));
             }
@@ -198,16 +201,6 @@ public final class SnDebug {
         storage.set(KEY_LEVEL, level.name());
         storage.set(KEY_CATEGORIES, sorted);
         storage.save();
-    }
-
-    private Level parseLevel(String raw) {
-        try {
-            return Level.valueOf(raw.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Invalid value in " + KEY_LEVEL + ": '" + raw
-                    + "', using " + Level.DEBUG.name());
-            return Level.DEBUG;
-        }
     }
 
     private static String normalize(String category) {

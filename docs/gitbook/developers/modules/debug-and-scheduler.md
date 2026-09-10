@@ -82,6 +82,8 @@ When a yml config module is present, every toggle is persisted back to the confi
 
 {% hint style="warning" %}
 An invalid `debug.level` in the config does not crash: it logs one WARN and falls back to `DEBUG`.
+
+Since 1.35.0 the level is read with `getEnum`, so `OFF` written unquoted counts as valid. It has to be handled on purpose: YAML resolves an unquoted `OFF` to the boolean `false`, so before 1.35.0 an owner asking for silence got two WARN lines about a value of `'false'` they never wrote, and the LOUDEST level.
 {% endhint %}
 
 ## Scheduler (SnScheduler, Folia-aware)

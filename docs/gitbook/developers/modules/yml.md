@@ -62,16 +62,34 @@ long   seed    = cfg.getLong("seed", 0L);
 boolean debug  = cfg.getBoolean("debug", false);    // only true/false parse
 String title   = cfg.getString("title", "Shop");
 List<String> lines = cfg.getStringList("lore", List.of());
+Mode   mode    = cfg.getEnum("mode", Mode.class, Mode.NORMAL);   // 1.35.0
 ```
 
 Extra reading helpers:
 
+- `getEnum(key, type, def)` (1.35.0) reads an enum constant case-insensitively, with no placeholder resolution (a constant is a name, not text to render). Use it instead of `getString` + `valueOf` for any enum-valued key: it is the only getter immune to the YAML boolean trap below.
 - `getSection(key)` returns the raw `ConfigurationSection` (values read from it bypass placeholder resolution).
 - `isSet(key)` returns `true` when the key exists in the file, keeping an explicit `0`/`false`/empty value distinguishable from an absent key.
 
 {% hint style="info" %}
 Tabs used for indentation are repaired automatically before parsing, with a single warning listing the fixed lines. Block scalars are left untouched. A file that fails to parse entirely keeps its previous in-memory content rather than wiping it.
 {% endhint %}
+
+### The YAML boolean trap
+
+YAML resolves six unquoted spellings - `on`, `off`, `yes`, `no`, `true`, `false`, in ANY case - to a boolean, before any Sn code sees the value. So a key documented as taking `OFF` hands `getString` the boolean `false`, never the text `OFF`:
+
+```yaml
+level: OFF      # the boolean false
+level: "OFF"    # the string OFF
+mode: NO        # the boolean false
+mode: NORMAL    # the string NORMAL
+```
+
+Two rules follow, and both are cheap:
+
+- Read an enum-valued key with `getEnum` (1.35.0), which maps the boolean back to the constant that produced it - `false` to the enum's `OFF`/`NO`/`FALSE`, `true` to its `ON`/`YES`/`TRUE` - so the owner may write it unquoted, the way the comment above the key spells it. `getString` + `valueOf` cannot: by then the spelling is gone.
+- Never NAME a config key `yes` or `no`. The key side is resolved the same way, so the key becomes a boolean and no longer matches the string you look it up by.
 
 ## Placeholder resolution per getter
 

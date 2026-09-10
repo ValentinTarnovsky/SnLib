@@ -70,12 +70,15 @@ package com.sn.lib;
  * player: SnLang.broadcast(String, Player, Ph...) resolves PAPI against the subject once, so
  * a per-player token spliced through a Ph value or written in the line - a rank prefix in a
  * redeem announcement - renders for everyone instead of surviving as literal text against
- * the null server viewer).</p>
+ * the null server viewer); LEVEL 22 = release 1.35.0 (an enum key survives the YAML boolean
+ * trap: SnYml.getEnum(String, Class, Enum) reads a constant case-insensitively and maps the
+ * boolean an unquoted OFF/ON/YES/NO/TRUE/FALSE resolves to back onto the constant the owner
+ * typed, so a value spelled the way its own comment spells it stops arriving as 'false').</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 21;
+    public static final int LEVEL = 22;
 
     private SnApi() {
     }

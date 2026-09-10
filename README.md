@@ -77,6 +77,7 @@ SnYml seed = sn.yml().seedOnly("presets.yml");  // only copied if missing
 SnYml data = sn.yml().data("state.yml");        // data: never merged
 int max = cfg.getInt("max-uses", 10);           // non-numeric -> 10 + WARN
 String s = cfg.getString("msg", "hi", viewer);  // overload with viewer (PAPI)
+Mode m = cfg.getEnum("mode", Mode.class, NONE); // v1.35.0, YAML-boolean proof
 cfg.onReload(() -> recache());
 cfg.set("last-run", now); cfg.save();           // async with coalescing
 ```
@@ -84,6 +85,17 @@ cfg.set("last-run", now); cfg.save();           // async with coalescing
 - Without a viewer, PAPI resolves with a null player (`%server_online%`
   works); with a viewer it resolves per-player; in async the PAPI tokens stay
   untouched and only local placeholders apply.
+- An enum key survives the YAML boolean trap (v1.35.0): YAML resolves the six
+  unquoted spellings `on`/`off`/`yes`/`no`/`true`/`false`, in ANY case, to a
+  boolean before any getter sees them, so a key documented as taking `OFF`
+  arrived as `false` and `getString` + `valueOf` could not recover the name -
+  `debug.level: OFF` fell back to `DEBUG`, the LOUDEST level, behind two WARN
+  lines naming a value the owner never wrote. `getEnum(key, type, def)` maps
+  the boolean back onto the constant that produced it (`false` to the enum's
+  `OFF`/`NO`/`FALSE`, `true` to its `ON`/`YES`/`TRUE`), so the constant may be
+  written unquoted; quoting it keeps working, and is what `set` writes back.
+  Use it for every enum-valued key. The sibling rule is unchanged: never NAME
+  a key `yes` or `no`.
 - `save()` is async with coalescing (at most one pending write per file);
   during teardown it switches to SYNCHRONOUS writes and `flush()` drains
   whatever is pending.

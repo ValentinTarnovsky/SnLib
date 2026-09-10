@@ -141,8 +141,10 @@ surface (new public methods or classes). Its history:
 - LEVEL 18 = release 1.27.0 - a continuation a caller can chain onto (`SnFuture.chainSync`)
 - LEVEL 19 = release 1.28.0 - menus can receive an item (`input:` cells, the `player-inventory:` policy, `ItemOffer` + `GuiSession.onOffer`/`handleOffer`/`isInputSlot`)
 - LEVEL 20 = release 1.32.0 - bind-time locals before PAPI (the `SnYml.getString`/`getStringList` overloads taking `Ph...`, read by every appearance field of `SnItem.fromConfig`, so a bound placeholder may sit inside a PAPI token)
+- LEVEL 21 = release 1.34.0 - a broadcast about a player (`SnLang.broadcast(String, Player, Ph...)`, which resolves PAPI against the subject once so a per-player token renders for everyone)
+- LEVEL 22 = release 1.35.0 - an enum key survives the YAML boolean trap (`SnYml.getEnum(String, Class, Enum)`, which maps the boolean an unquoted `OFF`/`ON`/`YES`/`NO`/`TRUE`/`FALSE` resolves to back onto the constant the owner typed)
 
-The current value is 20. Releases that change only behaviour do not bump it:
+The current value is 22. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
 surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing

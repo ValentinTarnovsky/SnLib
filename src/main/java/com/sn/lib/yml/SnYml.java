@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -226,6 +227,49 @@ public final class SnYml {
             }
             warnInvalid(key, s, def);
             return def;
+        }
+        warnInvalid(key, raw, def);
+        return def;
+    }
+
+    /**
+     * Enum value read case-insensitively, immune to the YAML boolean collision (1.35.0).
+     *
+     * <p>A constant named {@code OFF}, {@code ON}, {@code YES}, {@code NO}, {@code TRUE} or
+     * {@code FALSE} never reaches a getter as text: the YAML 1.1 core schema resolves those
+     * six spellings, in ANY case, to a boolean, so an owner who writes {@code level: OFF} -
+     * exactly as the comment above the key spells it - hands this file a {@code false}. The
+     * boolean is mapped back to the constant that produced it: {@code false} to the first of
+     * {@code OFF}, {@code NO}, {@code FALSE} the enum declares and {@code true} to the first
+     * of {@code ON}, {@code YES}, {@code TRUE}. The owner may therefore write the constant
+     * unquoted; quoting it ({@code level: "OFF"}) keeps working and is what {@link #set}
+     * writes back, because the emitter quotes a string it would otherwise re-read as a
+     * boolean.</p>
+     *
+     * <p>The token is read RAW: an enum constant is a fixed name, never text to render, so
+     * no local, bind-time or PAPI resolution runs over it. An absent key returns {@code def}
+     * silently; a value the enum does not name falls back to {@code def} and logs one WARN.</p>
+     */
+    public <E extends Enum<E>> E getEnum(String key, Class<E> type, E def) {
+        Object raw = yaml.get(key);
+        if (raw == null) {
+            if (!yaml.isSet(key)) {
+                return def;
+            }
+            warnInvalid(key, null, def);
+            return def;
+        }
+        if (raw instanceof Boolean b) {
+            E mapped = firstConstant(type, b ? YAML_TRUE_NAMES : YAML_FALSE_NAMES);
+            if (mapped != null) {
+                return mapped;
+            }
+            warnYamlBoolean(key, b, def);
+            return def;
+        }
+        E value = constant(type, String.valueOf(raw).trim());
+        if (value != null) {
+            return value;
         }
         warnInvalid(key, raw, def);
         return def;
@@ -540,5 +584,43 @@ public final class SnYml {
     private void warnInvalid(String key, Object value, Object def) {
         ctx.plugin().getLogger().warning("Invalid value in " + file.getName() + " -> '" + key
                 + "': received '" + value + "', using default '" + def + "'");
+    }
+
+    /**
+     * The {@link #getEnum} miss worth its own sentence: the value the owner typed is gone by
+     * the time it gets here (the parser kept only the boolean it resolved to), so naming the
+     * tokens that produce it is the only way the reader can find their own line.
+     */
+    private void warnYamlBoolean(String key, boolean value, Object def) {
+        ctx.plugin().getLogger().warning("Invalid value in " + file.getName() + " -> '" + key
+                + "': received the YAML boolean '" + value + "' (an unquoted "
+                + (value ? "on/yes/true" : "off/no/false") + " is never a name), using default '"
+                + def + "'");
+    }
+
+    /** Enum constant names the YAML boolean {@code false} may have been written as. */
+    static final List<String> YAML_FALSE_NAMES = List.of("OFF", "NO", "FALSE");
+
+    /** Enum constant names the YAML boolean {@code true} may have been written as. */
+    static final List<String> YAML_TRUE_NAMES = List.of("ON", "YES", "TRUE");
+
+    /** First of {@code names} the enum actually declares, or null when it declares none. */
+    static <E extends Enum<E>> E firstConstant(Class<E> type, List<String> names) {
+        for (String name : names) {
+            E found = constant(type, name);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /** Constant named {@code name} case-insensitively, or null when the enum has no such one. */
+    static <E extends Enum<E>> E constant(Class<E> type, String name) {
+        try {
+            return Enum.valueOf(type, name.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 }

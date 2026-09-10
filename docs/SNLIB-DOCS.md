@@ -352,7 +352,7 @@ Managed config of SnLib itself (mounted at `plugins/SnLib/config.yml` by the sel
 
 - `update-configs: true` - master gate of the always-merge updater: when `false` it skips every yml merge except this file.
 - `debug.enabled: false` - master toggle of the library's debug output (also toggleable live, no restart).
-- `debug.level: DEBUG` - verbosity threshold: `OFF`, `INFO`, `DEBUG` or `TRACE`.
+- `debug.level: DEBUG` - verbosity threshold: `OFF`, `INFO`, `DEBUG` or `TRACE`. Read with `SnYml.getEnum` since 1.35.0, so `OFF` written unquoted - which YAML resolves to the boolean `false` - still means `OFF` instead of falling back to `DEBUG` with two WARN lines.
 - `debug.categories: []` - category filter; an empty list lets everything through.
 - `bstats: true` - anonymous metrics via bStats (https://bstats.org); `false` to opt out (read in `SnLibPlugin.onEnable` before creating `Metrics`).
 
@@ -671,6 +671,7 @@ A YAML file owned by a consumer context (`Sn ctx`): tab-tolerant loading, placeh
 - `public double getDouble(String key, double def)` - same with `doubleValue()` / `Double.parseDouble`.
 - `public long getLong(String key, long def)` - same with `longValue()` / `Long.parseLong`.
 - `public boolean getBoolean(String key, boolean def)` - boolean; `Boolean` directly; from a string only the literals `true`/`false` parse (case-insensitive, after resolving and trimming).
+- `public <E extends Enum<E>> E getEnum(String key, Class<E> type, E def)` (1.35.0) - enum constant read case-insensitively and trimmed, WITHOUT any resolve pass (a constant is a fixed name, not text to render). Immune to the YAML boolean collision: the YAML 1.1 core schema resolves `off`/`no`/`false`/`on`/`yes`/`true` in any case to a boolean, so a `Boolean` raw is mapped back to the constant that produced it - `false` to the first of `OFF`/`NO`/`FALSE` the enum declares, `true` to the first of `ON`/`YES`/`TRUE`. A boolean whose side the enum names in none of the three ways logs the dedicated WARN "received the YAML boolean 'false' (an unquoted off/no/false is never a name)" and returns `def`; any other unknown value takes the ordinary WARN.
 - `public List<String> getStringList(String key, List<String> def)` - string list with each element resolved; a missing key returns `def` silently.
 - `public List<String> getStringList(String key, List<String> def, Player viewer)` - same, resolving per-viewer; a null element is converted to `""` before resolving.
 - `public List<String> getStringList(String key, List<String> def, Player viewer, Ph... phs)` (1.32.0) - same with extra bind-time locals, element by element; the order of the `getString` overload.
@@ -690,13 +691,13 @@ A YAML file owned by a consumer context (`Sn ctx`): tab-tolerant loading, placeh
 
 All getters share the same skeleton over `Object raw = yaml.get(key)`:
 
-| Case | getString | getInt / getLong / getDouble | getBoolean | getStringList |
-|---|---|---|---|---|
-| `raw == null` and `!isSet(key)` (missing key) | `def` silently | `def` silently | `def` silently | `def` silently |
-| `raw == null` but `isSet(key)` (key with explicit null value) | WARN + `def` | WARN + `def` | WARN + `def` | WARN + `def` |
-| Expected native type | `String` -> `resolve(s, viewer)` | `Number` -> `intValue()/longValue()/doubleValue()` (no resolve) | `Boolean` -> direct | `List<?>` -> each element `String.valueOf` + `resolve` (null -> `""`) |
-| `String` (for non-string types) | n/a | `resolve(s, null).trim()` + parse; `NumberFormatException` -> WARN + `def` | `resolve(s, null).trim()`; only `"true"`/`"false"` ignore-case; anything else -> WARN + `def` | n/a (a string is NOT a list: WARN + `def`) |
-| Other type | WARN + returns `resolve(String.valueOf(raw), viewer)` (NOT `def`) | WARN + `def` | WARN + `def` | WARN + `def` |
+| Case | getString | getInt / getLong / getDouble | getBoolean | getStringList | getEnum (1.35.0) |
+|---|---|---|---|---|---|
+| `raw == null` and `!isSet(key)` (missing key) | `def` silently | `def` silently | `def` silently | `def` silently | `def` silently |
+| `raw == null` but `isSet(key)` (key with explicit null value) | WARN + `def` | WARN + `def` | WARN + `def` | WARN + `def` | WARN + `def` |
+| Expected native type | `String` -> `resolve(s, viewer)` | `Number` -> `intValue()/longValue()/doubleValue()` (no resolve) | `Boolean` -> direct | `List<?>` -> each element `String.valueOf` + `resolve` (null -> `""`) | `String` -> `trim().toUpperCase()` + `Enum.valueOf` (no resolve); unknown name -> WARN + `def` |
+| `String` (for non-string types) | n/a | `resolve(s, null).trim()` + parse; `NumberFormatException` -> WARN + `def` | `resolve(s, null).trim()`; only `"true"`/`"false"` ignore-case; anything else -> WARN + `def` | n/a (a string is NOT a list: WARN + `def`) | n/a (that IS the native case) |
+| Other type | WARN + returns `resolve(String.valueOf(raw), viewer)` (NOT `def`) | WARN + `def` | WARN + `def` | WARN + `def` | `Boolean` -> the `OFF`/`NO`/`FALSE` or `ON`/`YES`/`TRUE` constant the enum declares, else the YAML-boolean WARN + `def`; anything else -> `String.valueOf` then the native case |
 
 The WARN is always `warnInvalid`: `"Invalid value in <file> -> '<key>': received '<value>', using default '<def>'"` (in the special getString wrong-type case the message says "using default" but the method returns the stringified, resolved value, not `def`).
 
@@ -953,7 +954,7 @@ Public enum:
 
 Public methods:
 
-- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: builds the three prefixes (`[Plugin][INFO] `/`[Plugin][DEBUG] `/`[Plugin][TRACE] `) and, if there is a backing yml (the mounted main config), restores `debug.enabled` (default false), `debug.level` (default `DEBUG`; an invalid value logs WARN "Invalid value in debug.level: 'X', using DEBUG" and uses `DEBUG`) and `debug.categories` (normalized to lowercase trim). With a null storage the toggles live in memory only.
+- `public SnDebug(JavaPlugin plugin, @Nullable SnYml storage)` - Constructor: builds the three prefixes (`[Plugin][INFO] `/`[Plugin][DEBUG] `/`[Plugin][TRACE] `) and, if there is a backing yml (the mounted main config), restores `debug.enabled` (default false), `debug.level` (default `DEBUG`, read through `SnYml.getEnum` since 1.35.0 - so an unquoted `OFF`, which YAML hands over as the boolean `false`, is honored as `OFF`, and only a value the enum truly does not name falls back to `DEBUG` with one WARN from the getter) and `debug.categories` (normalized to lowercase trim). With a null storage the toggles live in memory only.
 - `public void info(String message)` - Logs on the INFO channel when the master toggle is on and the level is at least `INFO`.
 - `public void info(Supplier<String> message)` - Lazy variant of the INFO channel (the supplier is not evaluated if the channel does not emit).
 - `public void log(String message)` - Logs the message when debug output is enabled.
