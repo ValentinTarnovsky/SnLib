@@ -67,6 +67,18 @@ class GuiSeederTest {
         assertEquals(List.of("guis/a.yml", "guis/b.yml"), paths);
     }
 
+    @Test
+    void folderFilterKeepsOnlyTopLevelYmlOfThatFolder() {
+        List<String> paths = GuiSeeder.guiResourcePaths(List.of(
+                "modules/party/guis/shop.yml",
+                "modules/party/guis/sub/x.yml",          // nested: ignored
+                "modules/party/lang/messages_en.yml",    // sibling folder: ignored
+                "guis/main.yml",                         // global folder: ignored
+                "modules/other/guis/a.yml"),             // another module: ignored
+                "modules/party/guis");
+        assertEquals(List.of("modules/party/guis/shop.yml"), paths);
+    }
+
     // ------------------------------------------------------------------
     // Jar enumeration
     // ------------------------------------------------------------------
@@ -100,6 +112,25 @@ class GuiSeederTest {
         File onDisk = new File(dataFolder, "guis/shop.yml");
         assertTrue(onDisk.isFile());
         assertEquals(List.of("title: Shop", "rows: 3"), readLines(onDisk));
+        assertFalse(log.hasWarning(), "seeding a missing file must not WARN: " + log.messages());
+    }
+
+    @Test
+    void folderSeedWritesMissingFileUnderThatFolder(@TempDir File dir) throws IOException {
+        File jar = buildJar(new File(dir, "consumer.jar"), Map.of(
+                "modules/party/guis/shop.yml", "title: Party\n",
+                "guis/main.yml", "title: Main\n"));
+        File dataFolder = new File(dir, "data");
+        CapturingLogger log = new CapturingLogger();
+
+        List<String> seeded = GuiSeeder.seed(jar, dataFolder, "modules/party/guis", null,
+                log.logger);
+
+        assertEquals(List.of("modules/party/guis/shop.yml"), seeded);
+        assertEquals(List.of("title: Party"),
+                readLines(new File(dataFolder, "modules/party/guis/shop.yml")));
+        assertFalse(new File(dataFolder, "guis").exists(),
+                "seeding a module folder must not write under the global guis/ folder");
         assertFalse(log.hasWarning(), "seeding a missing file must not WARN: " + log.messages());
     }
 

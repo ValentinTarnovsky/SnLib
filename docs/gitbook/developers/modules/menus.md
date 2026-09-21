@@ -52,8 +52,31 @@ Ship your default menus as `guis/*.yml` resources inside your jar. On load (onEn
 The menu id is still the file name without the extension, so a bundled `guis/shop.yml` seeds to `plugins/YourPlugin/guis/shop.yml` and loads as `"shop"`.
 
 {% hint style="warning" %}
-If your spec declares `guis()` but the `guis/` folder ends up empty (nothing bundled in the jar and nothing dropped in by hand), no menu loads and SnLib logs a WARN naming the empty folder. Bundle your menus as `guis/*.yml` in the jar so they seed, or place the files in the folder.
+If your spec declares `guis()` but no menu loads at all (nothing bundled in the jar and nothing dropped in by hand, in `guis/` or in any folder registered through `loadFolder`), SnLib logs one WARN. Since 1.36.0 that check runs one tick after enable, so folders you register in `onInnerEnable` count. Bundle your menus as `guis/*.yml` (or `<folder>/*.yml`) in the jar so they seed, or place the files in the folder.
 {% endhint %}
+
+## Extra menu folders (1.36.0)
+
+A modular plugin can keep each module's menus next to the rest of that module's files instead of one shared `guis/` folder:
+
+```
+src/main/resources/
+  guis/main.yml                     global menus: id "main"
+  modules/party/guis/shop.yml       only the party module's menus
+```
+
+Register the folder with a namespace, from `onInnerEnable` (or when the module turns on):
+
+```java
+sn.guis().loadFolder("modules/party/guis", "party");
+sn.guis().get("party:shop").open(player);
+```
+
+- The folder's top-level `*.yml` are seeded and merged from the jar with the same managed semantics as `guis/`, gated by `update-configs`.
+- Each menu loads as `"<namespace>:<file name>"`, so these ids do not collide with a `guis/` id. Menus open each other with `[open] party:shop`.
+- The folder is remembered: every reload (`/<root> reload`, `sn.reload()`) reloads it together with `guis/`, picking up new files. Calling `loadFolder` again for the same folder re-reads its files from disk.
+- Each folder needs its own namespace: registering a second folder under a namespace that is already in use throws `IllegalArgumentException`.
+- `sn.guis().unloadFolder("modules/party/guis")` forgets the folder: its menus stop resolving and any open `party:*` menu is closed.
 
 ## A realistic example
 

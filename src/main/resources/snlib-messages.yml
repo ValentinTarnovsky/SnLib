@@ -30,6 +30,12 @@ snlib:
     entry: "&e{usage} &7{description}"
     # Printed after the entries only when the help spans several pages; {command} is the root command name.
     footer: "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"
+    # Header of a group's own help (/<command> <group> help); {group} is the group name, {path}
+    # its full command path, {description} its description and {plugin} the plugin name.
+    group-header: "&8&m----------&r &e&l{group} &8&m----------"
+    # Printed after a group's help entries only when they span several pages; {path} is the
+    # group's full command path.
+    group-footer: "&7Page &f{page}&7/&f{total} &8- &7{path} help <page>"
   teleport:
     # Sent when a warmup teleport starts. Placeholder: {time} is the warmup in seconds.
     warmup: "&7Teleporting in &e{time}&7. Do not move."

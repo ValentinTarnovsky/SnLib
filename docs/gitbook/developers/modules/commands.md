@@ -471,6 +471,34 @@ own `snlib.admin` parent over `snlib.admin.reload`, `snlib.admin.version` and th
 your admin subcommands under an `admin` group (see [nested subcommands](#nested-subcommands-groups))
 and the `.admin.<sub>` permission nodes line up with the command tree one to one.
 
+### Group help (1.36.0)
+
+A plugin with one admin group per module (or per game, per arena type) floods the root help:
+every leaf of every group gets its own line. Declare such a group with `groupHelp()` and it
+gets its own help instead:
+
+```java
+SubCommandBuilder admin = root.sub("admin").permission("sndungeons.admin");
+admin.sub("party", party -> party
+        .groupHelp()
+        .permission("sndungeons.admin.party")
+        .description("Party module setup")
+        .sub("create", c -> c.arg("name", Args.string()).description("Creates a party").executes(this::create))
+        .sub("wipe", w -> w.permission("sndungeons.admin.party.wipe").description("Wipes every party").executes(this::wipe)));
+```
+
+- `/dg help` lists the whole group as ONE line: `/dg admin party help  Party module setup`.
+- `/dg admin party` (bare) and `/dg admin party help [page]` list only that group's leaves
+  the sender can use, paginated by 10, under the label the sender typed.
+- Tab completion offers `help` next to the group's children.
+- The group's own help renders through `snlib.help.group-header` (`{group}`, `{path}`,
+  `{description}`, `{plugin}`), `snlib.help.entry` and `snlib.help.group-footer` (`{page}`,
+  `{total}`, `{path}`). Both new keys merge into every plugin's lang file on boot.
+- A child you declare with the name `help` wins over the generated one. `groupHelp()` on a
+  node without children does nothing.
+- A group without `groupHelp()` behaves exactly as before: bare shows the usage line and
+  `help` is an unknown subcommand.
+
 ## Bare-root behavior (`onEmpty`)
 
 Running the root with no arguments (`/kit`) prints the generated help by default. Override

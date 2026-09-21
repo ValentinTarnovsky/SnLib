@@ -70,10 +70,15 @@ public final class RootCommand extends Command implements Registrable {
             Map.entry("snlib.reload-done", "&aConfiguration reloaded."),
             Map.entry("snlib.help.header", "&8&m----------&r &e&l{plugin} &8&m----------"),
             Map.entry("snlib.help.entry", "&e{usage} &7{description}"),
-            Map.entry("snlib.help.footer", "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"));
+            Map.entry("snlib.help.footer", "&7Page &f{page}&7/&f{total} &8- &7/{command} help <page>"),
+            Map.entry("snlib.help.group-header", "&8&m----------&r &e&l{group} &8&m----------"),
+            Map.entry("snlib.help.group-footer", "&7Page &f{page}&7/&f{total} &8- &7{path} help <page>"));
 
     /** Entries per generated help page. */
     private static final int HELP_PAGE_SIZE = 10;
+
+    /** Child token that opens the generated help of a {@link SubCommandBuilder#groupHelp()} group. */
+    private static final String GROUP_HELP_TOKEN = "help";
 
     private final Sn ctx;
     private final @Nullable SnLang lang;
@@ -171,6 +176,7 @@ public final class RootCommand extends Command implements Registrable {
                 }
             }
             case Message message -> send(sender, message.key(), message.phs());
+            case GroupHelp help -> sendGroupHelp(sender, help);
             case Run run -> {
                 try {
                     run.sub().executor.accept(run.context());
@@ -248,33 +254,44 @@ public final class RootCommand extends Command implements Registrable {
         if (sub == null) {
             return new Message("snlib.unknown-subcommand", Ph.of("value", args[0]));
         }
-        return dispatch(sender, sub, args, 0, rootPath + " " + sub.name);
+        return dispatch(sender, sub, args, 0, rootPath + " " + sub.name, rootPermission);
     }
 
     /**
      * Recursively resolves {@code sub}: a group dispatches on the next token among its
      * children (with child aliases) and falls back to a full-path usage (no token) or a
-     * full-path unknown-subcommand message (unknown token); a leaf validates arity and
+     * full-path unknown-subcommand message (unknown token); a group declared with
+     * {@link SubCommandBuilder#groupHelp()} resolves to its own help instead, both bare and
+     * on a {@code help [page]} token no declared child claims. A leaf validates arity and
      * conditions, then parses its positional arguments relative to itself. {@code matchedAt}
      * is the index in {@code args} of the token that selected {@code sub}; {@code path} is
-     * the full command path up to and including it.
+     * the full command path up to and including it; {@code inheritedPermission} is the
+     * nearest ancestor permission, carried so a group help can show effective permissions.
      */
     private static Resolution dispatch(CommandSender sender, Sub sub, String[] args,
-            int matchedAt, String path) {
+            int matchedAt, String path, @Nullable String inheritedPermission) {
         if (sub.permission != null && !sender.hasPermission(sub.permission)) {
             return new Message("snlib.no-permission");
         }
+        String effective = sub.permission != null ? sub.permission : inheritedPermission;
         if (!sub.children.isEmpty()) {
             int next = matchedAt + 1;
             if (next >= args.length) {
+                if (sub.groupHelp) {
+                    return new GroupHelp(sub, path, effective, 1);
+                }
                 return new Message("snlib.usage", Ph.of("usage", groupUsage(sender, sub, path)));
             }
             Sub child = find(sub.children, args[next]);
+            if (child == null && sub.groupHelp && GROUP_HELP_TOKEN.equalsIgnoreCase(args[next])) {
+                return new GroupHelp(sub, path, effective,
+                        pageFrom(next + 1 < args.length ? args[next + 1] : null));
+            }
             if (child == null) {
                 return new Message("snlib.unknown-subcommand",
                         Ph.of("value", path + " " + args[next]));
             }
-            return dispatch(sender, child, args, next, path + " " + child.name);
+            return dispatch(sender, child, args, next, path + " " + child.name, effective);
         }
         String[] subArgs = Arrays.copyOfRange(args, matchedAt + 1, args.length);
         if (subArgs.length < sub.requiredArgs) {
@@ -331,7 +348,18 @@ public final class RootCommand extends Command implements Registrable {
             return List.of();
         }
         if (!sub.children.isEmpty()) {
-            return tabAt(sender, sub.children, args, pos + 1);
+            List<String> names = tabAt(sender, sub.children, args, pos + 1);
+            // A groupHelp group also offers its generated "help" while its child token is
+            // typed, unless a declared child already owns that name.
+            if (sub.groupHelp && args.length == pos + 2
+                    && find(sub.children, GROUP_HELP_TOKEN) == null
+                    && GROUP_HELP_TOKEN.startsWith(args[pos + 1].toLowerCase(Locale.ROOT))) {
+                List<String> withHelp = new ArrayList<>(names);
+                withHelp.add(GROUP_HELP_TOKEN);
+                Collections.sort(withHelp);
+                return withHelp;
+            }
+            return names;
         }
         return tabLeaf(sender, sub, args, pos + 1);
     }
@@ -409,11 +437,43 @@ public final class RootCommand extends Command implements Registrable {
     }
 
     /**
+     * Generated help of one {@link SubCommandBuilder#groupHelp()} group: a group header,
+     * one entry per leaf of that group the sender can reach (full paths under the label the
+     * sender typed, nested groupHelp groups collapsed to one entry), paginated through
+     * {@link Page}, and a group footer only when the entries span several pages.
+     */
+    void sendGroupHelp(CommandSender sender, GroupHelp help) {
+        Sub group = help.group();
+        List<HelpLine> lines = collectHelp(sender, group.children, help.path(), help.permission());
+        Page<HelpLine> page = Page.of(lines, HELP_PAGE_SIZE);
+        int current = page.clamp(help.page());
+        send(sender, "snlib.help.group-header",
+                Ph.of("plugin", ctx.plugin().getName()),
+                Ph.of("group", group.name),
+                Ph.of("path", help.path()),
+                Ph.of("description", group.labels().description()));
+        for (HelpLine line : page.page(current)) {
+            send(sender, "snlib.help.entry",
+                    Ph.of("usage", line.usage()),
+                    Ph.of("description", line.description()),
+                    Ph.of("permission", line.permission() == null ? "" : line.permission()));
+        }
+        if (page.totalPages() > 1) {
+            send(sender, "snlib.help.group-footer",
+                    Ph.of("page", current),
+                    Ph.of("total", page.totalPages()),
+                    Ph.of("path", help.path()));
+        }
+    }
+
+    /**
      * Flattens the tree into one help line per reachable leaf: a node hidden
      * ({@code !visible} or {@code !helpVisible}) or whose own permission the sender lacks
-     * (and its subtree) is skipped; a group recurses into its children; a leaf yields its
-     * full-path usage, description and effective permission ({@code inheritedPermission}
-     * narrowed by each node's own permission on the path).
+     * (and its subtree) is skipped; a group recurses into its children, except a
+     * {@link SubCommandBuilder#groupHelp()} group, which yields ONE line pointing at its own
+     * help ({@code <path> help} with the group's description); a leaf yields its full-path
+     * usage, description and effective permission ({@code inheritedPermission} narrowed by
+     * each node's own permission on the path).
      */
     static List<HelpLine> collectHelp(CommandSender sender, List<Sub> nodes, String path,
             @Nullable String inheritedPermission) {
@@ -429,6 +489,13 @@ public final class RootCommand extends Command implements Registrable {
             String here = path + " " + sub.name;
             if (sub.children.isEmpty()) {
                 out.add(new HelpLine(usageOf(sub, here), sub.labels().description(), effective));
+            } else if (sub.groupHelp) {
+                // One line for the whole group, and only when its own help would list at
+                // least one leaf for this sender.
+                if (!collectHelp(sender, sub.children, here, effective).isEmpty()) {
+                    out.add(new HelpLine(here + " " + GROUP_HELP_TOKEN,
+                            sub.labels().description(), effective));
+                }
             } else {
                 out.addAll(collectHelp(sender, sub.children, here, effective));
             }
@@ -552,12 +619,25 @@ public final class RootCommand extends Command implements Registrable {
     record HelpLine(String usage, String description, @Nullable String permission) {
     }
 
-    /** Outcome of {@link #resolve}: {@link Empty}, a {@link Message} to send, or a {@link Run}. */
-    sealed interface Resolution permits Empty, Message, Run {
+    /**
+     * Outcome of {@link #resolve}: {@link Empty}, a {@link Message} to send, a
+     * {@link GroupHelp} page to render, or a {@link Run}.
+     */
+    sealed interface Resolution permits Empty, Message, GroupHelp, Run {
     }
 
     /** The root was invoked with zero arguments; the bare-root hook or the help applies. */
     record Empty() implements Resolution {
+    }
+
+    /**
+     * The generated help of a {@link SubCommandBuilder#groupHelp()} group was asked for,
+     * bare or through {@code help [page]}; {@code path} is the group's full command path
+     * under the label the sender typed and {@code permission} its effective permission (its
+     * own, or the nearest ancestor's).
+     */
+    record GroupHelp(Sub group, String path, @Nullable String permission, int page)
+            implements Resolution {
     }
 
     /** The resolved leaf, its parsed context and its full path; ready to run its executor. */
@@ -628,13 +708,15 @@ public final class RootCommand extends Command implements Registrable {
         final List<Condition> conditions;
         final @Nullable Consumer<CommandContext> executor;
         final List<Sub> children;
+        /** Whether this group renders its own help ({@link SubCommandBuilder#groupHelp()}). */
+        final boolean groupHelp;
         private volatile Labels labels;
 
         Sub(String name, List<String> aliases, @Nullable String permission,
                 @Nullable String usage, String description, boolean visible,
                 boolean helpVisible, Map<String, Arg<?>> args, int requiredArgs,
                 List<Condition> conditions, @Nullable Consumer<CommandContext> executor,
-                List<Sub> children) {
+                List<Sub> children, boolean groupHelp) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
             List<String> lowered = new ArrayList<>(aliases.size());
             for (String alias : aliases) {
@@ -651,6 +733,7 @@ public final class RootCommand extends Command implements Registrable {
             this.conditions = List.copyOf(conditions);
             this.executor = executor;
             this.children = List.copyOf(children);
+            this.groupHelp = groupHelp && !this.children.isEmpty();
             this.labels = Labels.of(this.description, this.args.keySet());
         }
 
@@ -667,7 +750,7 @@ public final class RootCommand extends Command implements Registrable {
         static Sub of(String name, @Nullable String permission, String description,
                 Consumer<CommandContext> executor) {
             return new Sub(name, List.of(), permission, null, description, true, true,
-                    Map.of(), 0, List.of(), executor, List.of());
+                    Map.of(), 0, List.of(), executor, List.of(), false);
         }
     }
 }

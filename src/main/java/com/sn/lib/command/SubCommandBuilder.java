@@ -37,6 +37,7 @@ public final class SubCommandBuilder {
     private String description = "";
     private boolean visible = true;
     private boolean helpVisible = true;
+    private boolean groupHelp;
     private int requiredArgs;
     private boolean optionalDeclared;
     private @Nullable Consumer<CommandContext> executor;
@@ -93,6 +94,23 @@ public final class SubCommandBuilder {
      */
     public SubCommandBuilder helpVisible(boolean helpVisible) {
         this.helpVisible = helpVisible;
+        return this;
+    }
+
+    /**
+     * Gives this GROUP its own generated help. The bare group ({@code /dg admin party}) and
+     * {@code /dg admin party help [page]} list only this group's reachable leaves, paginated
+     * and rendered under the label the sender typed, through the
+     * {@code snlib.help.group-header}, {@code snlib.help.entry} and
+     * {@code snlib.help.group-footer} lang keys. The parent's generated help then shows ONE
+     * entry for the whole group ({@code /dg admin party help} with this group's description)
+     * instead of flattening its leaves, so a tree with many groups keeps a short root help.
+     * Tab completion offers {@code help} among the group's children. A child declared with
+     * the name {@code help} wins over the generated one. No effect on a node without
+     * children.
+     */
+    public SubCommandBuilder groupHelp() {
+        this.groupHelp = true;
         return this;
     }
 
@@ -187,6 +205,7 @@ public final class SubCommandBuilder {
             builtChildren.add(child.build());
         }
         return new RootCommand.Sub(name, aliases, permission, usage, description,
-                visible, helpVisible, args, requiredArgs, conditions, executor, builtChildren);
+                visible, helpVisible, args, requiredArgs, conditions, executor, builtChildren,
+                groupHelp);
     }
 }

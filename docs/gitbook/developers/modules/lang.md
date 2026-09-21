@@ -174,11 +174,43 @@ the shared [text](text.md) pipeline, so a message can freely mix `&a`, `&#RRGGBB
 `[rgb]`, `[small]`, `[center]` and MiniMessage. Static lines (no placeholder token) are
 pre-rendered to a `Component` once at load; dynamic lines render per call.
 
+## Extra language folders (1.36.0)
+
+A modular plugin can keep each module's messages next to the rest of that module's files
+instead of one giant `lang/messages_en.yml`:
+
+```
+src/main/resources/
+  lang/messages_en.yml                 global messages (prefix, snlib.*, shared lines)
+  modules/party/lang/messages_en.yml   only the party module's messages
+```
+
+Register the folder once, from `onInnerEnable` (or when the module turns on):
+
+```java
+sn.lang().addSource("modules/party/lang", "party");
+sn.lang().send(player, "party.join", Ph.of("party", name));   // key "join" of that file
+```
+
+- The folder's `messages_en.yml` is seeded from the jar and always-merged afterwards,
+  gated by `update-configs`, exactly like `lang/messages_en.yml`.
+- With `lang: es` in the config, `modules/party/lang/messages_es.yml` is merged against
+  that folder's English and used. A folder without the translation keeps its English values
+  with ONE warning, not one per key.
+- Every key is served as `<namespace>.<key>` and gets the global `prefix` like any
+  single-line message.
+- A key that already exists in `lang/` with the same full path wins, with one warning per
+  key, and a key is never allowed to turn a message of `lang/` into a section. A namespace
+  that is itself a message key of `lang/` skips the folder with a warning.
+- The folder is remembered: every reload re-reads it with `lang/`.
+  `sn.lang().removeSource("modules/party/lang")` forgets it.
+
 ## Reloading
 
-`sn.lang().reload()` re-runs the seed and merge and rebuilds every cache from disk. You
-rarely call it directly: the default command `reload` sub and the context reload manager
-already reload the lang module as part of a full reload.
+`sn.lang().reload()` re-runs the seed and merge and rebuilds every cache from disk,
+including every folder registered through `addSource`. You rarely call it directly: the
+default command `reload` sub and the context reload manager already reload the lang module
+as part of a full reload.
 
 ## See also
 

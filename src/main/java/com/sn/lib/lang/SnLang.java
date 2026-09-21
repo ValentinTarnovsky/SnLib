@@ -37,6 +37,7 @@ import com.sn.lib.text.SnText;
 import com.sn.lib.yml.SnYml;
 import com.sn.lib.yml.YamlPreprocessor;
 import com.sn.lib.yml.YamlUpdater;
+import com.sn.lib.yml.internal.ResourceFolders;
 
 /**
  * Language module of a consumer context, reached through {@code sn.lang()}.
@@ -62,6 +63,13 @@ import com.sn.lib.yml.YamlUpdater;
  * template and render per call through the fixed SnText pipeline (locals, then PAPI per
  * viewer, then colors). Synchronous I/O by design: loading and merging run only in
  * onEnable and in the reload command, never during gameplay.</p>
+ *
+ * <p>Extra language folders: a modular consumer keeps each module's messages next to the
+ * rest of that module's files through {@link #addSource(String, String)}, e.g.
+ * {@code addSource("modules/party/lang", "party")}. The folder's files are seeded and
+ * merged exactly like {@code lang/}, and their keys are served under
+ * {@code "<namespace>.<key>"} ({@code party.join}). Registered folders are remembered and
+ * re-read on every reload.</p>
  */
 public final class SnLang {
 
@@ -88,6 +96,8 @@ public final class SnLang {
     private final Map<String, List<String>> templates = new ConcurrentHashMap<>();
     /** Pre-rendered components for keys whose lines carry no placeholder token. */
     private final Map<String, List<Component>> rendered = new ConcurrentHashMap<>();
+    /** Extra language folders (normalized path to key namespace) in registration order; main thread only. */
+    private final Map<String, String> sources = new LinkedHashMap<>();
 
     private volatile YamlConfiguration active = new YamlConfiguration();
     private volatile YamlConfiguration fallback = new YamlConfiguration();
@@ -422,6 +432,62 @@ public final class SnLang {
         load();
     }
 
+    /**
+     * Registers an extra language folder, e.g. {@code addSource("modules/party/lang",
+     * "party")}. Its {@code messages_en.yml} is seeded from the jar resource
+     * {@code <folder>/messages_en.yml} and always-merged afterwards (gated by
+     * {@code update-configs}) exactly like {@code lang/messages_en.yml}. When the configured
+     * language is not {@code en}, {@code <folder>/messages_<code>.yml} is merged against
+     * that English file and used; a folder without that translation falls back to its own
+     * English with one WARN, never one WARN per key.
+     *
+     * <p>Every key of the folder is served under {@code "<namespace>.<key>"}
+     * ({@code send(player, "party.join")}), gets the global {@code prefix} like any
+     * single-line message, and loses to a key of {@code lang/} with the same path or one that
+     * would have to pass through a message of {@code lang/} (one WARN per key). A namespace
+     * that is, or passes through, a message key of {@code lang/} in English or in the active
+     * language skips the whole folder with one WARN. The folder is remembered:
+     * {@link #reload()} and the reload flow
+     * re-read it together with {@code lang/}. Registering a new folder only reads that
+     * folder; registering the same folder again reloads the whole module. Main thread
+     * only.</p>
+     *
+     * @param folder    data-folder-relative path, also the jar resource prefix; {@code \}
+     *                  is normalized to {@code /}, and empty, {@code .} and {@code ..}
+     *                  segments are resolved; a blank path, a path holding {@code :}, one
+     *                  climbing out of the data folder, or {@code lang} is rejected
+     * @param namespace non-blank key namespace without whitespace and without a leading or
+     *                  trailing {@code .}
+     * @throws IllegalArgumentException on an invalid folder or namespace
+     */
+    public void addSource(String folder, String namespace) {
+        String dirPath = normalizeFolder(folder);
+        String ns = requireNamespace(namespace);
+        if (sources.containsKey(dirPath)) {
+            sources.put(dirPath, ns);
+            load();
+            return;
+        }
+        sources.put(dirPath, ns);
+        for (String key : overlaySource(dirPath, ns)) {
+            cacheKey(key);
+        }
+    }
+
+    /**
+     * Forgets a folder registered through {@link #addSource(String, String)} and reloads the
+     * module, so its keys stop resolving. An unknown folder is ignored. The files stay on
+     * disk.
+     *
+     * @param folder the folder as given to {@link #addSource(String, String)}
+     * @throws IllegalArgumentException on a blank folder or {@code lang}
+     */
+    public void removeSource(String folder) {
+        if (sources.remove(normalizeFolder(folder)) != null) {
+            load();
+        }
+    }
+
     // ------------------------------------------------------------------
     // Loading and merging
     // ------------------------------------------------------------------
@@ -440,6 +506,9 @@ public final class SnLang {
         } else {
             loadTranslation(dir, enFile, code);
         }
+        for (Map.Entry<String, String> source : sources.entrySet()) {
+            overlaySource(source.getKey(), source.getValue());
+        }
         cachePrefix();
         buildCaches();
         warnLiteralPrefixToken();
@@ -454,7 +523,7 @@ public final class SnLang {
         if (!dir.isDirectory() && !dir.mkdirs()) {
             ctx.plugin().getLogger().warning("Could not create folder " + LANG_DIR + "/");
         }
-        if (ctx.plugin().getResource(CONSUMER_RESOURCE) != null) {
+        if (hasResource(CONSUMER_RESOURCE)) {
             YamlUpdater.update(ctx.plugin(), CONSUMER_RESOURCE, enFile, false);
             return;
         }
@@ -546,13 +615,176 @@ public final class SnLang {
                     config != null ? config.file() : null);
             if (changed) {
                 ctx.plugin().getLogger().info("[update-configs] New keys from messages_"
-                        + FALLBACK_CODE + ".yml added to " + LANG_DIR + "/"
-                        + langFile.getName() + "; translate them when convenient");
+                        + FALLBACK_CODE + ".yml added to " + displayPath(langFile)
+                        + "; translate them when convenient");
             }
         } catch (IOException ex) {
             ctx.plugin().getLogger().warning("Could not merge translation "
-                    + langFile.getName() + ": " + ex.getMessage());
+                    + displayPath(langFile) + ": " + ex.getMessage());
         }
+    }
+
+    /**
+     * Seeds and merges one extra language folder and lays its keys, under {@code ns}, over
+     * the already loaded English fallback and active language. Returns the full keys it
+     * added. Runs after the {@code lang/} files resolved, so {@link #activeCode} is final.
+     */
+    private Set<String> overlaySource(String dirPath, String ns) {
+        File dir = new File(ctx.plugin().getDataFolder(), dirPath);
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            ctx.plugin().getLogger().warning("Could not create folder " + dirPath + "/");
+        }
+        if (namespaceBlocked(fallback, ns) || (active != fallback && namespaceBlocked(active, ns))) {
+            if (warnedKeys.add("source-clash:" + dirPath)) {
+                ctx.plugin().getLogger().warning("Namespace '" + ns + "' of lang source "
+                        + dirPath + " clashes with a message key of lang/; the source is skipped");
+            }
+            return Set.of();
+        }
+        File en = new File(dir, "messages_" + FALLBACK_CODE + ".yml");
+        String resource = dirPath + "/messages_" + FALLBACK_CODE + ".yml";
+        if (hasResource(resource)) {
+            YamlUpdater.update(ctx.plugin(), resource, en, false);
+        } else if (!en.exists()) {
+            if (warnedKeys.add("source:" + dirPath)) {
+                ctx.plugin().getLogger().warning("Lang source " + dirPath + " has no messages_"
+                        + FALLBACK_CODE + ".yml in the jar nor on disk; skipped");
+            }
+            return Set.of();
+        }
+        YamlConfiguration sourceEnglish = parseFile(en);
+        YamlConfiguration sourceActive = sourceEnglish;
+        if (!FALLBACK_CODE.equals(activeCode)) {
+            File translation = new File(dir, "messages_" + activeCode + ".yml");
+            if (translation.isFile()) {
+                mergeTranslation(en, translation);
+                YamlConfiguration parsed = parseFile(translation);
+                if (!parsed.getKeys(false).isEmpty()) {
+                    sourceActive = parsed;
+                }
+            } else if (warnedKeys.add("source-translation:" + dirPath)) {
+                ctx.plugin().getLogger().warning(dirPath + "/messages_" + activeCode
+                        + ".yml does not exist; the source uses its English values");
+            }
+        }
+        Set<String> added = new LinkedHashSet<>(layer(fallback, sourceEnglish, ns, dirPath));
+        if (active != fallback) {
+            added.addAll(layer(active, sourceActive, ns, dirPath));
+        }
+        return added;
+    }
+
+    /**
+     * Lays {@code source} over {@code target} through {@link #layerKeys} and logs one WARN
+     * per colliding key. The namespace clash was already ruled out by the caller against
+     * both languages.
+     */
+    private Set<String> layer(YamlConfiguration target, YamlConfiguration source, String ns,
+            String dirPath) {
+        Layered result = layerKeys(target, source, ns);
+        for (String full : result.collisions()) {
+            if (warnedKeys.add("collision:" + full)) {
+                ctx.plugin().getLogger().warning("Key '" + full + "' from " + dirPath
+                        + " collides with an existing message key; the existing one wins");
+            }
+        }
+        return result.added();
+    }
+
+    /**
+     * Copies every leaf of {@code source} into {@code target} under {@code ns}. A full path
+     * the target already holds, or one that would have to pass THROUGH a message of the
+     * target (the target has {@code party.menu} as a message and the source brings
+     * {@code menu.title}), keeps the target untouched and is reported as a collision: a
+     * nested {@code set} would otherwise turn that message into a section and silently drop
+     * it. A namespace blocked the same way leaves the target untouched and reports the
+     * clash. Pure over its arguments, so it runs under plain unit tests.
+     */
+    static Layered layerKeys(YamlConfiguration target, YamlConfiguration source, String ns) {
+        if (namespaceBlocked(target, ns)) {
+            return new Layered(Set.of(), List.of(), true);
+        }
+        Set<String> added = new LinkedHashSet<>();
+        List<String> collisions = new ArrayList<>();
+        for (String key : leafKeys(source)) {
+            String full = ns + "." + key;
+            if (target.contains(full) || messageOnPath(target, full)) {
+                collisions.add(full);
+                continue;
+            }
+            target.set(full, source.get(key));
+            added.add(full);
+        }
+        return new Layered(Set.copyOf(added), List.copyOf(collisions), false);
+    }
+
+    /** True when {@code ns}, or any dotted prefix of it, is a message (a leaf) of the target. */
+    static boolean namespaceBlocked(YamlConfiguration target, String ns) {
+        return (target.contains(ns) && !target.isConfigurationSection(ns))
+                || messageOnPath(target, ns);
+    }
+
+    /** True when a proper dotted prefix of {@code path} is a message (a leaf) of the target. */
+    private static boolean messageOnPath(YamlConfiguration target, String path) {
+        int dot = path.indexOf('.');
+        while (dot > 0) {
+            String prefix = path.substring(0, dot);
+            if (target.contains(prefix) && !target.isConfigurationSection(prefix)) {
+                return true;
+            }
+            dot = path.indexOf('.', dot + 1);
+        }
+        return false;
+    }
+
+    /** Whether the consumer jar bundles {@code path}; the probe stream is closed at once. */
+    private boolean hasResource(String path) {
+        try (InputStream in = ctx.plugin().getResource(path)) {
+            return in != null;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    /**
+     * Outcome of {@link #layerKeys}: the full keys added, the full keys that kept the
+     * target's value, and whether the namespace clashed with a leaf of the target.
+     */
+    record Layered(Set<String> added, List<String> collisions, boolean clashed) {
+    }
+
+    /** Data-folder-relative path of a lang file with {@code /} separators, for log lines. */
+    private String displayPath(File file) {
+        try {
+            return ctx.plugin().getDataFolder().toPath().relativize(file.toPath())
+                    .toString().replace('\\', '/');
+        } catch (IllegalArgumentException ex) {
+            return file.getName();
+        }
+    }
+
+    /** Normalized data-folder-relative folder of an extra language source. */
+    static String normalizeFolder(String folder) {
+        return ResourceFolders.normalize(folder, LANG_DIR, "Lang");
+    }
+
+    /** Validated key namespace of an extra language source. */
+    static String requireNamespace(String namespace) {
+        String ns = namespace == null ? "" : namespace.trim();
+        if (ns.isEmpty()) {
+            throw new IllegalArgumentException("Lang namespace is blank");
+        }
+        if (ns.startsWith(".") || ns.endsWith(".")) {
+            throw new IllegalArgumentException(
+                    "Lang namespace '" + ns + "' must not start or end with '.'");
+        }
+        for (int i = 0; i < ns.length(); i++) {
+            if (Character.isWhitespace(ns.charAt(i))) {
+                throw new IllegalArgumentException(
+                        "Lang namespace '" + ns + "' must not contain whitespace");
+            }
+        }
+        return ns;
     }
 
     private String desiredCode() {
@@ -581,8 +813,8 @@ public final class SnLang {
             }
             cfg.loadFromString(result.cleanText());
         } catch (IOException | InvalidConfigurationException ex) {
-            ctx.plugin().getLogger().warning("Could not read " + LANG_DIR + "/"
-                    + file.getName() + ": " + ex.getMessage());
+            ctx.plugin().getLogger().warning("Could not read " + displayPath(file) + ": "
+                    + ex.getMessage());
         }
         return cfg;
     }
@@ -608,18 +840,26 @@ public final class SnLang {
         keys.addAll(leafKeys(fallback));
         keys.addAll(leafKeys(active));
         for (String key : keys) {
-            List<String> lines = linesFor(key);
-            if (lines == null) {
-                continue;
+            cacheKey(key);
+        }
+    }
+
+    /**
+     * Caches one key: its resolved template lines, plus the pre-rendered components when
+     * the lines carry no placeholder token. A key absent from both languages is skipped.
+     */
+    private void cacheKey(String key) {
+        List<String> lines = linesFor(key);
+        if (lines == null) {
+            return;
+        }
+        templates.put(key, List.copyOf(lines));
+        if (isStatic(lines)) {
+            List<Component> out = new ArrayList<>(lines.size());
+            for (String line : lines) {
+                out.add(renderLine(line == null ? "" : line, null));
             }
-            templates.put(key, List.copyOf(lines));
-            if (isStatic(lines)) {
-                List<Component> out = new ArrayList<>(lines.size());
-                for (String line : lines) {
-                    out.add(renderLine(line == null ? "" : line, null));
-                }
-                rendered.put(key, List.copyOf(out));
-            }
+            rendered.put(key, List.copyOf(out));
         }
     }
 

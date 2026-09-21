@@ -315,6 +315,22 @@ sn.items().give(player, "wand", 1);
   its own first letters: SnPets' 165-pet registry, sorted A..Z, stopped
   suggesting at `Orbes_4`, and `p` over it matched nothing while `Pase_15`
   typed by hand still parsed. No public signature changed.
+- Per-module resource folders (v1.36.0): a modular plugin keeps every module's
+  files together under its own folder. `sn.guis().loadFolder("modules/party/guis",
+  "party")` seeds and loads that folder's menus as `party:<file>` (so
+  `[open] party:shop` works), and `sn.lang().addSource("modules/party/lang",
+  "party")` seeds and merges that folder's `messages_<code>.yml` and serves its
+  keys as `party.<key>`. Both are managed exactly like `guis/` and `lang/`,
+  survive every reload, and lose to the global files on a clash (one WARN).
+  `sn.yml().managed("modules/party/config.yml")` already worked for the config.
+  `unloadFolder` / `removeSource` undo them. The "no menu was loaded" WARN now
+  runs one tick later, so folders registered in `onInnerEnable` count.
+- Group help (v1.36.0): `SubCommandBuilder.groupHelp()` gives a command group its
+  own paginated help - `/dg admin party` and `/dg admin party help [page]` list
+  only that group's leaves - while the root help shows the whole group as ONE
+  line (`/dg admin party help`). It replaces the hand-written scoped help leaf a
+  plugin with one admin group per module needed before. New lang keys
+  `snlib.help.group-header` and `snlib.help.group-footer` merge in on boot.
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on

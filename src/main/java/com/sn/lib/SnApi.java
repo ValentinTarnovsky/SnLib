@@ -73,12 +73,17 @@ package com.sn.lib;
  * the null server viewer); LEVEL 22 = release 1.35.0 (an enum key survives the YAML boolean
  * trap: SnYml.getEnum(String, Class, Enum) reads a constant case-insensitively and maps the
  * boolean an unquoted OFF/ON/YES/NO/TRUE/FALSE resolves to back onto the constant the owner
- * typed, so a value spelled the way its own comment spells it stops arriving as 'false').</p>
+ * typed, so a value spelled the way its own comment spells it stops arriving as 'false');
+ * LEVEL 23 = release 1.36.0 (per-module resource folders and group help:
+ * GuiManager.loadFolder/unloadFolder serve menus from any folder under "namespace:file" ids
+ * that survive the reload, SnLang.addSource/removeSource layer a folder's
+ * messages_code.yml under "namespace.key", and SubCommandBuilder.groupHelp gives a command
+ * group its own paginated help while the parent help shows it as one entry).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 22;
+    public static final int LEVEL = 23;
 
     private SnApi() {
     }

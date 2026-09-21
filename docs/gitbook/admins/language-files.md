@@ -107,6 +107,8 @@ Restyle them once per plugin and every core message reads consistently across yo
 | `snlib.help.header` | Printed before the generated help entries. | `{plugin}` |
 | `snlib.help.entry` | One line per subcommand visible to the sender. | `{usage}`, `{description}`, `{permission}` |
 | `snlib.help.footer` | Printed after the entries, only when help spans several pages. | `{page}`, `{total}`, `{command}` |
+| `snlib.help.group-header` | Printed before the help of one command group (`/<command> <group> help`), in plugins that give a group its own help. | `{group}`, `{path}`, `{description}`, `{plugin}` |
+| `snlib.help.group-footer` | Printed after a group's help entries, only when they span several pages. | `{page}`, `{total}`, `{path}` |
 | `snlib.teleport.warmup` | A warmup teleport starts. | `{time}` |
 | `snlib.teleport.cancelled-move` | A pending teleport is cancelled because the player moved. | - |
 | `snlib.teleport.cancelled-damage` | A pending teleport is cancelled because the player took damage. | - |

@@ -630,4 +630,176 @@ class NestedCommandTest {
         assertMessage(RootCommand.resolve(senderWith(), null, List.of(level), "/clan",
                 new String[] {"level", "999"}), "snlib.out-of-range");
     }
+
+    // ------------------------------------------------------------- group help
+
+    /**
+     * The {@code /dg} tree of a modular plugin: an {@code admin} group holding a
+     * {@code modules} leaf and one {@code party} module group declared with
+     * {@code groupHelp()} (permission {@code dg.admin.party}) that owns two leaves, one of
+     * them behind its own permission.
+     */
+    private static List<RootCommand.Sub> moduleSubs() {
+        RootCommand.Sub admin = new SubCommandBuilder(null, "admin")
+                .permission("dg.admin")
+                .description("Admin tools")
+                .sub("modules", modules -> modules
+                        .description("Lists the modules")
+                        .executes(context -> { }))
+                .sub("party", party -> party
+                        .groupHelp()
+                        .permission("dg.admin.party")
+                        .description("Party module setup")
+                        .sub("create", create -> create
+                                .description("Creates a party")
+                                .arg("name", Args.string())
+                                .executes(context -> { }))
+                        .sub("wipe", wipe -> wipe
+                                .permission("dg.admin.party.wipe")
+                                .description("Wipes every party")
+                                .executes(context -> { })))
+                .build();
+        return List.of(admin);
+    }
+
+    private static RootCommand.GroupHelp asGroupHelp(RootCommand.Resolution resolution) {
+        assertTrue(resolution instanceof RootCommand.GroupHelp,
+                () -> "expected GroupHelp but was " + resolution.getClass().getSimpleName());
+        return (RootCommand.GroupHelp) resolution;
+    }
+
+    @Test
+    void bareGroupHelpGroupResolvesToItsHelpPageOne() {
+        RootCommand.GroupHelp help = asGroupHelp(RootCommand.resolve(
+                senderWith("dg.admin", "dg.admin.party"), null, moduleSubs(), "/dg",
+                new String[] {"admin", "party"}));
+        assertEquals("party", help.group().name);
+        assertEquals("/dg admin party", help.path());
+        assertEquals(1, help.page());
+    }
+
+    @Test
+    void helpTokenUnderGroupHelpGroupResolvesWithThePage() {
+        CommandSender sender = senderWith("dg.admin", "dg.admin.party");
+        assertEquals(2, asGroupHelp(RootCommand.resolve(sender, null, moduleSubs(), "/dg",
+                new String[] {"admin", "party", "help", "2"})).page());
+        assertEquals(1, asGroupHelp(RootCommand.resolve(sender, null, moduleSubs(), "/dg",
+                new String[] {"admin", "party", "HELP"})).page());
+        assertEquals(1, asGroupHelp(RootCommand.resolve(sender, null, moduleSubs(), "/dg",
+                new String[] {"admin", "party", "help", "nope"})).page());
+    }
+
+    @Test
+    void declaredHelpChildWinsOverGeneratedGroupHelp() {
+        RootCommand.Sub group = new SubCommandBuilder(null, "party")
+                .groupHelp()
+                .description("Party module setup")
+                .sub("help", help -> help
+                        .description("Custom help")
+                        .executes(context -> { }))
+                .build();
+        RootCommand.Run run = asRun(RootCommand.resolve(senderWith(), null, List.of(group),
+                "/dg", new String[] {"party", "help"}));
+        assertEquals("help", run.sub().name);
+        assertEquals(List.of("help"),
+                RootCommand.tab(senderWith(), null, List.of(group), new String[] {"party", ""}));
+    }
+
+    @Test
+    void groupWithoutGroupHelpKeepsUsageAndUnknownHelp() {
+        CommandSender sender = senderWith("clan.admin");
+        assertMessage(RootCommand.resolve(sender, null, clanSubs(), "/clan",
+                new String[] {"admin"}), "snlib.usage");
+        assertMessage(RootCommand.resolve(sender, null, clanSubs(), "/clan",
+                new String[] {"admin", "help"}), "snlib.unknown-subcommand");
+        assertEquals(List.of("promote"),
+                RootCommand.tab(sender, null, clanSubs(), new String[] {"admin", ""}));
+    }
+
+    @Test
+    void rootHelpCollapsesAGroupHelpGroupIntoOneEntry() {
+        CommandSender sender = senderWith("dg.admin", "dg.admin.party", "dg.admin.party.wipe");
+        List<RootCommand.HelpLine> lines =
+                RootCommand.collectHelp(sender, moduleSubs(), "/dg", "dg.admin");
+        assertEquals(List.of("/dg admin modules", "/dg admin party help"),
+                lines.stream().map(RootCommand.HelpLine::usage).toList());
+        assertEquals("Party module setup", lines.get(1).description());
+        assertEquals("dg.admin.party", lines.get(1).permission());
+    }
+
+    @Test
+    void groupHelpListsOnlyThatGroupsReachableLeaves() {
+        RootCommand.Sub party = moduleSubs().get(0).children.get(1);
+        assertEquals(List.of("/dg admin party create <name>"),
+                helpUsages(senderWith("dg.admin", "dg.admin.party"), party.children,
+                        "/dg admin party", "dg.admin.party"));
+        assertEquals(List.of("/dg admin party create <name>", "/dg admin party wipe"),
+                helpUsages(senderWith("dg.admin", "dg.admin.party", "dg.admin.party.wipe"),
+                        party.children, "/dg admin party", "dg.admin.party"));
+    }
+
+    @Test
+    void groupHelpGroupTabSuggestsHelp() {
+        CommandSender sender = senderWith("dg.admin", "dg.admin.party");
+        assertEquals(List.of("create", "help"),
+                RootCommand.tab(sender, null, moduleSubs(), new String[] {"admin", "party", ""}));
+        assertEquals(List.of("help"),
+                RootCommand.tab(sender, null, moduleSubs(), new String[] {"admin", "party", "he"}));
+        assertEquals(List.of("create"),
+                RootCommand.tab(sender, null, moduleSubs(), new String[] {"admin", "party", "c"}));
+    }
+
+    @Test
+    void groupHelpStillRequiresTheGroupPermission() {
+        assertMessage(RootCommand.resolve(senderWith("dg.admin"), null, moduleSubs(), "/dg",
+                new String[] {"admin", "party", "help"}), "snlib.no-permission");
+        assertMessage(RootCommand.resolve(senderWith("dg.admin"), null, moduleSubs(), "/dg",
+                new String[] {"admin", "party"}), "snlib.no-permission");
+    }
+
+    @Test
+    void groupHelpCarriesTheEffectivePermission() {
+        CommandSender sender = senderWith("dg.admin", "dg.admin.party");
+        assertEquals("dg.admin.party", asGroupHelp(RootCommand.resolve(sender, null,
+                moduleSubs(), "/dg", new String[] {"admin", "party"})).permission());
+
+        RootCommand.Sub admin = new SubCommandBuilder(null, "admin")
+                .permission("dg.admin")
+                .sub("party", party -> party
+                        .groupHelp()
+                        .sub("create", c -> c.executes(context -> { })))
+                .build();
+        assertEquals("dg.admin", asGroupHelp(RootCommand.resolve(senderWith("dg.admin"), null,
+                List.of(admin), "/dg", new String[] {"admin", "party"})).permission(),
+                "a group without its own permission inherits the nearest ancestor's");
+    }
+
+    @Test
+    void rootHelpHidesAGroupHelpGroupWithNoReachableLeaf() {
+        RootCommand.Sub admin = new SubCommandBuilder(null, "admin")
+                .permission("dg.admin")
+                .sub("party", party -> party
+                        .groupHelp()
+                        .description("Party module setup")
+                        .sub("wipe", w -> w.permission("dg.admin.party.wipe")
+                                .executes(context -> { })))
+                .build();
+        assertEquals(List.of(),
+                helpUsages(senderWith("dg.admin"), List.of(admin), "/dg", null));
+        assertEquals(List.of("/dg admin party help"),
+                helpUsages(senderWith("dg.admin", "dg.admin.party.wipe"), List.of(admin),
+                        "/dg", null));
+    }
+
+    @Test
+    void groupHelpOnALeafIsIgnored() {
+        RootCommand.Sub leaf = new SubCommandBuilder(null, "ping")
+                .groupHelp()
+                .description("Pings")
+                .executes(context -> { })
+                .build();
+        assertTrue(RootCommand.resolve(senderWith(), null, List.of(leaf), "/dg",
+                new String[] {"ping"}) instanceof RootCommand.Run);
+        assertEquals(List.of("/dg ping"), helpUsages(senderWith(), List.of(leaf), "/dg", null));
+    }
 }
