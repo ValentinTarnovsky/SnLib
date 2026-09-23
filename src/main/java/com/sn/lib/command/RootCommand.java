@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.logging.Level;
@@ -15,6 +17,7 @@ import java.util.logging.Level;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.StringUtil;
 import org.jetbrains.annotations.Nullable;
 
 import com.sn.lib.Ph;
@@ -52,6 +55,15 @@ import com.sn.lib.text.SnText;
  * unknown-subcommand paths, the help footer and {@link CommandContext#label()}, so a
  * consumer subcommand can echo it too.</p>
  *
+ * <p>A root may name one root-level leaf as its FALLBACK
+ * ({@link SnCommands.RootBuilder#fallbackSub(String)}): a first token that matches no
+ * declared subcommand or alias is not an unknown subcommand but the first argument of that
+ * leaf, so {@code /trade Steve} runs {@code /trade request Steve}. Declared subcommands
+ * always win, the bare root is unchanged, and a sender without the fallback's permission
+ * sees the plain unknown-subcommand reply. Usage lines reached through the shortcut, and
+ * the fallback's help entry, render the short form the sender types
+ * ({@code /trade <player>}).</p>
+ *
  * <p>Messages resolve through the context lang module when declared; without it the
  * shared {@code snlib.*} default templates bundled with the library render directly.</p>
  */
@@ -85,21 +97,27 @@ public final class RootCommand extends Command implements Registrable {
     private final @Nullable String rootPermission;
     private final List<Sub> subs;
     private final @Nullable Consumer<RootContext> onEmpty;
+    /** Root-level leaf that takes over an unmatched first token, or null (see {@link #fallbackOf}). */
+    private final @Nullable Sub fallback;
 
     /**
      * Builds the tree, injecting the default subcommands where applicable: {@code reload}
      * and {@code help} unless defaults were opted out, {@code debug} when the spec
      * declared it. A consumer subcommand with the same name replaces the default.
+     * {@code fallback} is one of the {@code declared} leaves, already validated by
+     * {@link #fallbackOf}, or null.
      */
     RootCommand(Sn ctx, @Nullable SnLang lang, String name, List<String> aliases,
             String description, @Nullable String permission, List<Sub> declared,
-            boolean withDefaults, boolean debugCommand, @Nullable Consumer<RootContext> onEmpty) {
+            boolean withDefaults, boolean debugCommand, @Nullable Consumer<RootContext> onEmpty,
+            @Nullable Sub fallback) {
         super(name.toLowerCase(Locale.ROOT), description,
                 "/" + name.toLowerCase(Locale.ROOT), aliases);
         this.ctx = ctx;
         this.lang = lang;
         this.rootPermission = permission;
         this.onEmpty = onEmpty;
+        this.fallback = fallback;
         if (permission != null) {
             setPermission(permission);
         }
@@ -160,7 +178,8 @@ public final class RootCommand extends Command implements Registrable {
     @Override
     public boolean execute(CommandSender sender, String label, String[] args) {
         String typed = typedLabel(label, getName());
-        Resolution resolution = resolve(sender, rootPermission, subs, "/" + typed, args);
+        Resolution resolution = resolve(sender, rootPermission, subs, fallback, "/" + typed,
+                args);
         switch (resolution) {
             case Empty ignored -> {
                 if (onEmpty != null) {
@@ -191,7 +210,7 @@ public final class RootCommand extends Command implements Registrable {
 
     @Override
     public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
-        return tab(sender, rootPermission, subs, args);
+        return tab(sender, rootPermission, subs, fallback, args);
     }
 
     /**
@@ -230,10 +249,42 @@ public final class RootCommand extends Command implements Registrable {
      */
     static List<String> tab(CommandSender sender, @Nullable String rootPermission,
             List<Sub> subs, String[] args) {
+        return tab(sender, rootPermission, subs, null, args);
+    }
+
+    /**
+     * {@link #tab(CommandSender, String, List, String[])} with a root {@code fallback} leaf
+     * (null for none). When the sender may use it, the first token offers the node names
+     * followed by the fallback's first-argument suggestions (filtered by the typed prefix and
+     * never repeating a name already offered), and a later token completes the fallback's
+     * arguments whenever the first token matches no declared node. A first token that does
+     * match a node completes that node, exactly as without a fallback.
+     */
+    static List<String> tab(CommandSender sender, @Nullable String rootPermission,
+            List<Sub> subs, @Nullable Sub fallback, String[] args) {
         if (rootPermission != null && !sender.hasPermission(rootPermission)) {
             return List.of();
         }
-        return tabAt(sender, subs, args, 0);
+        if (fallback == null || args.length == 0 || !mayUse(sender, fallback)) {
+            return tabAt(sender, subs, args, 0);
+        }
+        if (args.length > 1) {
+            return find(subs, args[0]) != null
+                    ? tabAt(sender, subs, args, 0)
+                    : tabLeaf(sender, fallback, args, 0);
+        }
+        List<String> out = new ArrayList<>(tabAt(sender, subs, args, 0));
+        Set<String> offered = new HashSet<>();
+        for (String name : out) {
+            offered.add(name.toLowerCase(Locale.ROOT));
+        }
+        for (String suggestion : tabLeaf(sender, fallback, args, 0)) {
+            if (suggestion != null && StringUtil.startsWithIgnoreCase(suggestion, args[0])
+                    && offered.add(suggestion.toLowerCase(Locale.ROOT))) {
+                out.add(suggestion);
+            }
+        }
+        return out;
     }
 
     /**
@@ -244,6 +295,20 @@ public final class RootCommand extends Command implements Registrable {
      */
     static Resolution resolve(CommandSender sender, @Nullable String rootPermission,
             List<Sub> subs, String rootPath, String[] args) {
+        return resolve(sender, rootPermission, subs, null, rootPath, args);
+    }
+
+    /**
+     * {@link #resolve(CommandSender, String, List, String, String[])} with a root
+     * {@code fallback} leaf (null for none): a first token that matches no declared node or
+     * alias dispatches to the fallback with EVERY token as its arguments, provided the sender
+     * holds the fallback's own permission; otherwise it stays an unknown subcommand, so the
+     * fallback never reveals itself to a sender who may not use it. Usage lines reached this
+     * way render under {@code rootPath} alone, the short form the sender typed; the resolved
+     * {@link Run} still carries the leaf's full path for the failure log.
+     */
+    static Resolution resolve(CommandSender sender, @Nullable String rootPermission,
+            List<Sub> subs, @Nullable Sub fallback, String rootPath, String[] args) {
         if (rootPermission != null && !sender.hasPermission(rootPermission)) {
             return new Message("snlib.no-permission");
         }
@@ -252,9 +317,41 @@ public final class RootCommand extends Command implements Registrable {
         }
         Sub sub = find(subs, args[0]);
         if (sub == null) {
+            if (fallback != null && mayUse(sender, fallback)) {
+                Resolution resolution =
+                        dispatch(sender, fallback, args, -1, rootPath, rootPermission);
+                return resolution instanceof Run run
+                        ? new Run(run.sub(), run.context(), rootPath + " " + fallback.name)
+                        : resolution;
+            }
             return new Message("snlib.unknown-subcommand", Ph.of("value", args[0]));
         }
         return dispatch(sender, sub, args, 0, rootPath + " " + sub.name, rootPermission);
+    }
+
+    /**
+     * Declared root-level leaf named {@code fallbackName} (by name or alias) through
+     * {@link SnCommands.RootBuilder#fallbackSub(String)}, or null when no fallback was named.
+     * Only the consumer's {@code declared} nodes qualify, never an injected default.
+     *
+     * @throws IllegalStateException when the name matches no declared root-level
+     *         subcommand, or matches a group, which has no arguments to take the tokens
+     */
+    static @Nullable Sub fallbackOf(String rootName, List<Sub> declared,
+            @Nullable String fallbackName) {
+        if (fallbackName == null) {
+            return null;
+        }
+        Sub sub = find(declared, fallbackName);
+        if (sub == null) {
+            throw new IllegalStateException("Fallback subcommand '" + fallbackName + "' of /"
+                    + rootName + " is not a declared root-level subcommand");
+        }
+        if (!sub.children.isEmpty()) {
+            throw new IllegalStateException("Fallback subcommand '" + fallbackName + "' of /"
+                    + rootName + " is a group; only a leaf subcommand can be the fallback");
+        }
+        return sub;
     }
 
     /**
@@ -264,9 +361,11 @@ public final class RootCommand extends Command implements Registrable {
      * {@link SubCommandBuilder#groupHelp()} resolves to its own help instead, both bare and
      * on a {@code help [page]} token no declared child claims. A leaf validates arity and
      * conditions, then parses its positional arguments relative to itself. {@code matchedAt}
-     * is the index in {@code args} of the token that selected {@code sub}; {@code path} is
-     * the full command path up to and including it; {@code inheritedPermission} is the
-     * nearest ancestor permission, carried so a group help can show effective permissions.
+     * is the index in {@code args} of the token that selected {@code sub}, or -1 for the root
+     * fallback that no token selected; {@code path} is the command path rendered for
+     * {@code sub} (the full path up to and including that token, or the bare root path for
+     * the fallback); {@code inheritedPermission} is the nearest ancestor permission, carried
+     * so a group help can show effective permissions.
      */
     private static Resolution dispatch(CommandSender sender, Sub sub, String[] args,
             int matchedAt, String path, @Nullable String inheritedPermission) {
@@ -412,13 +511,13 @@ public final class RootCommand extends Command implements Registrable {
 
     /**
      * Generated help: header plus one entry per reachable leaf (groups are flattened, so a
-     * leaf renders with its full path), paginated through {@link Page}; a footer with the
-     * page indicator appears only when the entries span several pages. Every entry and the
-     * footer render under {@code label}, the token the sender typed, so an alias help lists
-     * that alias.
+     * leaf renders with its full path, the root fallback with its short one), paginated
+     * through {@link Page}; a footer with the page indicator appears only when the entries
+     * span several pages. Every entry and the footer render under {@code label}, the token
+     * the sender typed, so an alias help lists that alias.
      */
     void sendHelp(CommandSender sender, String label, int pageNumber) {
-        List<HelpLine> lines = collectHelp(sender, subs, "/" + label, rootPermission);
+        List<HelpLine> lines = collectHelp(sender, subs, fallback, "/" + label, rootPermission);
         Page<HelpLine> page = Page.of(lines, HELP_PAGE_SIZE);
         int current = page.clamp(pageNumber);
         send(sender, "snlib.help.header", Ph.of("plugin", ctx.plugin().getName()));
@@ -477,6 +576,16 @@ public final class RootCommand extends Command implements Registrable {
      */
     static List<HelpLine> collectHelp(CommandSender sender, List<Sub> nodes, String path,
             @Nullable String inheritedPermission) {
+        return collectHelp(sender, nodes, null, path, inheritedPermission);
+    }
+
+    /**
+     * {@link #collectHelp(CommandSender, List, String, String)} with a root {@code fallback}
+     * leaf (null for none), whose single line renders the short form the sender types
+     * ({@code /trade <player>}) instead of {@code /trade request <player>}.
+     */
+    static List<HelpLine> collectHelp(CommandSender sender, List<Sub> nodes,
+            @Nullable Sub fallback, String path, @Nullable String inheritedPermission) {
         List<HelpLine> out = new ArrayList<>();
         for (Sub sub : nodes) {
             if (!sub.visible || !sub.helpVisible) {
@@ -486,7 +595,7 @@ public final class RootCommand extends Command implements Registrable {
                 continue;
             }
             String effective = sub.permission != null ? sub.permission : inheritedPermission;
-            String here = path + " " + sub.name;
+            String here = sub == fallback ? path : path + " " + sub.name;
             if (sub.children.isEmpty()) {
                 out.add(new HelpLine(usageOf(sub, here), sub.labels().description(), effective));
             } else if (sub.groupHelp) {
@@ -518,6 +627,11 @@ public final class RootCommand extends Command implements Registrable {
     /** Whether the arg consumes every remaining token (only factory args can). */
     private static boolean isGreedy(Arg<?> arg) {
         return arg instanceof Args.SnArg<?> snArg && snArg.greedy();
+    }
+
+    /** Whether the sender holds the node's own permission; its ancestors' are checked by the caller. */
+    private static boolean mayUse(CommandSender sender, Sub sub) {
+        return sub.permission == null || sender.hasPermission(sub.permission);
     }
 
     /** Node matching {@code token} by name or alias among {@code nodes}, or null when none. */

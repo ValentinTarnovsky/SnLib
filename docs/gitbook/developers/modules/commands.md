@@ -522,6 +522,56 @@ fires only on the truly empty invocation; a wrong subcommand or a bad argument s
 through normal resolution and its `snlib.*` message. A handler that throws is caught and
 logged at `SEVERE` against your plugin, exactly like a subcommand executor.
 
+## Fallback subcommand (`fallbackSub`, 1.37.0)
+
+Some roots have one action players use far more than the rest: `/trade Steve` reads better
+than `/trade request Steve`. Name that leaf with `fallbackSub(name)` on the root builder and
+a first token that matches no subcommand becomes its first argument:
+
+```java
+sn.commands().root("trade")
+        .permission("trade.use")
+        .sub("request")
+            .permission("trade.request")
+            .description("Sends a trade request")
+            .arg("player", Args.onlinePlayer())
+            .executes(ctx -> trades.request(ctx.player(), ctx.player("player")))
+        .and()
+        .sub("accept")
+            .arg("player", Args.onlinePlayer())
+            .executes(ctx -> trades.accept(ctx.player(), ctx.player("player")))
+        .and()
+        .fallbackSub("request")        // /trade Steve == /trade request Steve
+        .register();
+```
+
+- **Every token goes to the fallback.** `/trade Steve` runs `request` with `player = Steve`,
+  exactly as `/trade request Steve` does.
+- **Declared subcommands always win**, by name or alias: `/trade accept` runs `accept` even
+  while a player named `accept` is online. That player is reached through the explicit
+  `/trade request accept`.
+- **The bare root is unchanged**: `/trade` still runs your `onEmpty` hook or the generated help.
+- **Permissions are unchanged**: the root permission, then the fallback's own. A sender without
+  the fallback's permission gets the same `snlib.unknown-subcommand` reply as before, so the
+  shortcut never reveals itself.
+- **Tab completion** offers the subcommand names followed by the fallback's first-argument
+  suggestions (online player names here), filtered by what was typed and never repeating a
+  name. After `/trade Steve ` it completes the fallback's next argument.
+- **Messages follow what the sender typed.** A usage error reached through the shortcut
+  renders the short form (`/trade <player>`), while `/trade request` keeps rendering
+  `/trade request <player>`. A bad argument answers with its own message
+  (`Player not found: Stevee`). An explicit `usage(...)` is a literal and renders as written.
+- **Help** lists the fallback once, in its short form: `/trade <player>  Sends a trade request`.
+- The name must be a **root-level leaf you declared** (its name or an alias). An unknown name,
+  a group, or the injected `reload`/`help`/`debug` makes `register()` throw
+  `IllegalStateException`.
+
+{% hint style="info" %}
+The trade-off: a mistyped subcommand now reads as an argument. `/trade acept` answers
+`Player not found: acept` instead of `Unknown subcommand: acept`. Pick a fallback whose first
+argument is what players type most, and keep your subcommand names distinct from it.
+{% endhint %}
+
 ## Reload safety and ghost commands
 
 Registration is keyed by the owning plugin and is reload-safe end to end:

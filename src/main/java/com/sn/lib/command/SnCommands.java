@@ -133,6 +133,7 @@ public final class SnCommands {
         private boolean withoutDefaults;
         private @Nullable Supplier<Collection<String>> aliasSupplier;
         private @Nullable Consumer<RootContext> onEmpty;
+        private @Nullable String fallbackSub;
 
         RootBuilder(String name) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
@@ -226,14 +227,47 @@ public final class SnCommands {
             return this;
         }
 
-        /** Builds the tree, injects the applicable defaults and registers it. */
+        /**
+         * Names the root-level LEAF subcommand that takes over a first token matching no
+         * declared subcommand or alias, with EVERY token as its arguments:
+         * {@code fallbackSub("request")} makes {@code /trade Steve} run
+         * {@code /trade request Steve}. Declared subcommands always win (a player literally
+         * named {@code accept} is reached through {@code /trade request accept}), and the bare
+         * root keeps its {@link #onEmpty} hook or generated help. The permission chain is
+         * unchanged (the root's, then the fallback's own); a sender without the fallback's
+         * permission gets the usual unknown-subcommand reply. Tab completion offers the
+         * fallback's first-argument suggestions next to the subcommand names and completes
+         * its later arguments after an unmatched first token. Usage errors reached through
+         * the shortcut, and the fallback's entry in the generated help, render the short form
+         * the sender types ({@code /trade <player>}); an explicit
+         * {@link SubCommandBuilder#usage(String) usage} is a literal and renders as written.
+         * Validated by {@link #register()}, which throws {@link IllegalStateException} when
+         * {@code name} matches no subcommand declared on this root (by name or alias) or
+         * names a group.
+         */
+        public RootBuilder fallbackSub(String name) {
+            Objects.requireNonNull(name, "name");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("Empty subcommand name");
+            }
+            this.fallbackSub = name.trim().toLowerCase(Locale.ROOT);
+            return this;
+        }
+
+        /**
+         * Builds the tree, injects the applicable defaults and registers it.
+         *
+         * @throws IllegalStateException when {@link #fallbackSub(String)} names no declared
+         *         root-level leaf
+         */
         public RootCommand register() {
             List<RootCommand.Sub> built = new ArrayList<>(subs.size());
             for (SubCommandBuilder sub : subs) {
                 built.add(sub.build());
             }
+            RootCommand.Sub fallback = RootCommand.fallbackOf(name, built, fallbackSub);
             RootCommand command = new RootCommand(ctx, lang, name, aliases, description,
-                    permission, built, !withoutDefaults, debugCommand, onEmpty);
+                    permission, built, !withoutDefaults, debugCommand, onEmpty, fallback);
             BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier);
             command.register();
             return command;

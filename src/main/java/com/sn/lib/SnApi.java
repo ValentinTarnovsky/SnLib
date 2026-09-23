@@ -78,12 +78,16 @@ package com.sn.lib;
  * GuiManager.loadFolder/unloadFolder serve menus from any folder under "namespace:file" ids
  * that survive the reload, SnLang.addSource/removeSource layer a folder's
  * messages_code.yml under "namespace.key", and SubCommandBuilder.groupHelp gives a command
- * group its own paginated help while the parent help shows it as one entry).</p>
+ * group its own paginated help while the parent help shows it as one entry); LEVEL 24 =
+ * release 1.37.0 (a root fallback subcommand: SnCommands.RootBuilder.fallbackSub names a
+ * root-level leaf that takes over a first token no declared subcommand claims, so
+ * /trade Steve runs /trade request Steve, with its suggestions at the first token and its
+ * usage and help entry rendered in that short form).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 23;
+    public static final int LEVEL = 24;
 
     private SnApi() {
     }

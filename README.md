@@ -331,6 +331,17 @@ sn.items().give(player, "wand", 1);
   line (`/dg admin party help`). It replaces the hand-written scoped help leaf a
   plugin with one admin group per module needed before. New lang keys
   `snlib.help.group-header` and `snlib.help.group-footer` merge in on boot.
+- Root fallback subcommand (v1.37.0): `RootBuilder.fallbackSub("request")` turns
+  a first token that matches no declared subcommand into the first argument of
+  that root-level leaf, so `/trade Steve` runs `/trade request Steve`. Declared
+  subcommands and aliases always win (a player named `accept` is reached through
+  `/trade request accept`), the bare root keeps its `onEmpty` hook or help, and
+  a sender without the fallback's permission still gets
+  `snlib.unknown-subcommand`. Tab offers the fallback's first-argument
+  suggestions next to the subcommand names; usage errors through the shortcut
+  and the fallback's help entry render the short `/trade <player>`. `register()`
+  throws when the name is not a declared root-level leaf. Roots that never call
+  it behave as before.
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on
@@ -389,6 +400,8 @@ sn.commands().root("shop")
   top-level `commands` block, so the owner translates the help in a file
   instead of the source. Argument identifiers are untouched: `<name>` can
   render as `<nombre>` while `context.get("name")` keeps working.
+- Root fallback (v1.37): `fallbackSub("request")` on the root builder makes
+  `/trade Steve` run `/trade request Steve`; declared subcommands always win.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 
