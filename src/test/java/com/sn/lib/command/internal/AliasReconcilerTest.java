@@ -1,5 +1,6 @@
 package com.sn.lib.command.internal;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,41 @@ class AliasReconcilerTest {
     @Test
     void nothingAddedNeverWarns() {
         assertFalse(AliasReconciler.warnsUndeclared(null, List.of()));
+    }
+
+    @Test
+    void aDynamicRootNeverWarnsWhateverTheSource() {
+        // dynamic x supplied x added: only the non-dynamic fallback path with additions WARNs.
+        assertFalse(AliasReconciler.warnsUndeclared(true, null, List.of("cl")));
+        assertFalse(AliasReconciler.warnsUndeclared(true, null, List.of()));
+        assertFalse(AliasReconciler.warnsUndeclared(true, List.of("gemas"), List.of("gemas")));
+        assertFalse(AliasReconciler.warnsUndeclared(true, List.of(), List.of()));
+    }
+
+    @Test
+    void aStaticRootKeepsThe137Table() {
+        assertTrue(AliasReconciler.warnsUndeclared(false, null, List.of("cl")));
+        assertFalse(AliasReconciler.warnsUndeclared(false, null, List.of()));
+        assertFalse(AliasReconciler.warnsUndeclared(false, List.of("gemas"), List.of("gemas")));
+        assertFalse(AliasReconciler.warnsUndeclared(false, List.of(), List.of()));
+    }
+
+    @Test
+    void theTwoArgumentFormIsTheStaticRoot() {
+        for (List<String> supplied : Arrays.asList(null, List.<String>of(), List.of("x"))) {
+            for (List<String> added : List.of(List.<String>of(), List.of("x"))) {
+                assertEquals(AliasReconciler.warnsUndeclared(false, supplied, added),
+                        AliasReconciler.warnsUndeclared(supplied, added));
+            }
+        }
+    }
+
+    @Test
+    void namespacedKeysOfAnAliasThatLeftTheDesiredSetAreReleased() {
+        // The registry releases held namespaced keys with diff(held, desired).removed().
+        assertEquals(List.of("bal"),
+                AliasReconciler.diff(List.of("bal", "eco"), List.of("eco", "money")).removed());
+        assertTrue(AliasReconciler.diff(List.of(), List.of("eco")).removed().isEmpty());
     }
 
     @Test

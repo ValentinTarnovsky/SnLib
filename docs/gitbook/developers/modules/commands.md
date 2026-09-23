@@ -186,7 +186,9 @@ already owned by another command is left in place with a warning. A reload that 
 Aliases coming from an authoritative source (the config binding or a supplier) register
 **silently**: the admin owns them at runtime, so they cannot be declared in your `plugin.yml`
 in the first place. Only **static** aliases missing from your `plugin.yml` log the
-`Aliases [...] not declared in the plugin.yml` warning, as a nudge to declare them there.
+`Aliases [...] not declared in the plugin.yml` warning, as a nudge to declare them there. A
+root built with `dynamic()` (see "Runtime roots" below) never logs it, whatever the alias
+source.
 
 ### Every message follows the alias the sender typed
 
@@ -572,6 +574,44 @@ The trade-off: a mistyped subcommand now reads as an argument. `/trade acept` an
 argument is what players type most, and keep your subcommand names distinct from it.
 {% endhint %}
 
+## Runtime roots (`dynamic`, 1.38.0)
+
+A root whose name is not known when you write the `plugin.yml` (one command per currency file,
+a module's player command switched on from the config) is registered at runtime through the
+server command map. Without a declaration, every register pass used to log
+`Command '/money' not declared in the plugin.yml of MyPlugin; dynamic registration via CommandMap`.
+Mark such a root with `dynamic()`:
+
+```java
+for (Currency currency : currencies.all()) {
+    sn.commands().root(currency.command())      // "money", "souls", ... from the owner's files
+            .dynamic()                          // registered at runtime on purpose
+            .aliases(currency::commandAliases)
+            .sub("pay").arg("player", Args.onlinePlayer()).arg("amount", Args.doubleMin(0))
+                .executes(ctx -> pay(ctx, currency)).and()
+            .register();
+}
+```
+
+- **No "not declared" warning**, for the root or its aliases, at enable or on any reload.
+- **A name another plugin already holds is kept by that plugin**, as always, and your root keeps
+  answering under its namespaced form. Instead of a warning on every pass, ONE info line per
+  name and enable says so:
+  `Command '/money' of MyPlugin is taken by Essentials; kept it. This command answers as /myplugin:money`.
+  An alias gets the same treatment:
+  `Alias '/bal' of '/money' in MyPlugin is taken by Essentials; kept it. This alias answers as /myplugin:bal`.
+  The holder is named from its plugin (`another command` when it names none).
+- If the namespaced form is **also** taken, the command cannot be reached under that name at
+  all, and the warning stays.
+- A root your `plugin.yml` declares is registered by Bukkit, so `dynamic()` has no effect on it.
+  Roots without `dynamic()` log exactly as before.
+
+{% hint style="info" %}
+The help reached through the namespaced form (`/myplugin:money help`) still lists the bare
+name (`/money pay ...`). While another plugin holds `/money`, tell your players to use the
+namespaced form, or give the root a name nobody else uses.
+{% endhint %}
+
 ## Reload safety and ghost commands
 
 Registration is keyed by the owning plugin and is reload-safe end to end:
@@ -582,6 +622,9 @@ Registration is keyed by the owning plugin and is reload-safe end to end:
 - After **every** register and unregister, the module calls `player.updateCommands()` on
   each online player, so their client-side command tree is refreshed. Clients never see a
   command that no longer exists, and never miss one that was just added.
+- An alias whose bare name another plugin holds still claims its `plugin:alias` form. Since
+  1.38.0 that key is released too when the root unregisters or the alias is dropped (before,
+  it stayed behind as a ghost).
 
 This is why you never have to unregister commands by hand: the ordered context teardown
 does it, and the client trees are always brought back in sync.

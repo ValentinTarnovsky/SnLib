@@ -82,12 +82,17 @@ package com.sn.lib;
  * release 1.37.0 (a root fallback subcommand: SnCommands.RootBuilder.fallbackSub names a
  * root-level leaf that takes over a first token no declared subcommand claims, so
  * /trade Steve runs /trade request Steve, with its suggestions at the first token and its
- * usage and help entry rendered in that short form).</p>
+ * usage and help entry rendered in that short form); LEVEL 25 = release 1.38.0
+ * (SnCommands.RootBuilder.dynamic; SnPlugin.onPreEnable: a root registered at runtime on
+ * purpose gets no "not declared in the plugin.yml" WARN and notes a name collision once at
+ * INFO, naming the /plugin:name form it still answers on, and a consumer can refuse the
+ * enable before SnLib writes config.yml, lang/ or guis/; the level also keeps a consumer
+ * that moved its license gate to onPreEnable off an older SnLib that would never call it).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 24;
+    public static final int LEVEL = 25;
 
     private SnApi() {
     }

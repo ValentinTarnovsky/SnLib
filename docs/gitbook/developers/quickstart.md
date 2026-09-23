@@ -116,12 +116,15 @@ permissions:
 `com.sn.lib.SnPlugin` is the only initialization path into the library. The
 `SnLib.init` call is package-private, so extending this class is the single
 public way to obtain a context. `SnPlugin` makes `onEnable` and `onDisable`
-final and drives the lifecycle for you; you implement four members:
+final and drives the lifecycle for you; you implement four members, plus an optional
+gate:
 
 - `requiredApiLevel()` - the compile-time API level your code needs.
 - `buildSpec()` - which modules to mount.
 - `onInnerEnable()` - your enable logic, run after the context is built.
 - `onInnerDisable()` - optional; your disable logic, run before teardown.
+- `onPreEnable()` - optional (1.38.0); a gate run before SnLib writes a single file, see
+  [below](#onpreenable-and-the-license-gate).
 
 ### `requiredApiLevel()` and why it exists
 
@@ -162,6 +165,37 @@ This is the whole reason the method must be `return SnApi.LEVEL;` verbatim: any
 other expression would defeat the compile-time inlining that makes the check
 meaningful. See [Compatibility and versioning](compatibility-and-versioning.md)
 for how `SnApi.LEVEL` is incremented over releases.
+
+### `onPreEnable()` and the license gate
+
+The enable runs in this order: the API-level handshake, `onPreEnable()`, the context
+(`SnLib.init`, which creates `config.yml`, `lang/` and `guis/` for the modules you declared),
+then `onInnerEnable()`. A gate that must decide BEFORE any of those files exist, a license
+check above all, goes in `onPreEnable()`:
+
+```java
+@Override
+protected boolean onPreEnable() {
+    return LicenseManager.init(this, "myplugin");   // seeds and reads license.yml, logs why it refused
+}
+```
+
+- Return `true` (the default) to go on. Return `false` to refuse: the plugin ends disabled,
+  no SnLib file is written, and neither `onInnerEnable()` nor `onInnerDisable()` runs. Log
+  your reason inside the hook; the library adds no line of its own.
+- `sn()` is still `null` inside it. Log through `getLogger()`, and write only files of your own
+  (the `license.yml` the gate reads), never the ones SnLib manages.
+- Disabling the plugin inside the hook counts as a refusal whatever you return. A throw is
+  handled like one from `onInnerEnable()`: after disabling, one `Enable aborted: <reason>`
+  line; without disabling, a `SEVERE` stack trace and the library disables the plugin.
+- Overriding it requires API level 25 (SnLib 1.38.0). An older SnLib would never call the
+  hook, and the handshake refuses your plugin on it before that can happen.
+
+{% hint style="info" %}
+`onInnerDisable()` runs only for a plugin that got a context. A failed handshake, a refused
+`onPreEnable()` or a context init that threw leave nothing to undo, so since 1.38.0 they
+disable the plugin without calling it.
+{% endhint %}
 
 ### `buildSpec()` and the module declaration
 

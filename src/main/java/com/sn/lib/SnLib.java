@@ -34,7 +34,8 @@ import com.sn.lib.tenant.internal.TenantSweeper;
  *       {@code REDSTONE} to {@code DUST}. Any API newer than 1.20.4 is only used behind
  *       {@code SnCompat.probe}.</li>
  *   <li><b>(d) Frozen entrypoint.</b> {@code SnPlugin} + {@code requiredApiLevel()} +
- *       {@link SnSpec} + {@link SnApi#LEVEL} never change within a major version.</li>
+ *       {@link SnSpec} + {@link SnApi#LEVEL} only grow within a major version: nothing in
+ *       them is ever removed or changed incompatibly.</li>
  * </ul>
  *
  * <p><b>Lifecycle.</b> One {@link #init} call mounts every declared module of a consumer

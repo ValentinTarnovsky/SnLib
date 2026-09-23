@@ -63,6 +63,24 @@ download URL, without `NoSuchMethodError` or `NoClassDefFoundError`. An
 accessor for a module not declared in the `SnSpec` throws
 `UnsupportedOperationException` naming the missing builder.
 
+Pre-enable gate (v1.38.0): `onPreEnable()` runs after the handshake and BEFORE
+SnLib creates the context, so a refusal there leaves no `config.yml`, `lang/`
+or `guis/` behind. It is the place for a license gate:
+
+```java
+@Override protected boolean onPreEnable() {
+    return LicenseManager.init(this, "myplugin");   // seeds and reads license.yml only
+}
+```
+
+`sn()` is still null inside it (log through `getLogger()`). Returning `false`
+(or disabling the plugin inside it) ends the enable with the plugin disabled
+and no line added by the library; neither `onInnerEnable()` nor
+`onInnerDisable()` runs. A throw follows the `onInnerEnable()` rules. Since
+1.38.0 `onInnerDisable()` only runs for a plugin that got a context: a failed
+handshake or an init that threw no longer calls it. Overriding the hook
+requires API level 25.
+
 ## yml module (SnYml + YmlManager)
 
 All YML reading goes through `SnYml`: tabs in indentation are fixed with ONE
@@ -342,6 +360,20 @@ sn.items().give(player, "wand", 1);
   and the fallback's help entry render the short `/trade <player>`. `register()`
   throws when the name is not a declared root-level leaf. Roots that never call
   it behave as before.
+- Dynamic roots (v1.38.0): `RootBuilder.dynamic()` marks a root that is
+  registered at runtime on purpose (its name comes from the owner's config or
+  content files), so neither it nor its aliases log the "not declared in the
+  plugin.yml" WARN, at boot or on any reload. When another plugin already holds
+  the name, the existing command is kept, the root still answers as
+  `/<plugin>:<name>`, and ONE INFO per key and enable says so (`Command
+  '/money' of SnDungeons is taken by Essentials; kept it. This command answers
+  as /sndungeons:money`); a key whose namespaced form is taken too still WARNs.
+  Roots without it log exactly as before. Also fixed: the `<plugin>:<alias>`
+  key an alias claims while its bare key is taken is now released when the root
+  unregisters or the alias is dropped (it stayed behind as a ghost).
+- Pre-enable gate (v1.38.0): `SnPlugin.onPreEnable()` runs before SnLib writes
+  a single file, so a license gate there leaves only its own license file on an
+  unlicensed install (see Entrypoint).
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on
@@ -402,6 +434,10 @@ sn.commands().root("shop")
   render as `<nombre>` while `context.get("name")` keeps working.
 - Root fallback (v1.37): `fallbackSub("request")` on the root builder makes
   `/trade Steve` run `/trade request Steve`; declared subcommands always win.
+- Dynamic roots (v1.38): `dynamic()` on the root builder silences the "not
+  declared in the plugin.yml" WARN for a root registered at runtime on purpose
+  and turns a name collision into one INFO naming `/<plugin>:<name>`. The help
+  reached through that namespaced form still shows the bare name.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 

@@ -22,8 +22,8 @@ import org.jetbrains.annotations.Nullable;
  * and of the plugin.yml declared aliases (those are owned by Bukkit, not by this dynamic
  * layer).</p>
  *
- * <p>The same policy decides the plugin.yml WARN: it belongs to the FALLBACK path only, see
- * {@link #warnsUndeclared(Collection, Collection)}.</p>
+ * <p>The same policy decides the plugin.yml WARN: it belongs to the FALLBACK path of a root
+ * that is not {@code dynamic()}, see {@link #warnsUndeclared(boolean, Collection, Collection)}.</p>
  */
 final class AliasReconciler {
 
@@ -70,7 +70,18 @@ final class AliasReconciler {
      */
     static boolean warnsUndeclared(@Nullable Collection<String> supplied,
             Collection<String> added) {
-        return supplied == null && !added.isEmpty();
+        return warnsUndeclared(false, supplied, added);
+    }
+
+    /**
+     * {@link #warnsUndeclared(Collection, Collection)} for a root that may be
+     * {@code dynamic()}: a root registered at runtime on purpose is never declared in the
+     * plugin.yml, so neither are its aliases, and the nudge never fires for it whatever the
+     * alias source.
+     */
+    static boolean warnsUndeclared(boolean dynamic, @Nullable Collection<String> supplied,
+            Collection<String> added) {
+        return !dynamic && supplied == null && !added.isEmpty();
     }
 
     /**

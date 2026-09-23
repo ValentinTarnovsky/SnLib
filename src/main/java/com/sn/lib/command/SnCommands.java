@@ -134,6 +134,7 @@ public final class SnCommands {
         private @Nullable Supplier<Collection<String>> aliasSupplier;
         private @Nullable Consumer<RootContext> onEmpty;
         private @Nullable String fallbackSub;
+        private boolean dynamic;
 
         RootBuilder(String name) {
             this.name = name.trim().toLowerCase(Locale.ROOT);
@@ -255,6 +256,23 @@ public final class SnCommands {
         }
 
         /**
+         * Marks the root as registered at runtime ON PURPOSE and therefore never declared in
+         * the plugin.yml: a command whose name comes from the owner's config or content files.
+         * Neither the root nor its aliases get the "not declared in the plugin.yml" WARN, on
+         * enable or on any reload. When another command already holds the name (or an alias),
+         * the existing one is kept, this root keeps answering as {@code /<plugin>:<name>}, and
+         * the collision is logged ONCE per enable and key at INFO, naming that namespaced form
+         * ({@code Command '/money' of MyPlugin is taken by Essentials; kept it. This command
+         * answers as /myplugin:money}). A key whose namespaced form is taken as well leaves the
+         * command unreachable under it and still WARNs. No effect when the plugin.yml declares
+         * the name: Bukkit registers that root, as without this call.
+         */
+        public RootBuilder dynamic() {
+            this.dynamic = true;
+            return this;
+        }
+
+        /**
          * Builds the tree, injects the applicable defaults and registers it.
          *
          * @throws IllegalStateException when {@link #fallbackSub(String)} names no declared
@@ -268,7 +286,7 @@ public final class SnCommands {
             RootCommand.Sub fallback = RootCommand.fallbackOf(name, built, fallbackSub);
             RootCommand command = new RootCommand(ctx, lang, name, aliases, description,
                     permission, built, !withoutDefaults, debugCommand, onEmpty, fallback);
-            BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier);
+            BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier, dynamic);
             command.register();
             return command;
         }
