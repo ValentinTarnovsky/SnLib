@@ -212,6 +212,7 @@ The complete builder surface is:
 | `.db()` | The database module. |
 | `.teleports()` | The warmup teleport module (`sn.teleports()`). |
 | `.debugCommand()` | The runtime `debug` subcommand on the plugin's own command roots. |
+| `.commandPriority()` | Command priority (1.39.0): the plugin is the core of its server mode, so its command roots take their names and aliases from other plugins. See [Commands](modules/commands.md). |
 | `.updates("owner/repo")` | The notify-only update check against a GitHub repository. |
 
 A full working example plugin that uses config, lang and menus:

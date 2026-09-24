@@ -145,9 +145,10 @@ surface (new public methods or classes). Its history:
 - LEVEL 22 = release 1.35.0 - an enum key survives the YAML boolean trap (`SnYml.getEnum(String, Class, Enum)`, which maps the boolean an unquoted `OFF`/`ON`/`YES`/`NO`/`TRUE`/`FALSE` resolves to back onto the constant the owner typed)
 - LEVEL 23 = release 1.36.0 - per-module resource folders and group help (`GuiManager.loadFolder`/`unloadFolder`, `SnLang.addSource`/`removeSource`, `SubCommandBuilder.groupHelp`)
 - LEVEL 24 = release 1.37.0 - a root fallback subcommand (`SnCommands.RootBuilder.fallbackSub`, so `/trade Steve` runs `/trade request Steve`)
+- LEVEL 26 = release 1.39.0 - command priority (`SnSpec.Builder.commandPriority`, and the `SnCommands` constructor that carries it: the core plugin of a server mode takes the bare name and the aliases of its roots from other plugins, which keep their `/plugin:name` form and get the name back when the root unregisters)
 - LEVEL 25 = release 1.38.0 - runtime roots and a pre-enable gate (`SnCommands.RootBuilder.dynamic`, which drops the "not declared in the plugin.yml" WARN and notes a name collision once at INFO; `SnPlugin.onPreEnable`, which can refuse the enable before SnLib writes a file). The level also protects a consumer that moved its license gate to `onPreEnable`: on an older SnLib the hook would never be called, so the handshake refuses the plugin first
 
-The current value is 25. Releases that change only behaviour do not bump it:
+The current value is 26. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
 surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing

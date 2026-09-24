@@ -28,6 +28,10 @@ import com.sn.lib.yml.YmlManager;
  * a {@code debug} subcommand (permission {@code <plugin>.admin.debug}) toggles the
  * runtime debug service; it is gated by the spec, not by the defaults opt-out.</p>
  *
+ * <p>When the spec declared {@code commandPriority()}, every root built here takes its bare
+ * name and its aliases from the commands of other plugins and hands them back when it
+ * unregisters (see {@link com.sn.lib.SnSpec.Builder#commandPriority()}).</p>
+ *
  * <p>Registration is reload-safe and keyed by the owning plugin: re-registering a root
  * with the same name replaces the previous tree, and the context teardown (or the tenant
  * sweep when the consumer disables) unregisters every root and refreshes the client
@@ -41,9 +45,10 @@ public final class SnCommands {
     private final Sn ctx;
     private final @Nullable SnLang lang;
     private final boolean debugCommand;
+    private final boolean commandPriority;
 
     /**
-     * Creates the module; instantiated by the context.
+     * Creates the module without command priority; instantiated by the context.
      *
      * @param ctx          owning context
      * @param lang         lang module of the context, or null when not declared (the
@@ -51,9 +56,25 @@ public final class SnCommands {
      * @param debugCommand whether the spec declared the runtime debug command
      */
     public SnCommands(Sn ctx, @Nullable SnLang lang, boolean debugCommand) {
+        this(ctx, lang, debugCommand, false);
+    }
+
+    /**
+     * Creates the module; instantiated by the context.
+     *
+     * @param ctx             owning context
+     * @param lang            lang module of the context, or null when not declared (the
+     *                        shared {@code snlib.*} default templates render instead)
+     * @param debugCommand    whether the spec declared the runtime debug command
+     * @param commandPriority whether the spec declared command priority: the roots take
+     *                        their bare name and aliases from the commands of other plugins
+     */
+    public SnCommands(Sn ctx, @Nullable SnLang lang, boolean debugCommand,
+            boolean commandPriority) {
         this.ctx = ctx;
         this.lang = lang;
         this.debugCommand = debugCommand;
+        this.commandPriority = commandPriority;
     }
 
     /** Starts a root command tree named {@code name}. */
@@ -265,7 +286,9 @@ public final class SnCommands {
          * ({@code Command '/money' of MyPlugin is taken by Essentials; kept it. This command
          * answers as /myplugin:money}). A key whose namespaced form is taken as well leaves the
          * command unreachable under it and still WARNs. No effect when the plugin.yml declares
-         * the name: Bukkit registers that root, as without this call.
+         * the name: Bukkit registers that root, as without this call. Under the spec's
+         * {@code commandPriority()} a name or alias held by another plugin is taken instead
+         * (see {@link com.sn.lib.SnSpec.Builder#commandPriority()}).
          */
         public RootBuilder dynamic() {
             this.dynamic = true;
@@ -286,7 +309,8 @@ public final class SnCommands {
             RootCommand.Sub fallback = RootCommand.fallbackOf(name, built, fallbackSub);
             RootCommand command = new RootCommand(ctx, lang, name, aliases, description,
                     permission, built, !withoutDefaults, debugCommand, onEmpty, fallback);
-            BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier, dynamic);
+            BukkitCommandRegistry.bindAliasSupplier(command, aliasSupplier, dynamic,
+                    commandPriority);
             command.register();
             return command;
         }

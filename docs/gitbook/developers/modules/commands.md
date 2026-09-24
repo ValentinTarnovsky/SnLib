@@ -612,6 +612,62 @@ name (`/money pay ...`). While another plugin holds `/money`, tell your players 
 namespaced form, or give the root a name nobody else uses.
 {% endhint %}
 
+## Command priority (`commandPriority`, 1.39.0)
+
+When your plugin is the core of its server mode, its commands should win over any other plugin
+that registers the same name. Declare it once, on the spec:
+
+```java
+@Override
+protected SnSpec buildSpec() {
+    return SnSpec.builder()
+            .config("config.yml")
+            .lang()
+            .commandPriority()      // our roots take their names from other plugins
+            .build();
+}
+```
+
+Every root the plugin registers, `dynamic()` or declared in the `plugin.yml`, then **takes** its
+bare name and each alias from another plugin's command, whether that plugin registered it before
+or after yours:
+
+- `/money` runs your command. The other plugin keeps answering under its namespaced form
+  (`/essentials:money`), which is never touched.
+- ONE info line per name and enable says so:
+  `Command '/money' of MyPlugin took the name from Essentials (command priority); Essentials still answers as /essentials:money`,
+  and for an alias
+  `Alias '/bal' of '/money' in MyPlugin took the name from Essentials (command priority); Essentials still answers as /essentials:bal`.
+  When the other command no longer holds its namespaced form, the line ends at `(command priority)`.
+- A command counts as another plugin's when that plugin provides its class: its `plugin.yml`
+  command, or any `Command`/`BukkitCommand` it registers itself.
+- **Never taken:** a name of your own plugin, a namespaced `plugin:name` form (even one your
+  config lists as an alias), a vanilla, Bukkit or Paper command (`/version`, `/plugins`,
+  `/help`...), a command another plugin registered through Paper's Brigadier API (by design: it
+  is a Brigadier command, not a Bukkit plugin command), a `commands.yml` alias, and a root of another plugin that declared `commandPriority()` too
+  (whichever holds the name keeps it). Those keep the name and your root gets the usual 1.38.0
+  info or warning.
+- **Given back:** when your root unregisters (your plugin disables, or a reload drops the root or
+  the alias), the name goes back to the command it was taken from, if its plugin is still enabled,
+  that command still answers as `/<its plugin>:<name>` (otherwise the command answering there
+  now gets it) and nothing else took the name meanwhile. Nothing is given back while the server
+  is stopping. A plugin that enabled after yours and was refused the name gets it too.
+- **Taken back:** a plugin that enables later and registers a label equal to one of your aliases
+  loses it again when it finishes enabling, when the server finishes loading, and on every reload
+  of your plugin.
+- Without `commandPriority()` nothing changes: names are claimed only when free, as before.
+
+{% hint style="warning" %}
+Declare it only in the plugin that really is the core of the server mode. A plugin that
+registers its command in a later tick than its enable keeps an alias it overwrote until the next
+plugin enables or your plugin reloads, and the `aliases:` of a `plugin.yml` command are Bukkit's
+and never taken: give the aliases through the builder or `aliasesFromConfig()`. While your root
+holds the name of a `plugin.yml` command, `Bukkit.getPluginCommand(name)` returns null for other
+plugins and the `permission`/`usage` of that `plugin.yml` entry do not apply to the bare name
+(your root's own permission does). The server owner's way out is renaming your command or alias
+in your config.
+{% endhint %}
+
 ## Reload safety and ghost commands
 
 Registration is keyed by the owning plugin and is reload-safe end to end:

@@ -25,6 +25,7 @@ public final class SnSpec {
     private final boolean db;
     private final boolean teleports;
     private final boolean debugCommand;
+    private final boolean commandPriority;
     private final @Nullable String updatesRepo;
     private final @Nullable String updatesTagPrefix;
 
@@ -36,6 +37,7 @@ public final class SnSpec {
         this.db = builder.db;
         this.teleports = builder.teleports;
         this.debugCommand = builder.debugCommand;
+        this.commandPriority = builder.commandPriority;
         this.updatesRepo = builder.updatesRepo;
         this.updatesTagPrefix = builder.updatesTagPrefix;
     }
@@ -80,6 +82,14 @@ public final class SnSpec {
         return debugCommand;
     }
 
+    /**
+     * Whether the plugin declared command priority: its roots take the bare name and the
+     * aliases from the commands of other plugins (see {@link Builder#commandPriority()}).
+     */
+    public boolean commandPriority() {
+        return commandPriority;
+    }
+
     /** GitHub owner/repo of the update check, or null if it was not declared. */
     public @Nullable String updates() {
         return updatesRepo;
@@ -105,6 +115,7 @@ public final class SnSpec {
         private boolean db;
         private boolean teleports;
         private boolean debugCommand;
+        private boolean commandPriority;
         private @Nullable String updatesRepo;
         private @Nullable String updatesTagPrefix;
 
@@ -150,6 +161,30 @@ public final class SnSpec {
         /** Declares the runtime debug command. */
         public Builder debugCommand() {
             this.debugCommand = true;
+            return this;
+        }
+
+        /**
+         * Declares this plugin the core of its server mode: every root it registers through
+         * {@code sn.commands()} (dynamic ones and the ones declared in the plugin.yml alike)
+         * takes the bare name and the aliases SnLib manages for it (builder, supplier and
+         * config aliases; the {@code aliases:} of a plugin.yml command stay Bukkit's) from the
+         * commands of OTHER plugins, registered before or after it. The displaced command
+         * keeps answering under its namespaced form ({@code /essentials:money}) and gets the
+         * bare key back when the root unregisters (the plugin disables, or a reload drops the
+         * root) while its plugin is still enabled. Each key taken is logged once per enable at
+         * INFO. A command counts as another plugin's when that plugin provides its class, a
+         * {@code BukkitCommand} of its own included. Never taken: a key of this same plugin, a
+         * namespaced {@code plugin:key} form, a class of the server itself (vanilla, Bukkit and
+         * Paper commands, {@code commands.yml} aliases), a command registered through Paper's
+         * Brigadier API, or a root of another plugin that declared command priority too
+         * (whichever holds the key keeps it). A key a later plugin overwrites is taken back
+         * when a plugin finishes enabling, when the server finishes loading and on every
+         * reload. The server owner's way out is renaming the command or the alias in this
+         * plugin's config.
+         */
+        public Builder commandPriority() {
+            this.commandPriority = true;
             return this;
         }
 

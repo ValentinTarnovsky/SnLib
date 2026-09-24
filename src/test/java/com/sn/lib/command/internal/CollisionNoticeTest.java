@@ -3,6 +3,8 @@ package com.sn.lib.command.internal;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The collision report of {@link BukkitCommandRegistry}, decided and worded by
@@ -59,5 +61,55 @@ class CollisionNoticeTest {
                         + " kept it. This alias answers as /sndungeons:bal",
                 CollisionNotice.aliasInfo("bal", "money", "SnDungeons",
                         CollisionNotice.occupant(null), "sndungeons"));
+    }
+
+    @Test
+    void withoutPriorityNothingIsTaken() {
+        // No commandPriority(): every occupant keeps its key, exactly as in 1.38.0.
+        for (CollisionNotice.Occupant occupant : CollisionNotice.Occupant.values()) {
+            assertFalse(CollisionNotice.takesOver(false, occupant), occupant.name());
+        }
+    }
+
+    @Test
+    void priorityTakesOnlyFromOtherPluginsAndPlainSnLibRoots() {
+        assertFalse(CollisionNotice.takesOver(true, CollisionNotice.Occupant.OWN));
+        assertFalse(CollisionNotice.takesOver(true, CollisionNotice.Occupant.SERVER));
+        assertTrue(CollisionNotice.takesOver(true, CollisionNotice.Occupant.PLUGIN));
+        assertTrue(CollisionNotice.takesOver(true, CollisionNotice.Occupant.SNLIB_ROOT));
+        // A plugin with priority keeps the key it holds: no trading it back and forth.
+        assertFalse(CollisionNotice.takesOver(true,
+                CollisionNotice.Occupant.SNLIB_PRIORITY_ROOT));
+    }
+
+    @Test
+    void rootTakeoverNamesTheNamespacedFormOfTheDisplacedCommand() {
+        assertEquals(
+                "Command '/money' of SnDungeons took the name from Essentials (command priority); Essentials still answers as /essentials:money",
+                CollisionNotice.rootTakeover("money", "SnDungeons", "Essentials",
+                        "essentials"));
+    }
+
+    @Test
+    void rootTakeoverEndsAtThePriorityWhenTheDisplacedCommandHasNoNamespacedForm() {
+        assertEquals(
+                "Command '/money' of SnDungeons took the name from Essentials (command priority)",
+                CollisionNotice.rootTakeover("money", "SnDungeons", "Essentials", null));
+    }
+
+    @Test
+    void aliasTakeoverNamesTheNamespacedAliasOfTheDisplacedCommand() {
+        assertEquals(
+                "Alias '/bal' of '/money' in SnDungeons took the name from Essentials (command priority); Essentials still answers as /essentials:bal",
+                CollisionNotice.aliasTakeover("bal", "money", "SnDungeons", "Essentials",
+                        "essentials"));
+    }
+
+    @Test
+    void aliasTakeoverEndsAtThePriorityWhenTheDisplacedCommandHasNoNamespacedForm() {
+        assertEquals(
+                "Alias '/bal' of '/money' in SnDungeons took the name from Essentials (command priority)",
+                CollisionNotice.aliasTakeover("bal", "money", "SnDungeons", "Essentials",
+                        null));
     }
 }

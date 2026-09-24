@@ -128,7 +128,7 @@ public final class Sn {
                 ? new SnDb(this, DbConfig.load(plugin,
                         yml == null ? null : yml.config().getSection("database")))
                 : null;
-        this.commands = new SnCommands(this, lang, spec.debugCommand());
+        this.commands = new SnCommands(this, lang, spec.debugCommand(), spec.commandPriority());
         this.reload = new ReloadManager(this);
     }
 

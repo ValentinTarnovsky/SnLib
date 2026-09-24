@@ -26,6 +26,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.yml.internal.MergeBackups;
+
 /**
  * Line-based always-merge YAML updater. Inserts keys/sections present in the bundled
  * jar resource but missing from the on-disk file, preserving user values, comments,
@@ -530,8 +532,9 @@ public final class YamlUpdater {
     private static void pruneOldBackups(File dir, String prefix) {
         // Exact match old-<base>-<yyyyMMdd-HHmmss>.yml: a loose prefix would mix in the
         // backups of another file whose name extends the base (config vs config-extra).
+        // The stamp is shared with MergeBackups, which the menu listers skip by.
         java.util.regex.Pattern stamped = java.util.regex.Pattern.compile(
-                java.util.regex.Pattern.quote(prefix) + "\\d{8}-\\d{6}\\.yml");
+                java.util.regex.Pattern.quote(prefix) + MergeBackups.STAMP);
         File[] backups = dir.listFiles((d, name) -> stamped.matcher(name).matches());
         if (backups == null || backups.length <= BACKUPS_KEPT) {
             return;

@@ -8,6 +8,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginManager;
 
 import com.sn.lib.SnLibPlugin;
+import com.sn.lib.command.internal.CommandPriorityListener;
 import com.sn.lib.db.PlayerDataCache;
 import com.sn.lib.event.internal.ArmourEquipListener;
 import com.sn.lib.event.internal.ChunkMoveListener;
@@ -57,6 +58,7 @@ public final class ListenerHub {
         inscribe(new SelectionWandListener());
         inscribe(new TeleportMoveListener());
         inscribe(new TeleportDamageListener());
+        inscribe(new CommandPriorityListener());
     }
 
     private ListenerHub() {

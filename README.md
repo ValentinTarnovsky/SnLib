@@ -45,6 +45,7 @@ public final class MyPlugin extends SnPlugin {
                 .items("items.yml")     // physical items via YML (optional)
                 .db()                   // SQLite/MySQL via Hikari
                 .debugCommand()         // "debug" sub on the plugin's own roots
+                .commandPriority()      // v1.39: core of the server mode, see commands
                 .build();
     }
     @Override protected void onInnerEnable() {
@@ -125,7 +126,8 @@ compared against the file on disk and the missing keys are inserted at their
 anchored position, preserving user values, extra keys and comments.
 
 - Pre-merge backup `old-<name>-<timestamp>.yml` keep-last-3, ONLY if there is
-  something to insert.
+  something to insert. A menu folder never loads those backups as menus
+  (v1.39.0).
 - Corrupt YML -> moved to `<name>.backup-N`, regenerated from the jar plus a
   WARN; never a crash.
 - Master boolean `update-configs: true` in the consumer's config; when false
@@ -374,6 +376,26 @@ sn.items().give(player, "wand", 1);
 - Pre-enable gate (v1.38.0): `SnPlugin.onPreEnable()` runs before SnLib writes
   a single file, so a license gate there leaves only its own license file on an
   unlicensed install (see Entrypoint).
+- Command priority (v1.39.0): `SnSpec.builder()...commandPriority()` declares
+  the plugin the core of its server mode. Every root it registers, dynamic or
+  declared in the plugin.yml, takes its bare name and its aliases from another
+  plugin's command, registered before or after it: `/money` runs ours while
+  Essentials keeps answering as `/essentials:money`, and ONE INFO per key and
+  enable says so (`Command '/money' of SnDungeons took the name from Essentials
+  (command priority); Essentials still answers as /essentials:money`; aliases
+  get `Alias '/bal' of '/money' in SnDungeons took the name from ...`). Never
+  taken: a key of the same plugin, a namespaced `plugin:key` form, a vanilla,
+  Bukkit or Paper command, a command registered through Paper's Brigadier
+  API, a `commands.yml` alias, or a root of another plugin with priority
+  (whichever holds the key keeps it; the 1.38.0 INFO or WARN applies). The displaced command gets the key back when
+  the root unregisters (disable, or a reload that drops it) unless the server
+  is stopping; a key a later plugin overwrites is taken back when a plugin
+  finishes enabling, when the server finishes loading and on every reload.
+  Plugins without it behave exactly as before. Requires API level 26.
+- Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
+  merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
+  load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a
+  menu merely named `old-town.yml` or `oldies.yml` still loads.
 - Config-driven aliases actually dispatch (v1.33.1): an alias coming from
   `command.aliases` (or from any `aliases(Supplier)`) is now live at boot and
   after a reload, in its bare and its `plugin:alias` form. It never was on
@@ -438,6 +460,10 @@ sn.commands().root("shop")
   declared in the plugin.yml" WARN for a root registered at runtime on purpose
   and turns a name collision into one INFO naming `/<plugin>:<name>`. The help
   reached through that namespaced form still shows the bare name.
+- Command priority (v1.39): `commandPriority()` on the `SnSpec` makes every
+  root of the plugin take its bare name and aliases from other plugins, which
+  keep their `/<plugin>:<name>` form and get the name back when the root
+  unregisters. For the core plugin of a server mode only.
 
 ## db module (SnDb: SQLite/MySQL via Hikari)
 
@@ -742,7 +768,10 @@ Every registration in the lib (contexts, GUIs, items, commands, hooks,
 bossbars, holograms, cron, leaderboards) is keyed by Plugin owner in
 TenantRegistry; the sweeper removes the whole KEY when a consumer is disabled
 (PlugMan included). A consumer's reload/disable NEVER touches another
-consumer's state nor the lib's. Namespace-less statics only for server-wide
+consumer's state nor the lib's. The one opt-in exception is
+`commandPriority()` (v1.39.0): that consumer takes the bare command keys of
+other plugins, SnLib consumers without priority included, and hands them
+back when it releases them. Namespace-less statics only for server-wide
 data (SnVersion/SnCompat, WARN dedup, content-addressed caches of
 HeadUtil/PlayerLookup). The 14 shared listeners (11 from v1.0.0 plus
 ChunkMoveListener, the UpdateChecker join-listener and SelectionWandListener

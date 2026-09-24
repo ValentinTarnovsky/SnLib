@@ -22,6 +22,7 @@ import com.sn.lib.internal.QuitCleanupListener;
 import com.sn.lib.tenant.TenantRegistry;
 import com.sn.lib.yml.SnYml;
 import com.sn.lib.yml.YmlManager;
+import com.sn.lib.yml.internal.MergeBackups;
 import com.sn.lib.yml.internal.ResourceFolders;
 
 /**
@@ -99,8 +100,7 @@ public final class GuiManager {
         seedBundledGuis(files);
         File[] found = null;
         if (dir.exists() || dir.mkdirs()) {
-            found = dir.listFiles(
-                    (parent, name) -> name.toLowerCase(Locale.ROOT).endsWith(".yml"));
+            found = dir.listFiles((parent, name) -> isMenuFile(GuiSeeder.GUIS_DIR, name));
         } else {
             // Only guis/ is lost: the registered folders below still load.
             plugin.getLogger().warning("Could not create folder " + dir.getPath());
@@ -234,8 +234,7 @@ public final class GuiManager {
             plugin.getLogger().warning("Could not create folder " + dir.getPath());
             return;
         }
-        File[] found = dir.listFiles(
-                (parent, name) -> name.toLowerCase(Locale.ROOT).endsWith(".yml"));
+        File[] found = dir.listFiles((parent, name) -> isMenuFile(dirPath, name));
         if (found == null) {
             return;
         }
@@ -251,6 +250,24 @@ public final class GuiManager {
             SnYml yml = mounts.computeIfAbsent(dirPath + "/" + name, files::load);
             guis.put(id, new Gui(ctx, GuiDef.parse(ctx, id, yml)));
         }
+    }
+
+    /**
+     * Whether a file of a menu folder is a menu: a {@code .yml}, except the
+     * {@code old-<file>-<yyyyMMdd-HHmmss>.yml} backups the merge of a managed menu leaves next
+     * to it ({@link MergeBackups#isMergeBackup}), which are the owner's old copies and would
+     * otherwise load as ghost menus. A skipped backup is logged at debug only.
+     */
+    private boolean isMenuFile(String dirPath, String name) {
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".yml")) {
+            return false;
+        }
+        if (MergeBackups.isMergeBackup(name)) {
+            ctx.debug().log(() -> "Menu folder " + dirPath + ": skipped the merge backup "
+                    + name);
+            return false;
+        }
+        return true;
     }
 
     /**
