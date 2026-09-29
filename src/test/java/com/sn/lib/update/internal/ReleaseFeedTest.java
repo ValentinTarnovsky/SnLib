@@ -42,6 +42,24 @@ class ReleaseFeedTest {
     }
 
     @Test
+    void parsesPublicLatestOnlyFeedWithoutAssets() {
+        String body = "[{\"html_url\":\"https://sndevelopment.dev/plugins/snbans\","
+                + "\"tag_name\":\"snbans-v1.9.0\"}]";
+        List<ReleaseFeed.ReleaseTag> tags = ReleaseFeed.parseReleaseTags(body);
+        assertEquals(1, tags.size());
+        assertEquals("snbans-v1.9.0", tags.get(0).tag());
+        assertEquals("https://sndevelopment.dev/plugins/snbans", tags.get(0).url());
+    }
+
+    @Test
+    void sharedReleasesUsePublicMetadataWhileOtherReposKeepGithub() {
+        assertEquals("https://sndevelopment.dev/api/updates",
+                ReleaseFeed.endpointFor("ValentinTarnovsky/Sn-Releases", 1));
+        assertEquals("https://api.github.com/repos/o/r/releases?per_page=100&page=2",
+                ReleaseFeed.endpointFor("o/r", 2));
+    }
+
+    @Test
     void shortFirstPageCostsOneRequest() throws Exception {
         Reader reader = new Reader(List.of(page("snbans-v1.0.0", "snclans-v1.0.0")));
         ReleaseFeed.Scan scan = ReleaseFeed.matching("snbans-", reader);

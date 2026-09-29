@@ -631,6 +631,10 @@ sn.updates().checkNow("owner/repo");
   WARN-once per repo and then silence.
 - PRIVATE GitHub repos: optional read-only token in the consumer config key
   `update-check.token` (read on every check, never logged).
+- Consumers watching `ValentinTarnovsky/Sn-Releases` read the public
+  latest-only metadata feed at `sndevelopment.dev/api/updates` with no token.
+  The repository and JAR assets are private; customers download through the
+  licensed web portal.
 
 ## Self-updater of SnLib.jar (v1.16, SnLib only)
 

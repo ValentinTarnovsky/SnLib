@@ -16,8 +16,10 @@ import java.util.concurrent.ExecutionException;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Paginated shared read of a GitHub releases LIST feed: the multi-plugin releases repo a
- * consumer polls through {@code sn.updates(owner/repo, tagPrefix)}.
+ * Shared read of release metadata for a consumer using
+ * {@code sn.updates(owner/repo, tagPrefix)}. Sn-Releases uses SnDevelopment's public
+ * latest-only metadata feed because its GitHub repository is private. Other repositories
+ * keep the paginated GitHub releases endpoint.
  *
  * <p>The GitHub list endpoint caps a page at 100 releases, so a single request only ever
  * sees the 100 newest releases of the WHOLE repo. In a repo shared by dozens of plugins
@@ -41,6 +43,9 @@ import org.jetbrains.annotations.Nullable;
  * plugin teardown. A failed fetch is never cached, so the next check retries it.</p>
  */
 public final class ReleaseFeed {
+
+    private static final String SHARED_REPO = "ValentinTarnovsky/Sn-Releases";
+    private static final String PUBLIC_FEED = "https://sndevelopment.dev/api/updates";
 
     /** Releases per API page; 100 is the GitHub maximum. */
     private static final int PER_PAGE = 100;
@@ -67,10 +72,11 @@ public final class ReleaseFeed {
     }
 
     /**
-     * Every release of {@code repo} whose tag starts with {@code tagPrefix}, newest first,
+     * Releases of {@code repo} whose tag starts with {@code tagPrefix}, newest first,
      * read across as many pages as the repo has (bounded by {@link #MAX_PAGES}). The walk
      * ends at the first short page - the last one - so a repo smaller than a page still
-     * costs a single request. An empty {@link Scan#matches()} means the prefix is absent
+     * costs a single request. Sn-Releases returns one latest tag per plugin in one request.
+     * An empty {@link Scan#matches()} means the prefix is absent
      * from everything scanned; {@link Scan#truncated()} tells the caller whether that
      * covered the whole repo or stopped at the ceiling.
      */
@@ -121,7 +127,7 @@ public final class ReleaseFeed {
      */
     private static List<ReleaseTag> page(String repo, int page, @Nullable String token)
             throws FeedException, InterruptedException {
-        String key = repo + '\n' + page + '\n' + tokenId(token);
+        String key = repo + '\n' + page + '\n' + tokenId(SHARED_REPO.equals(repo) ? null : token);
         CachedPage cached = CACHE.get(key);
         if (cached != null && System.nanoTime() - cached.stamp() < TTL_NANOS) {
             return cached.entries();
@@ -168,15 +174,18 @@ public final class ReleaseFeed {
     /** One page off the network, parsed into immutable {@code (tag, url)} pairs. */
     private static List<ReleaseTag> fetch(String repo, int page, @Nullable String token)
             throws FeedException, InterruptedException {
-        String endpoint = "https://api.github.com/repos/" + repo
-                + "/releases?per_page=" + PER_PAGE + "&page=" + page;
+        if (SHARED_REPO.equals(repo) && page > 1) {
+            return List.of();
+        }
+        boolean publicFeed = SHARED_REPO.equals(repo);
+        String endpoint = endpointFor(repo, page);
         HttpRequest.Builder builder = HttpRequest
                 .newBuilder(URI.create(endpoint))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
                 .header("User-Agent", "SnLib-UpdateChecker");
-        if (token != null && !token.isEmpty()) {
+        if (!publicFeed && token != null && !token.isEmpty()) {
             builder.header("Authorization", "Bearer " + token);
         }
         try {
@@ -185,10 +194,19 @@ public final class ReleaseFeed {
             if (response.statusCode() != 200) {
                 throw new FeedException("HTTP " + response.statusCode());
             }
-            return List.copyOf(parseReleaseTags(response.body()));
+            List<ReleaseTag> tags = List.copyOf(parseReleaseTags(response.body()));
+            if (publicFeed && tags.isEmpty()) {
+                throw new FeedException("empty update feed");
+            }
+            return tags;
         } catch (IOException e) {
             throw new FeedException(String.valueOf(e));
         }
+    }
+
+    static String endpointFor(String repo, int page) {
+        return SHARED_REPO.equals(repo) ? PUBLIC_FEED : "https://api.github.com/repos/" + repo
+                + "/releases?per_page=" + PER_PAGE + "&page=" + page;
     }
 
     private static HttpClient client() {

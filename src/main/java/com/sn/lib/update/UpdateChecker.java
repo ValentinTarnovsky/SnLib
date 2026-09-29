@@ -45,11 +45,9 @@ import com.sn.lib.yml.SnYml;
  * always off the main thread). A repo dedicated to one plugin is polled against the GitHub
  * {@code releases/latest} endpoint. A repo shared by several plugins is declared with a
  * tag prefix ({@link #watch(String, String)} / {@link #checkNow(String, String)}): the
- * {@code releases} list is read instead through {@link ReleaseFeed}, which walks every
- * page of the repo (a single page only ever holds the 100 newest releases of the whole
- * repo, so one request stops covering every plugin as soon as a shared repo passes 100
- * releases) and shares each fetched page across all consumers of that repo, so the cost of
- * a cycle is one request per page however many plugins are installed. Only tags starting
+ * metadata is read through {@link ReleaseFeed}. Sn-Releases uses the public latest-only
+ * SnDevelopment feed, while other shared repositories use paginated GitHub releases.
+ * Requests are shared across consumers on the same server. Only tags starting
  * with the prefix are considered, and the highest matching version wins. An optional
  * read-only token read from
  * the consumer's main config under {@code update-check.token} on EVERY check (so it can

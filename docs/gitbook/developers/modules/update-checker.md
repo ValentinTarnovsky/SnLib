@@ -42,7 +42,7 @@ sn.updates().watch("owner/repo");
 
 `checkNow` runs a single check off the main thread and arms nothing. `watch` arms a recurring timer, and re-watching the same repo **replaces** (and cancels) the previous timer for that repo. In both cases an invalid `owner/repo` format WARNs and does nothing; the accepted format is a single `owner/repo` matching `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`.
 
-## Shared releases repo (one public repo for many plugins)
+## Shared releases repo
 
 Both `updates(...)` and `watch`/`checkNow` also accept a **tag prefix**. Without it, the repo is assumed dedicated to this one plugin and is polled against `releases/latest`. With it, the repo is treated as **shared by several plugins**: the checker instead lists the repo's releases and keeps only the tags starting with your prefix, then picks the highest matching version.
 
@@ -55,13 +55,15 @@ sn.updates().checkNow("owner/Sn-Releases", "myplugin-");
 sn.updates().watch("owner/Sn-Releases", "myplugin-");
 ```
 
-This exists so a whole family of plugins can publish to **one** public repo instead of maintaining a dedicated public releases repo per plugin. The convention is to tag each release `<pluginId>-vX.Y.Z` (for example `myplugin-v1.4.0`) on the shared repo, so the prefix (`myplugin-`) unambiguously picks out this plugin's releases among everyone else's tags. Passing `null` (or using the single-argument overloads) keeps the old dedicated-repo behavior.
+This exists so a whole family of plugins can publish to **one** releases repo instead of maintaining a dedicated repo per plugin. The convention is to tag each release `<pluginId>-vX.Y.Z` (for example `myplugin-v1.4.0`), so the prefix (`myplugin-`) selects this plugin's version. Passing `null` (or using the single-argument overloads) keeps the dedicated-repo behavior. The Sn-Releases repository is private; its latest versions are announced through the public SnDevelopment metadata feed. Licensed downloads are available from each plugin page.
 
 ### How the feed is read
 
-A GitHub releases page holds at most **100 releases of the whole repo**, so on a shared repo one request stops covering every plugin the moment the repo passes 100 releases: the plugins whose newest release has been pushed out of that window find no tag of theirs at all, and which plugins those are drifts with every release anyone publishes. The checker therefore **walks the pages** until it reaches the end of the repo, capped at the newest **1000** releases.
+For `ValentinTarnovsky/Sn-Releases`, SnLib requests `https://sndevelopment.dev/api/updates`. This public response has only the latest tag and plugin page URL for each plugin. It contains no JAR asset links or customer data. The existing `.updates("ValentinTarnovsky/Sn-Releases", "<pluginid>-")` calls need no change and no server token.
 
-Paging multiplies requests, and the GitHub API allows only **60 unauthenticated requests per hour per IP** - enough to be exhausted on one boot of a server running dozens of consumers. So a page is fetched **once for the whole server and shared**: every consumer reading the same repo reads the same cached pages (5-minute TTL), and consumers that want a page no one has fetched yet wait on the single in-flight request instead of firing their own. A check cycle costs **one request per page of the repo, however many plugins are installed** - three today for a repo of ~300 releases. A failed fetch is never cached, so the next check retries it.
+Other shared repositories continue to use GitHub's paginated releases API. A GitHub releases page holds at most **100 releases of the whole repo**, so the checker walks pages until it reaches the end, capped at the newest **1000** releases.
+
+Requests are fetched **once for the whole server and shared**: every consumer reading the same repo reads the same cached response (5-minute TTL), and concurrent consumers wait on the single in-flight request. A failed fetch is never cached, so the next check retries it.
 
 ## Timing
 
@@ -73,7 +75,7 @@ The watch lives for the enable. A consumer reload neither re-arms nor duplicates
 
 ## What it checks and how it compares
 
-Each watched repo is polled against the GitHub `releases/latest` endpoint:
+Dedicated repos are polled against the GitHub `releases/latest` endpoint:
 
 ```
 GET https://api.github.com/repos/<owner>/<repo>/releases/latest
@@ -138,7 +140,7 @@ update-check:
   token: "ghp_your_read_only_token"
 ```
 
-The token is read from your config on **every single check** (not cached at enable), so you can rotate it without a restart. It is sent as a `Bearer` header and is **never logged**. Leave the key empty or absent for public repos.
+The token is read from your config on **every single check** (not cached at enable), so you can rotate it without a restart. It is sent as a `Bearer` header and is **never logged**. The SnDevelopment metadata feed does not use this token.
 
 ## Real-world example: SnLib watches itself
 
