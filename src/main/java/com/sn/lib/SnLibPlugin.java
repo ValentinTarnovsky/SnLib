@@ -49,6 +49,11 @@ public final class SnLibPlugin extends JavaPlugin {
         return plugin;
     }
 
+    /** Running SnLib bootstrap, or null while it is not enabled (1.40.1). */
+    public static @Nullable SnLibPlugin running() {
+        return instance;
+    }
+
     /**
      * API level of the installed SnLib.jar: {@link SnApi#LEVEL} as inlined in THIS jar
      * at build time, compared against the consumer's {@code requiredApiLevel()}.

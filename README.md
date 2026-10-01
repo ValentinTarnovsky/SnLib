@@ -392,6 +392,11 @@ sn.items().give(player, "wand", 1);
   is stopping; a key a later plugin overwrites is taken back when a plugin
   finishes enabling, when the server finishes loading and on every reload.
   Plugins without it behave exactly as before. Requires API level 26.
+- Coalesced command syncs (v1.40.1): every root register or unregister of one
+  server tick now publishes ONE command-tree refresh on the next tick instead of
+  one per pass. A consumer reload that re-registers many roots no longer races
+  Paper's async command builder (`ConcurrentModificationException` in
+  `Commands.sendAsync`). No API change.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a

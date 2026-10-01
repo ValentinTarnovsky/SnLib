@@ -26,6 +26,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import com.sn.lib.SnLibPlugin;
 import com.sn.lib.command.RootCommand;
 import com.sn.lib.tenant.TenantRegistry;
 
@@ -37,9 +38,10 @@ import com.sn.lib.tenant.TenantRegistry;
  * was built with {@code dynamic()} (registered at runtime on purpose). In both
  * paths the dynamic aliases (builder varargs, an alias supplier, or the config-driven
  * binding) are reconciled against the CommandMap's known commands. After every register and
- * unregister the online players get {@code updateCommands()} so their client trees never
- * show ghosts, and a pass that actually mutated the map goes through {@link CommandSync}
- * instead so the server's own dispatcher is rebuilt where that is what publishes the key.
+ * unregister the online players get {@code updateCommands()} (coalesced into one publish on
+ * the next tick since 1.40.1) so their client trees never show ghosts, and a pass that
+ * actually mutated the map goes through {@link CommandSync} instead so the server's own
+ * dispatcher is rebuilt where that is what publishes the key.
  *
  * <p>Every write into the known commands goes through the map's own {@code get} and
  * {@code put}, never through {@code putIfAbsent} or an {@code entrySet} bulk removal. On
@@ -83,6 +85,12 @@ public final class BukkitCommandRegistry {
     /** Server-wide static justified: root commands keyed per owning plugin for the sweep. */
     private static final TenantRegistry<RootCommand> COMMANDS =
             new TenantRegistry<>(BukkitCommandRegistry::sweep);
+
+    /** Server-wide static justified: whether a pass since the last publish mutated the map. */
+    private static boolean pendingMutated;
+
+    /** Server-wide static justified: whether the coalesced publish is already scheduled. */
+    private static boolean publishScheduled;
 
     /**
      * Server-wide static justified: per-root registration state keyed by root instance
@@ -828,11 +836,62 @@ public final class BukkitCommandRegistry {
     }
 
     /**
-     * Publishes a register or unregister pass: a pass that mutated the CommandMap goes through
-     * {@link CommandSync}, which on the server generations that need it rebuilds the dispatcher
-     * before re-sending the trees; anything else only refreshes the client trees.
+     * Publishes a register or unregister pass, coalesced (1.40.1): every pass of one server tick
+     * asks for ONE publish on the next tick instead of publishing at once. Paper builds each
+     * player's client tree asynchronously from the live dispatcher, so a publish per pass let the
+     * builders of one pass walk the dispatcher while the next pass of the same reload was still
+     * changing it ({@code ConcurrentModificationException} in the async command builder). A pass
+     * off the main thread, or while SnLib itself is not enabled, publishes at once as before.
      */
     private static void refresh(boolean mutated) {
+        if (Bukkit.isStopping()) {
+            return;
+        }
+        SnLibPlugin plugin = SnLibPlugin.running();
+        if (plugin == null || !plugin.isEnabled() || !Bukkit.isPrimaryThread()) {
+            publish(mutated);
+            return;
+        }
+        synchronized (BukkitCommandRegistry.class) {
+            pendingMutated |= mutated;
+            if (publishScheduled) {
+                return;
+            }
+            publishScheduled = true;
+        }
+        try {
+            Bukkit.getScheduler().runTask(plugin, BukkitCommandRegistry::flush);
+        } catch (RuntimeException e) {
+            boolean pending;
+            synchronized (BukkitCommandRegistry.class) {
+                pending = pendingMutated;
+                pendingMutated = false;
+                publishScheduled = false;
+            }
+            publish(pending);
+        }
+    }
+
+    /** The coalesced publish of every pass since the last one. */
+    private static void flush() {
+        boolean mutated;
+        synchronized (BukkitCommandRegistry.class) {
+            mutated = pendingMutated;
+            pendingMutated = false;
+            publishScheduled = false;
+        }
+        if (Bukkit.isStopping()) {
+            return;
+        }
+        publish(mutated);
+    }
+
+    /**
+     * Publishes now: a pass that mutated the CommandMap goes through {@link CommandSync}, which
+     * on the server generations that need it rebuilds the dispatcher before re-sending the
+     * trees; anything else only refreshes the client trees.
+     */
+    private static void publish(boolean mutated) {
         if (mutated && CommandSync.sync()) {
             return;
         }
