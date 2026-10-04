@@ -17,6 +17,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import com.sn.lib.Ph;
+import com.sn.lib.text.internal.RenderCache;
 import com.sn.lib.util.NumberFormatter;
 
 /**
@@ -113,11 +114,20 @@ public final class SnText {
      * whole render; this normalization makes {@code §} content render like its {@code &}
      * equivalent. A {@code §}-free input is passed through untouched and renders exactly as
      * before.</p>
+     *
+     * <p>The result is memoized per input line ({@link RenderCache}): the pipeline is pure
+     * and components are immutable, so a line rendered again - every lore line of a menu
+     * refreshed by {@code update-interval:} - skips MiniMessage entirely.</p>
      */
     public static Component color(String s) {
         if (s == null) {
             return Component.empty();
         }
+        return RenderCache.get(s, SnText::renderColor);
+    }
+
+    /** The uncached full pipeline behind {@link #color(String)}. */
+    private static Component renderColor(String s) {
         return MINI.deserialize(legacyToMini(consumeCenterMark(applyPrefixTags(normalizeSectionSigns(s)))));
     }
 

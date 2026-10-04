@@ -10,6 +10,7 @@ import com.sn.lib.hologram.internal.HologramChunkListener;
 import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.tenant.internal.ListenerHub;
 import com.sn.lib.tenant.internal.TenantSweeper;
+import com.sn.lib.text.internal.RenderCache;
 import com.sn.lib.update.internal.ReleaseFeed;
 import com.sn.lib.update.internal.SelfUpdater;
 import com.sn.lib.util.HeadUtil;
@@ -103,6 +104,7 @@ public final class SnLibPlugin extends JavaPlugin {
         SkinResolver.clearCache();
         PlayerLookup.clearCache();
         ReleaseFeed.clearCache();
+        RenderCache.clear();
         this.selfCtx = null;
         instance = null;
     }

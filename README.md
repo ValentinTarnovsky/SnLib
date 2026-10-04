@@ -397,6 +397,12 @@ sn.items().give(player, "wand", 1);
   one per pass. A consumer reload that re-registers many roots no longer races
   Paper's async command builder (`ConcurrentModificationException` in
   `Commands.sendAsync`). No API change.
+- Cached text rendering (v1.40.2): `SnText.color` memoizes its result per input
+  line, so a line rendered again skips MiniMessage entirely. A menu with
+  `update-interval:` rebuilt every name and lore line on every tick for every
+  viewer, and that parse was ~7% of the server thread on a live profile. The
+  cache is bounded (2048 lines of up to 256 chars, reset when full) and output
+  is identical. No API change.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a
