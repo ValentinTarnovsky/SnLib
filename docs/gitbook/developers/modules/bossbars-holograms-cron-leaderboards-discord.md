@@ -244,6 +244,25 @@ sn.discord().send(hook, "Server started");
 
 Discord accepts up to 10 embeds per message; extras are ignored. Embed color is `0xRRGGBB`.
 
+### Author, images and links (API level 27, SnLib 1.41.0)
+
+```java
+sn.discord().message(hook)
+        .username("Steve - Reports")
+        .avatarUrl("https://mc-heads.net/avatar/Steve")
+        .embed(sn.discord().embed()
+                .title("New report")
+                .url("https://example.com/reports")             // title link
+                .author("Steve", null, "https://mc-heads.net/avatar/Steve")
+                .thumbnail("https://mc-heads.net/head/Alex")      // top-right corner
+                .image("https://mc-heads.net/body/Alex")          // bottom of the embed
+                .footer("Lobby", "https://example.com/icon.png")  // footer with icon
+                .timestampNow())
+        .send();
+```
+
+Every one of these setters treats `null` or a blank string as "leave it out", so values read from a config map an empty string straight to a hidden section. `author(...)` with a blank name drops the whole author bar.
+
 ### Rate limits and delivery guarantees
 
 - Delivery is FIFO over a single async worker.

@@ -343,7 +343,14 @@ public final class DiscordWebhook {
         private @Nullable String description;
         private @Nullable Integer color;
         private @Nullable String footer;
+        private @Nullable String footerIcon;
         private @Nullable String timestamp;
+        private @Nullable String url;
+        private @Nullable String authorName;
+        private @Nullable String authorUrl;
+        private @Nullable String authorIcon;
+        private @Nullable String thumbnail;
+        private @Nullable String image;
 
         private Embed() {
         }
@@ -378,6 +385,67 @@ public final class DiscordWebhook {
             return this;
         }
 
+        /**
+         * Footer text with a small icon next to it.
+         *
+         * @param footer  the footer text
+         * @param iconUrl the icon image URL; null or blank shows no icon
+         * @since 1.41.0
+         */
+        public Embed footer(String footer, @Nullable String iconUrl) {
+            this.footer = footer;
+            this.footerIcon = blankToNull(iconUrl);
+            return this;
+        }
+
+        /**
+         * Link opened by a click on the title; ignored by Discord without a title.
+         *
+         * @param url the link; null or blank removes it
+         * @since 1.41.0
+         */
+        public Embed url(@Nullable String url) {
+            this.url = blankToNull(url);
+            return this;
+        }
+
+        /**
+         * Author bar shown above the title.
+         *
+         * @param name    the author name; null or blank removes the whole bar
+         * @param url     link of the name; null or blank for none
+         * @param iconUrl small icon left of the name; null or blank for none
+         * @since 1.41.0
+         */
+        public Embed author(@Nullable String name, @Nullable String url, @Nullable String iconUrl) {
+            this.authorName = blankToNull(name);
+            this.authorUrl = blankToNull(url);
+            this.authorIcon = blankToNull(iconUrl);
+            return this;
+        }
+
+        /**
+         * Small image in the top-right corner.
+         *
+         * @param url the image URL; null or blank removes it
+         * @since 1.41.0
+         */
+        public Embed thumbnail(@Nullable String url) {
+            this.thumbnail = blankToNull(url);
+            return this;
+        }
+
+        /**
+         * Large image at the bottom of the embed.
+         *
+         * @param url the image URL; null or blank removes it
+         * @since 1.41.0
+         */
+        public Embed image(@Nullable String url) {
+            this.image = blankToNull(url);
+            return this;
+        }
+
         /** Stamps the embed with the current instant. */
         public Embed timestampNow() {
             this.timestamp = Instant.now().toString();
@@ -387,6 +455,7 @@ public final class DiscordWebhook {
         void appendJson(StringBuilder out) {
             StringBuilder body = new StringBuilder(64).append('{');
             appendField(body, "title", title);
+            appendField(body, "url", url);
             appendField(body, "description", description);
             if (color != null) {
                 if (body.length() > 1) {
@@ -398,9 +467,26 @@ public final class DiscordWebhook {
                 if (body.length() > 1) {
                     body.append(',');
                 }
-                body.append("\"footer\":{\"text\":\"").append(escape(footer)).append("\"}");
+                body.append("\"footer\":{\"text\":\"").append(escape(footer)).append('"');
+                if (footerIcon != null) {
+                    body.append(",\"icon_url\":\"").append(escape(footerIcon)).append('"');
+                }
+                body.append('}');
             }
             appendField(body, "timestamp", timestamp);
+            if (authorName != null) {
+                StringBuilder author = new StringBuilder(32).append('{');
+                appendField(author, "name", authorName);
+                appendField(author, "url", authorUrl);
+                appendField(author, "icon_url", authorIcon);
+                appendObject(body, "author", author.append('}'));
+            }
+            if (thumbnail != null) {
+                appendObject(body, "thumbnail", new StringBuilder("{\"url\":\"").append(escape(thumbnail)).append("\"}"));
+            }
+            if (image != null) {
+                appendObject(body, "image", new StringBuilder("{\"url\":\"").append(escape(image)).append("\"}"));
+            }
             if (!fields.isEmpty()) {
                 if (body.length() > 1) {
                     body.append(',');
@@ -418,6 +504,17 @@ public final class DiscordWebhook {
                 body.append(']');
             }
             out.append(body.append('}'));
+        }
+
+        private static void appendObject(StringBuilder body, String key, CharSequence object) {
+            if (body.length() > 1) {
+                body.append(',');
+            }
+            body.append('"').append(key).append("\":").append(object);
+        }
+
+        private static @Nullable String blankToNull(@Nullable String value) {
+            return value == null || value.isBlank() ? null : value;
         }
 
         private record Field(String name, String value, boolean inline) {

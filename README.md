@@ -403,6 +403,10 @@ sn.items().give(player, "wand", 1);
   viewer, and that parse was ~7% of the server thread on a live profile. The
   cache is bounded (2048 lines of up to 256 chars, reset when full) and output
   is identical. No API change.
+- Full Discord embeds (v1.41.0): `DiscordWebhook.Embed` gains `url(link)` for
+  the title link, `author(name, url, iconUrl)`, `thumbnail(url)`, `image(url)`
+  and `footer(text, iconUrl)`. A null or blank value leaves that part out, so a
+  config-driven embed can map an empty string to "hidden". Requires API level 27.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a

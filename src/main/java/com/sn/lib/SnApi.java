@@ -91,12 +91,14 @@ package com.sn.lib;
  * LEVEL 26 = release 1.39.0 (SnSpec.Builder.commandPriority; SnCommands 4-arg constructor:
  * the core plugin of a server mode takes the bare name and the aliases of its roots from the
  * commands of other plugins, which keep their /plugin:name form and get the key back when
- * the root unregisters).</p>
+ * the root unregisters); LEVEL 27 = release 1.41.0 (full Discord embeds:
+ * DiscordWebhook.Embed.url, author(name, url, iconUrl), thumbnail, image and
+ * footer(text, iconUrl) cover the title link, author bar, images and footer icon).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 26;
+    public static final int LEVEL = 27;
 
     private SnApi() {
     }
