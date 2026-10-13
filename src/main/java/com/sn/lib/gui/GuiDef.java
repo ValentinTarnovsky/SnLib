@@ -43,6 +43,10 @@ import com.sn.lib.yml.SnYml;
  *     an empty cell; every key char maps to its cells)     derives from the row count)
  *   paged-key (one layout char at menu level: its       -> GuiDef.parse into pagedSlots(),
  *     cells are the target of the no-slots bindPaged)      consumed by GuiSession.bindPaged
+ *   paged-flow (1.42.0, a 6x9 grid like layout: on      -> GuiDef.parsePagedFlow via
+ *     each paged cell an arrow > &lt; ^ v leads to the        PagedFlow.order, which reorders
+ *     next entry; one path through every paged cell,       pagedSlots(); a broken drawing
+ *     the start is the cell nothing leads into)            WARNs and keeps row-major order
  *   regions.&lt;id&gt; (menu-level named groups of cells:     -> GuiDef.parseRegions into
  *     a scalar is shorthand for key:, the long form         regionSlots(), consumed by
  *     takes slots: or key:; entry i renders into cell       GuiSession.bindEach, one entry
@@ -155,7 +159,7 @@ public final class GuiDef {
                     Map.of());
         }
         String title = root.getString("title", "Menu");
-        List<String> layoutRows = truncateLayout(root.getStringList("layout"), warn);
+        List<String> layoutRows = truncateLayout("layout", root.getStringList("layout"), warn);
         Map<Character, int[]> keySlots = layoutKeys(layoutRows);
         int rows = root.getInt("rows", 3);
         if (!layoutRows.isEmpty()) {
@@ -182,6 +186,7 @@ public final class GuiDef {
         PlayerInventoryPolicy playerInventory = PlayerInventoryPolicy.resolve(
                 root.getString("player-inventory", ""), warn);
         int[] pagedSlots = parsePagedKey(root, keySlots, !layoutRows.isEmpty(), pagination, warn);
+        pagedSlots = parsePagedFlow(root, pagedSlots, !layoutRows.isEmpty(), warn);
         Map<String, int[]> regions = parseRegions(root, keySlots, !layoutRows.isEmpty(),
                 pagedSlots, warn);
         List<GuiItemDef> items = new ArrayList<>();
@@ -253,24 +258,25 @@ public final class GuiDef {
     }
 
     /**
-     * Truncates the raw {@code layout:} list to the 6x9 chest grid with a WARN per
-     * overflow: at most 6 rows and at most 9 characters per row. An empty list means
-     * the menu declared no layout.
+     * Truncates a raw grid list ({@code layout:} or {@code paged-flow:}, named by
+     * {@code field} in the WARNs) to the 6x9 chest grid with a WARN per overflow: at most 6
+     * rows and at most 9 characters per row. An empty list means the menu declared no grid.
      */
-    private static List<String> truncateLayout(List<String> raw, Consumer<String> warn) {
+    private static List<String> truncateLayout(String field, List<String> raw,
+                                               Consumer<String> warn) {
         if (raw.isEmpty()) {
             return List.of();
         }
         List<String> rows = raw;
         if (rows.size() > 6) {
-            warn.accept("layout has " + rows.size() + " rows; truncated to 6");
+            warn.accept(field + " has " + rows.size() + " rows; truncated to 6");
             rows = rows.subList(0, 6);
         }
         List<String> out = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             String row = rows.get(i) == null ? "" : rows.get(i);
             if (row.length() > 9) {
-                warn.accept("layout row " + (i + 1) + " has " + row.length()
+                warn.accept(field + " row " + (i + 1) + " has " + row.length()
                         + " characters; truncated to 9");
                 row = row.substring(0, 9);
             }
@@ -345,6 +351,32 @@ public final class GuiDef {
                     + " ignored until pagination is enabled");
         }
         return slots.clone();
+    }
+
+    /**
+     * Reorders the resolved {@code paged-key} cells along the arrow path the owner drew in
+     * {@code paged-flow:} (see {@link PagedFlow}). Without a {@code paged-flow:} the cells
+     * keep their row-major order silently. Declared without a layout, or without a
+     * {@code paged-key:}, it WARNs and is ignored; a {@code paged-key} that is declared but
+     * invalid already warned, so nothing is added for it here.
+     */
+    static int[] parsePagedFlow(ConfigurationSection root, int[] pagedSlots, boolean hasLayout,
+                                Consumer<String> warn) {
+        List<String> raw = root.getStringList("paged-flow");
+        if (raw.isEmpty()) {
+            return pagedSlots;
+        }
+        if (!hasLayout) {
+            warn.accept("paged-flow declared without a layout; ignored");
+            return pagedSlots;
+        }
+        if (pagedSlots.length == 0) {
+            if (root.getString("paged-key", "").isEmpty()) {
+                warn.accept("paged-flow declared without a paged-key; ignored");
+            }
+            return pagedSlots;
+        }
+        return PagedFlow.order(pagedSlots, truncateLayout("paged-flow", raw, warn), warn);
     }
 
     /**
@@ -574,7 +606,9 @@ public final class GuiDef {
 
     /**
      * Target slots of the no-slots {@code bindPaged}, resolved from the layout's
-     * {@code paged-key}; empty when the menu declares no paged-key.
+     * {@code paged-key}: entry i of a page renders into element i, so the array is in
+     * {@code paged-flow:} order when the menu draws one and row-major otherwise. Empty when
+     * the menu declares no paged-key.
      */
     public int[] pagedSlots() {
         return pagedSlots.clone();

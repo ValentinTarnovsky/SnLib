@@ -49,6 +49,83 @@ A `paged-key` that is not one character, is absent from the layout, or is declar
 
 On the last page, leftover paged cells simply render empty.
 
+### Paging order: paged-flow (1.42.0)
+
+By default the entries fill the paged cells like text: left to right, then the next row down. `paged-flow` lets you draw a different order. It is a second grid laid over the `layout:`, same size, and on every paged cell you put an arrow pointing to where the NEXT entry goes:
+
+| Arrow | Next entry goes |
+| --- | --- |
+| `>` | right |
+| `<` | left |
+| `^` | up |
+| `v` | down |
+
+```yaml
+layout:
+  - "fffffffff"
+  - "fdddddddf"
+  - "fdddddddf"
+  - "fffffffff"
+paged-key: d
+paged-flow:
+  - "         "
+  - " >>>>>>v "
+  - " <<<<<<< "
+  - "         "
+```
+
+That is a snake: entries 1 to 7 run along the first row to the right, entry 8 drops under the last one and entries 8 to 14 come back to the left. The rules:
+
+- **The start** is the cell no arrow points at. Entry 1 goes there.
+- **The end** is the cell whose arrow leads nowhere: it points off the paged area, or the cell is left blank.
+- **Gaps are skipped.** An arrow leads to the next PAGED cell in its direction, so a filler cell in the middle of the paged area does not break the path.
+- **A turn enters the next line where that line's arrows start.** When the path changes axis (a `v` at the end of a row, or a `>` at the bottom of a column), it lands on the first cell of the line it turns into. That is what makes the snake above land right under the turn, and the drawing below run right to left on every row: the `v` on the left end drops into the second row, whose arrows start on the right.
+- Cells outside the `paged-key` are ignored. Spaces there are fine, and so is copying the frame letters, which are not arrows.
+- Quote every row, as in the examples. Unquoted, a row that starts with `>` is YAML syntax, and the leading spaces that line the arrows up with the layout are dropped.
+
+More orders you can draw over the same layout:
+
+```yaml
+# Every row right to left, top row first
+paged-flow:
+  - "         "
+  - " v<<<<<< "
+  - " <<<<<<< "
+```
+
+```yaml
+# Every row left to right, bottom row first
+paged-flow:
+  - "         "
+  - " >>>>>>> "
+  - " >>>>>>^ "
+```
+
+```yaml
+# Columns, top to bottom, left column first
+layout:
+  - "ddddddd"
+  - "ddddddd"
+  - "ddddddd"
+paged-key: d
+paged-flow:
+  - "vvvvvvv"
+  - "vvvvvvv"
+  - ">>>>>> "
+```
+
+The drawing must be ONE path through EVERY paged cell. When it is not, the menu still opens with the default order and the console says what is wrong, naming the slot:
+
+| Problem | Result |
+| --- | --- |
+| A paged cell holds a character that is not an arrow or a space | Warns, default order. |
+| The arrows form a loop with no start, or run back into a cell already used | Warns, default order. |
+| Some paged cells are never reached (two separate lines, an island) | Warns, default order. |
+| An arrow sits on a cell that is not paged | Warns once (usually the grid is shifted by a character against the layout); the rest of the flow still applies. |
+| `paged-flow` without a `layout:` or without a `paged-key:` | Warns, ignored. |
+
+Without `paged-flow` nothing changes. The plugin never needs an update for a new order: it passes its list in its own order, and your drawing decides where each entry lands.
+
 ### Navigation items
 
 Navigation items are regular items whose `click-actions` use the page actions. SnLib detects them by those actions: any list containing `[previous-page]` or `[next-page]` marks the item as navigation.

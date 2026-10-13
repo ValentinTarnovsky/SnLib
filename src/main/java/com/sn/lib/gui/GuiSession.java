@@ -442,7 +442,10 @@ public final class GuiSession implements PageTarget {
      * No-slots variant of {@link #bindPaged(String, List, int[], BiConsumer)}: the
      * target slots are the layout cells of the {@code paged-key} declared by the menu.
      * When the menu declares no paged-key the call WARNs once and is ignored. Same
-     * rules as the int[] overload (pagination opt-in, existing template).
+     * rules as the int[] overload (pagination opt-in, existing template). The cells are
+     * walked in the menu's {@code paged-flow:} order when it draws one (row-major
+     * otherwise), so the plugin passes {@code data} in logical order and never reorders it
+     * to fit a layout.
      */
     public <T> void bindPaged(String templateId, List<T> data, BiConsumer<T, PhCollector> mapper) {
         int[] target = def.pagedSlots();

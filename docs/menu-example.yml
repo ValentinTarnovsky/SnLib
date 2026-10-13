@@ -56,6 +56,25 @@ pagination: true/false # default: false
 # An invalid paged-key, one absent from the layout or one declared without
 # layout WARNs and is ignored.
 # paged-key: d
+#
+# paged-flow (1.42.0): optional arrow grid over the layout that sets the ORDER
+# the paged-key cells fill in (default: left to right, then the next row
+# down). On each paged cell, the arrow points to the NEXT entry: > right,
+# < left, ^ up, v down. Entry 1 goes on the cell no arrow points at, and the
+# path ends on a blank cell or an arrow that leads off the paged area. An arrow
+# skips non-paged cells. A turn (the path changing axis, like a v at the
+# end of a row) enters the next line where that line's own arrows start. The
+# drawing must be ONE path through EVERY paged cell; otherwise it WARNs naming
+# the slot and the default order is kept. An arrow on a non-paged cell WARNs
+# once (the grid is probably shifted). Without a layout or a paged-key it WARNs
+# and is ignored. Quote every row: an unquoted row starting with > is YAML
+# syntax and loses its leading spaces. The example below is a snake for the
+# layout above.
+# paged-flow:
+#   - "         "
+#   - "  >>>>v  "
+#   - "  <<<<<  "
+#   - "         "
 
 # ═══════════════════════════════════════════════════════════════════
 # RUNTIME REGIONS - named groups of cells the plugin fills (1.20.0)

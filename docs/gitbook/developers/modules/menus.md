@@ -440,6 +440,8 @@ paged-key: d
 s.bindPaged("warp-entry", warps, (warp, ph) -> ph.add("name", warp.name()));
 ```
 
+The order belongs to the owner. Entry `i` of a page lands on cell `i` of `def.pagedSlots()`, which is row-major unless the menu draws a `paged-flow:` arrow grid (1.42.0: a snake, right to left, bottom up, by columns). Pass `data` in its logical order and never reorder it to fit a layout: the file decides where each entry goes.
+
 If the menu declares no `paged-key`, this overload warns once and is ignored. For a group of cells that is NOT paginated, `regions:` + `bindEach` is the same idea without the page machinery - see [Runtime regions](#runtime-regions-1200).
 
 ## Custom action tags

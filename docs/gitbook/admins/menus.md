@@ -114,6 +114,7 @@ Every string supports colors, gradients and placeholders: see [Text, Colors and 
 | `update-interval` | Ticks between automatic re-renders. `0`, the default, means no timer. Covered below. |
 | `pagination` | Opt-in per-viewer paging. Default: `false`. Owned by [Pagination, Regions and Templates](pagination-regions-templates.md). |
 | `paged-key` | The one layout letter whose cells receive paged content. Same page. |
+| `paged-flow` | An arrow grid over the layout that sets the order the paged cells fill in (1.42.0). Same page. |
 | `regions` | Named cell groups the plugin fills, one entry per cell. Same page. |
 | `strict-clicks` | Opt-in filter that discards exotic clicks. Default: `false`. Owned by [Menu Items and Clicks](menu-items-and-clicks.md). |
 | `player-inventory` | Whether the viewer may use their own inventory while the menu is open: `locked` or `open`. Default: `locked`. Covered below. |

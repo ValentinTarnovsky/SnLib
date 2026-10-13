@@ -202,6 +202,10 @@ sn.guis().registerAction("my-tag", (ctx) -> ...);      // [custom] action
   the chest grid), `key:` per item as an alternative to `slots:` and
   `paged-key:` as the target of `bindPaged(String templateId, ...)` without an
   `int[]`. `GuiMask` exposes the same geometry via API.
+- Paging order (v1.42.0): `paged-flow:` is an arrow grid (`>` `<` `^` `v`)
+  drawn over the layout that sets the order the `paged-key` cells fill in:
+  snake, right to left, bottom up, by columns, spiral. A broken drawing WARNs
+  naming the slot and keeps the default row-major order.
 - Config-driven template placement (v1.18.0): templates may declare `slots:`
   or `key:` like items, and the no-slot `bind("template-id", phs...)` renders
   into those yml-declared cells - the owner repositions dynamic elements by
@@ -407,6 +411,12 @@ sn.items().give(player, "wand", 1);
   the title link, `author(name, url, iconUrl)`, `thumbnail(url)`, `image(url)`
   and `footer(text, iconUrl)`. A null or blank value leaves that part out, so a
   config-driven embed can map an empty string to "hidden". Requires API level 27.
+- Paging order (v1.42.0): a menu can draw `paged-flow:`, an arrow grid over
+  its layout, to set the order its `paged-key` cells fill in (start cell,
+  direction, one row right and the next left, columns, spirals). A turn enters
+  the next line where that line's arrows start, so every typewriter and snake
+  order is drawable. Config-only: no new API, API level stays 27, and a menu
+  without `paged-flow` renders exactly as before.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a
@@ -745,7 +755,7 @@ spec, it ALREADY works without plugin code.
 
 | Spec | Fields |
 |------|--------|
-| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL, HIDE_TOOLTIP v1.29), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
+| `docs/menu-example.yml` | title, rows, open-sound, close-sound (v1.1), close-actions (v1.1), update-interval, inventory-type, pagination, strict-clicks (v1.1), layout + paged-key (v1.1), paged-flow (v1.42); per item: display-name, material (basehead), skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, slots, key (v1.1), glow, enchantments, flags (HIDE_ALL, HIDE_TOOLTIP v1.29), color, trim-pattern, trim-material, potion-effects, update-interval, lore, view/click-requirements, click/deny-actions, per-click matrix right/left/shift-right/shift-left/middle x actions/requirements/deny-actions (v1.1), nav items with nav-disabled; templates without slots; [small]/[rgb]/[center]/MiniMessage in any string |
 | `docs/item-example.yml` | display-name, material, skull-owner (v1.1), custom-model-data, item-model (v1.11), amount, glow, lore, enchantments, flags (HIDE_ALL, HIDE_TOOLTIP v1.29), color, trim-pattern, trim-material, potion-effects, attributes (v1.1), damage (v1.1), unbreakable, max-stack-size, droppable, moveable, placeable, tradeable, despawnable, keep-on-death, cooldown, locked, no-drop, no-manual-equip, obtain-via, custom-durability (max/damage-per-use/break-actions/lore-format), 12 *-click-actions lists (8 + 4 shift-positional v1.1), shift-overrides-generic (v1.1), interact-requirements, deny-actions, pickup/drop-actions, held-effects (mainhand/offhand/armor), equipment-slot, recipe (7 types) |
 | `docs/selection-example.yml` (v1.1) | item (full SnItem appearance schema), permission, particle (type/color/size), step, interval-ticks, render-distance, visibility (OWNER_ONLY/WORLD), particle-budget, max-render-volume, max-volume, timeout-ticks, silent |
 
