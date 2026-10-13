@@ -115,7 +115,7 @@ Every string supports colors, gradients and placeholders: see [Text, Colors and 
 | `pagination` | Opt-in per-viewer paging. Default: `false`. Owned by [Pagination, Regions and Templates](pagination-regions-templates.md). |
 | `paged-key` | The one layout letter whose cells receive paged content. Same page. |
 | `paged-flow` | An arrow grid over the layout that sets the order the paged cells fill in (1.42.0). Same page. |
-| `regions` | Named cell groups the plugin fills, one entry per cell. Same page. |
+| `regions` | Named cell groups the plugin fills, one entry per cell. A region can draw its own `flow:` order (1.43.0). Same page. |
 | `strict-clicks` | Opt-in filter that discards exotic clicks. Default: `false`. Owned by [Menu Items and Clicks](menu-items-and-clicks.md). |
 | `player-inventory` | Whether the viewer may use their own inventory while the menu is open: `locked` or `open`. Default: `locked`. Covered below. |
 | `items` | The buttons of the menu. Owned by [Menu Items and Clicks](menu-items-and-clicks.md). |

@@ -53,6 +53,10 @@ import com.sn.lib.yml.SnYml;
  *     i of the region, so ONE repeated letter is an         per cell with its own template
  *     ordered region while distinct letters name             and placeholders
  *     distinct elements bound by name through key:)
+ *   regions.&lt;id&gt;.flow (1.43.0, long form only: the     -> GuiDef.parseRegionCells via
+ *     paged-flow arrow grid, drawn over the region's        PagedFlow.order, which reorders
+ *     own cells)                                            regionSlots(); a broken drawing
+ *                                                           WARNs and keeps declared order
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, item-model (1.21.2+),           (re-read per viewer: locals,
@@ -422,14 +426,35 @@ public final class GuiDef {
     }
 
     /**
-     * Cells of one {@code regions:} entry: the scalar shorthand and the long form resolve
-     * through the same rules an item uses for {@code slots:}/{@code key:}, so the owner
-     * needs no second vocabulary. Empty when the declaration is malformed (with a WARN) or
-     * when the layout simply lacks the letter (silent, the removal path).
+     * Cells of one {@code regions:} entry, in the order the owner drew in its
+     * {@code flow:} when the long form carries one (1.43.0, the {@code paged-flow:} arrow
+     * grid applied to this region's own cells), in declared order otherwise. A flow over a
+     * region with no cells is silent: the region is turned off, so there is nothing to
+     * order. A broken flow WARNs and keeps the declared order.
      */
     private static int[] parseRegionCells(ConfigurationSection section, String id,
                                           Map<Character, int[]> keySlots, boolean hasLayout,
                                           Consumer<String> warn) {
+        int[] cells = declaredRegionCells(section, id, keySlots, hasLayout, warn);
+        ConfigurationSection region = section.getConfigurationSection(id);
+        List<String> flow = region == null ? List.of() : region.getStringList("flow");
+        if (cells.length == 0 || flow.isEmpty()) {
+            return cells;
+        }
+        String field = "regions." + id + ".flow";
+        return PagedFlow.order(cells, truncateLayout(field, flow, warn),
+                PagedFlow.Labels.region(id), warn);
+    }
+
+    /**
+     * Cells of one {@code regions:} entry in declared order: the scalar shorthand and the
+     * long form resolve through the same rules an item uses for {@code slots:}/{@code key:},
+     * so the owner needs no second vocabulary. Empty when the declaration is malformed (with
+     * a WARN) or when the layout simply lacks the letter (silent, the removal path).
+     */
+    private static int[] declaredRegionCells(ConfigurationSection section, String id,
+                                             Map<Character, int[]> keySlots, boolean hasLayout,
+                                             Consumer<String> warn) {
         String keyRaw = "";
         int[] slots = new int[0];
         // Whether the owner WROTE an emptiness rather than leaving the entry malformed: a

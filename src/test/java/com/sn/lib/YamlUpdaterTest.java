@@ -30,6 +30,26 @@ class YamlUpdaterTest {
     }
 
     @Test
+    void aRegionTheOwnerRewroteInLongFormWithAFlowSurvivesAScalarResource() {
+        // 1.43.0: a consumer ships the scalar 'ranks: r' and the owner turns it into the long
+        // form to draw a flow. The key exists on disk, so the merge inserts nothing into it.
+        List<String> resource = List.of(
+                "rows: 6",
+                "regions:",
+                "  ranks: r");
+        List<String> disk = List.of(
+                "rows: 6",
+                "regions:",
+                "  ranks:",
+                "    key: r",
+                "    flow:",
+                "      - \"         \"",
+                "      - \" >>>>>>v \"",
+                "      - \" <<<<<<< \"");
+        assertEquals(disk, YamlUpdater.merge(resource, disk));
+    }
+
+    @Test
     void mergePreservesUserValuesAndExtraKeys() throws IOException {
         List<String> merged = YamlUpdater.merge(fixture("merge-resource.yml"), fixture("merge-old.yml"));
         assertTrue(merged.contains("  rows: 3"));

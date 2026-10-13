@@ -8,7 +8,9 @@ import java.util.function.Consumer;
 
 /**
  * Orders the {@code paged-key} cells along the arrow path the owner drew in
- * {@code paged-flow:} (pure, no Bukkit). The grid is the layout's 6x9 chest geometry
+ * {@code paged-flow:}, and since 1.43.0 the cells of a region along its
+ * {@code regions.<id>.flow:} (pure, no Bukkit). The two differ only in the words of their
+ * warnings, carried by {@link Labels}. The grid is the layout's 6x9 chest geometry
  * (cell row i, column j = slot i*9+j) and every paged cell carries the arrow that leads to
  * the NEXT entry: {@code >} right, {@code <} left, {@code ^} up, {@code v}/{@code V} down,
  * a blank meaning "no next cell".
@@ -26,7 +28,7 @@ import java.util.function.Consumer;
  * <p>The start is the paged cell nothing points at whose walk covers the drawing: every
  * line a turn enters also starts on such a cell, so each one is walked and exactly one
  * must be a path through EVERY paged cell. Anything else WARNs once naming the first
- * offending slot and the cells keep their row-major order, so a broken drawing never
+ * offending slot and the cells keep the order they came in, so a broken drawing never
  * breaks the menu. An arrow on a non-paged cell does nothing and WARNs once, because it
  * almost always means the grid is shifted against the layout.</p>
  */
@@ -40,11 +42,21 @@ final class PagedFlow {
     }
 
     /**
-     * Returns {@code cells} in the order of the arrow path drawn in {@code flowRows}, or a
-     * copy of {@code cells} unchanged (row-major) after a WARN when the drawing is not one
-     * path through every cell. An empty {@code flowRows} returns the cells silently.
+     * The {@code paged-flow:} form of {@link #order(int[], List, Labels, Consumer)}, with
+     * the 1.42.0 warning text.
      */
     static int[] order(int[] cells, List<String> flowRows, Consumer<String> warn) {
+        return order(cells, flowRows, Labels.PAGED, warn);
+    }
+
+    /**
+     * Returns {@code cells} in the order of the arrow path drawn in {@code flowRows}, or a
+     * copy of {@code cells} unchanged after a WARN worded by {@code labels} when the drawing
+     * is not one path through every cell. An empty {@code flowRows} returns the cells
+     * silently.
+     */
+    static int[] order(int[] cells, List<String> flowRows, Labels labels,
+                       Consumer<String> warn) {
         if (cells.length == 0 || flowRows.isEmpty()) {
             return cells.clone();
         }
@@ -52,7 +64,7 @@ final class PagedFlow {
         for (int slot : cells) {
             paged.add(slot);
         }
-        noteStrayArrows(paged, flowRows, warn);
+        noteStrayArrows(paged, flowRows, labels, warn);
         Grid grid = new Grid();
         boolean[] targeted = new boolean[GRID];
         for (int slot : cells) {
@@ -62,7 +74,7 @@ final class PagedFlow {
             }
             int[] step = step(arrow);
             if (step == null) {
-                return fallback(cells, warn, "'" + arrow + "' at slot " + slot
+                return fallback(cells, labels, warn, "'" + arrow + "' at slot " + slot
                         + " is not an arrow (> < ^ v)");
             }
             grid.arrows[slot] = arrow;
@@ -89,8 +101,8 @@ final class PagedFlow {
             Walk walk = walk(candidate, cells, grid);
             if (walk.failure == null) {
                 if (found != null) {
-                    return fallback(cells, warn, "the flow reads as a full path from slot "
-                            + found[0] + " and from slot " + candidate);
+                    return fallback(cells, labels, warn, "the flow reads as a full path"
+                            + " from slot " + found[0] + " and from slot " + candidate);
                 }
                 found = walk.order;
             } else if (walk.count > bestCount) {
@@ -101,7 +113,7 @@ final class PagedFlow {
         if (found != null) {
             return found;
         }
-        return fallback(cells, warn, failure != null ? failure
+        return fallback(cells, labels, warn, failure != null ? failure
                 : "the flow loops back on itself and has no start");
     }
 
@@ -149,17 +161,17 @@ final class PagedFlow {
         return new Walk(order, count, null);
     }
 
-    /** WARNs once, naming the first slot, when an arrow sits on a cell that is not paged. */
+    /** WARNs once, naming the first slot, when an arrow sits on a cell that is not ordered. */
     private static void noteStrayArrows(Set<Integer> paged, List<String> flowRows,
-                                        Consumer<String> warn) {
+                                        Labels labels, Consumer<String> warn) {
         for (int row = 0; row < Math.min(ROWS, flowRows.size()); row++) {
             String line = flowRows.get(row);
             for (int column = 0; column < Math.min(COLUMNS, line.length()); column++) {
                 int slot = row * COLUMNS + column;
                 if (!paged.contains(slot) && step(line.charAt(column)) != null) {
-                    warn.accept("paged-flow has an arrow at slot " + slot + ", which is not a"
-                            + " paged-key cell; it is ignored (is the grid shifted against the"
-                            + " layout?)");
+                    warn.accept(labels.field() + " has an arrow at slot " + slot
+                            + ", which is not " + labels.cell() + "; it is ignored (is the grid"
+                            + " shifted against the layout?)");
                     return;
                 }
             }
@@ -226,8 +238,33 @@ final class PagedFlow {
     private record Walk(int[] order, int count, String failure) {
     }
 
-    private static int[] fallback(int[] cells, Consumer<String> warn, String reason) {
-        warn.accept("paged-flow ignored: " + reason + "; paging keeps the row-major order");
+    private static int[] fallback(int[] cells, Labels labels, Consumer<String> warn,
+                                  String reason) {
+        warn.accept(labels.field() + " ignored: " + reason + "; " + labels.kept());
         return cells.clone();
+    }
+
+    /**
+     * The words a warning uses for the grid being drawn: its yml field, what one of its
+     * ordered cells is called, and which order survives a broken drawing.
+     *
+     * @param field the yml path of the grid, {@code paged-flow} or {@code regions.<id>.flow}
+     * @param cell  one ordered cell, read after "which is not"
+     * @param kept  the order the cells fall back to
+     */
+    record Labels(String field, String cell, String kept) {
+
+        /** The menu-level {@code paged-flow:}, worded exactly as in 1.42.0. */
+        static final Labels PAGED = new Labels("paged-flow", "a paged-key cell",
+                "paging keeps the row-major order");
+
+        /**
+         * A region's own {@code flow:} (1.43.0). A broken drawing keeps the region's DECLARED
+         * order: row-major for a {@code key:}, the list order for {@code slots:}.
+         */
+        static Labels region(String id) {
+            return new Labels("regions." + id + ".flow", "a cell of region '" + id + "'",
+                    "the region keeps its declared order");
+        }
     }
 }

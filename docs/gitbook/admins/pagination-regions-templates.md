@@ -182,6 +182,29 @@ Entry i renders into cell i of the region. With `key:` the cells run in ascendin
 
 Ownership is per cell, not per region. A cell with no entry falls through to the item declared underneath. So does a cell whose filler picks no template, and one hidden by its view requirements. That holds on the screen and on the click alike. Declare a filler item on the region letter and it fills every gap.
 
+### Region order: flow (1.43.0)
+
+A region in the long form can take a `flow:`, the same arrow grid as `paged-flow` (see "Paging order" above), drawn over the region's own cells. Entry 1 goes on the cell no arrow points at, and each arrow points to where the next entry goes. The arrows, the turn rule, the gap skip and the quoting are exactly those of `paged-flow`.
+
+```yaml
+layout:
+  - "fffffffff"
+  - "frrrrrrrf"
+  - "frrrrrrrf"
+  - "fffffffff"
+regions:
+  ranks:
+    key: r
+    flow:
+      - "         "
+      - " >>>>>>v "
+      - " <<<<<<< "
+```
+
+That is a snake over the 14 `r` cells. A flow works with `key:` and with `slots:`; it reorders whichever cells the region declares. The short form (`ranks: r`) cannot carry one, so switch to the long form to draw a flow. A plugin whose file ships the short form keeps working: the update never touches a region you rewrote in the long form.
+
+When the drawing is not one path through every cell of the region, the menu still opens, the console warns naming `regions.<id>.flow` and the slot, and the region keeps its declared order (row-major for `key:`, your list order for `slots:`). A flow on a region you turned off is silent.
+
 ### Turning a region off
 
 Two ways, both silent and supported:
@@ -205,6 +228,7 @@ Every malformed declaration warns and leaves the region declared with no cells. 
 | A `key:` in a menu with no `layout:` | Warns; the region has no cells. |
 | Cells covering the `paged-key` | Warns once, naming the first shared slot. A live paged bind wins there. |
 | Cells covering an earlier region | Warns once; the later region wins. |
+| A `flow:` that is not one path through every cell | Warns, naming the slot; the region keeps its declared order. |
 | A letter the layout simply lacks | Silent. That is the removal path, not a mistake. |
 
 ### Letters and regions are two different tools

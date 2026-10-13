@@ -101,6 +101,19 @@ pagination: true/false # default: false
 # Reordering changes the PICTURE only - every entry carries its own id in
 # its placeholders, so a switch can never end up toggling something else.
 #
+# flow (1.43.0, long form only): the paged-flow arrow grid above, drawn over
+# the region's OWN cells. Same arrows (> < ^ v), same turn rule, same gap
+# skip, rows quoted. Works with key: and with slots:. A drawing that is not
+# one path through every cell WARNs naming regions.<id>.flow and the slot,
+# and the region keeps its declared order.
+# regions:
+#   ranks:
+#     key: r
+#     flow:
+#       - "         "
+#       - " >>>>>>v "
+#       - " <<<<<<< "
+#
 # SIZING is yours: fewer cells than entries simply shows the first ones and
 # drops the tail; more cells than entries leaves the spare cells to the
 # items declared on them (declare an item on the region letter and it fills
@@ -121,7 +134,8 @@ pagination: true/false # default: false
 # Malformed declarations WARN and leave the region declared with no cells:
 # both slots: and key: (slots wins), neither of them, a key longer than one
 # character, a key without any layout:, and cells that overlap the paged-key
-# (the paged bind wins there) or an earlier region (the later one wins).
+# (the paged bind wins there) or an earlier region (the later one wins). A
+# broken flow: also WARNs, but only drops the drawing, never the cells.
 # regions:
 #   toggles: t
 

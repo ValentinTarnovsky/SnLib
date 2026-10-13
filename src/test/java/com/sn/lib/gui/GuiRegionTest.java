@@ -199,6 +199,135 @@ class GuiRegionTest {
         assertTrue(warnings.messages.isEmpty(), () -> "unexpected warnings: " + warnings.messages);
     }
 
+    /** A framed 3x7 ladder: slots 10-16, 19-25 and 28-34 (the SnRankUp rankup-list shape). */
+    private static final List<String> LADDER = List.of(
+            "fffffffff",
+            "frrrrrrrf",
+            "frrrrrrrf",
+            "frrrrrrrf",
+            "fffffffff");
+
+    @Test
+    void flowSnakesTheRegion() {
+        assertRegionFlow(List.of(
+                "         ",
+                " >>>>>>v ",
+                " v<<<<<< ",
+                " >>>>>>> "),
+                10, 11, 12, 13, 14, 15, 16, 25, 24, 23, 22, 21, 20, 19,
+                28, 29, 30, 31, 32, 33, 34);
+    }
+
+    @Test
+    void flowRunsEveryRowRightToLeftTopDown() {
+        assertRegionFlow(List.of(
+                "         ",
+                " v<<<<<< ",
+                " v<<<<<< ",
+                " <<<<<<< "),
+                16, 15, 14, 13, 12, 11, 10, 25, 24, 23, 22, 21, 20, 19,
+                34, 33, 32, 31, 30, 29, 28);
+    }
+
+    @Test
+    void flowRunsEveryRowLeftToRightBottomUp() {
+        assertRegionFlow(List.of(
+                "         ",
+                " >>>>>>> ",
+                " >>>>>>^ ",
+                " >>>>>>^ "),
+                28, 29, 30, 31, 32, 33, 34, 19, 20, 21, 22, 23, 24, 25,
+                10, 11, 12, 13, 14, 15, 16);
+    }
+
+    @Test
+    void flowRunsByColumns() {
+        assertRegionFlow(List.of(
+                "         ",
+                " vvvvvvv ",
+                " vvvvvvv ",
+                " >>>>>>  "),
+                10, 19, 28, 11, 20, 29, 12, 21, 30, 13, 22, 31, 14, 23, 32,
+                15, 24, 33, 16, 25, 34);
+    }
+
+    @Test
+    void flowOrdersASlotsListToo() {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root -> {
+            root.set("regions.ladder.slots", List.of(10, 11, 12));
+            root.set("regions.ladder.flow", List.of("         ", " <<<     "));
+        }), LADDER, warnings);
+
+        assertArrayEquals(new int[] {12, 11, 10}, regions.get("ladder"));
+        assertTrue(warnings.messages.isEmpty(), () -> "unexpected warnings: " + warnings.messages);
+    }
+
+    @Test
+    void brokenFlowWarnsOnceAndKeepsTheDeclaredOrder() {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root -> {
+            root.set("regions.ladder.key", "r");
+            root.set("regions.ladder.flow", List.of("         ", " >>>>>>> "));
+        }), LADDER, warnings);
+
+        assertArrayEquals(GuiMask.slots('r', LADDER), regions.get("ladder"));
+        assertEquals(1, warnings.messages.size(), () -> "warnings: " + warnings.messages);
+        assertTrue(warnings.messages.get(0).startsWith("regions.ladder.flow ignored: "),
+                warnings.messages.get(0));
+        assertTrue(warnings.messages.get(0).endsWith("; the region keeps its declared order"),
+                warnings.messages.get(0));
+    }
+
+    @Test
+    void strayArrowNamesTheRegionAndTheFlowStillApplies() {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root -> {
+            root.set("regions.ladder.slots", List.of(10, 11, 12));
+            root.set("regions.ladder.flow", List.of(">        ", " <<<     "));
+        }), LADDER, warnings);
+
+        assertArrayEquals(new int[] {12, 11, 10}, regions.get("ladder"));
+        assertEquals(1, warnings.messages.size(), () -> "warnings: " + warnings.messages);
+        assertTrue(warnings.messages.get(0).startsWith("regions.ladder.flow has an arrow at"
+                + " slot 0, which is not a cell of region 'ladder'"), warnings.messages.get(0));
+    }
+
+    @Test
+    void flowOnARegionTurnedOffIsSilent() {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root -> {
+            root.set("regions.ladder.key", "z");
+            root.set("regions.ladder.flow", List.of("         ", " >>>>>>> "));
+        }), LADDER, warnings);
+
+        assertEquals(0, regions.get("ladder").length);
+        assertTrue(warnings.messages.isEmpty(), () -> "unexpected warnings: " + warnings.messages);
+    }
+
+    @Test
+    void aFlowWithoutCellsStillWarnsThatTheRegionDeclaresNone() {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root ->
+                root.set("regions.ladder.flow", List.of(" >>>>>>> "))), LADDER, warnings);
+
+        assertEquals(0, regions.get("ladder").length);
+        assertEquals(1, warnings.messages.size(), () -> "warnings: " + warnings.messages);
+        assertTrue(warnings.messages.get(0).contains("declares neither 'slots' nor 'key'"),
+                warnings.messages.get(0));
+    }
+
+    private static void assertRegionFlow(List<String> flow, int... expected) {
+        Warnings warnings = new Warnings();
+        Map<String, int[]> regions = parse(section(root -> {
+            root.set("regions.ladder.key", "r");
+            root.set("regions.ladder.flow", flow);
+        }), LADDER, warnings);
+
+        assertArrayEquals(expected, regions.get("ladder"));
+        assertTrue(warnings.messages.isEmpty(), () -> "unexpected warnings: " + warnings.messages);
+    }
+
     private static Map<String, int[]> parse(ConfigurationSection root, List<String> mask,
                                             Warnings warnings) {
         return GuiDef.parseRegions(root, GuiDef.layoutKeys(mask), !mask.isEmpty(), new int[0],

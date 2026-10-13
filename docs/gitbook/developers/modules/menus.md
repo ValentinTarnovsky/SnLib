@@ -182,7 +182,7 @@ s.bindEach("toggles", perms.gatedActions(), (action, entry) -> entry
         .add("action_id", action));
 ```
 
-Entry `i` renders into cell `i` of the region: ascending row-major for a `key:`, the order you wrote for a `slots:` list. The filler runs once per entry on EVERY render, so values stay live under `update-interval:` instead of freezing at bind time, and it picks the template per entry - which is why several state variants of one button can share a region.
+Entry `i` renders into cell `i` of the region: ascending row-major for a `key:`, the order you wrote for a `slots:` list, or the order the owner drew in the region's `flow:` arrow grid (1.43.0, the `paged-flow` grid applied to a region; snake, right to left, bottom up, by columns). Pass `data` in its logical order and never reorder it to fit a layout: the file decides where each entry lands, so a plugin needs no update for a new order. The filler runs once per entry on EVERY render, so values stay live under `update-interval:` instead of freezing at bind time, and it picks the template per entry - which is why several state variants of one button can share a region.
 
 Ownership is per CELL, not per region: a cell with no entry, an entry whose filler picked no template and an entry hidden by its own `view-requirements` all fall through to the item declared underneath, on the screen and on the click alike. Declare an item on the region letter and it fills the spare cells. Precedence on a shared cell is `bind(slot, ...)` > `bindPaged` > region > declared item.
 
