@@ -1,38 +1,80 @@
 name: Revalidate sndevelopment.dev
 
-# sndevelopment.dev derives the SnLib docs and changelog from this repo and
-# caches them with ISR (15 minute windows). This job purges the matching cache
-# tags right after a change so the site updates in seconds. It is best effort:
-# if it fails or the secret is missing, ISR still catches up on its normal
-# cycle.
-
 on:
   push:
     branches: [main]
-    paths:
-      - "docs/gitbook/**"
+    paths: ["docs/gitbook/**"]
   release:
     types: [published, edited, deleted]
   workflow_dispatch:
+    inputs:
+      plugin:
+        description: "Optional plugin id for a scoped refresh"
+        required: false
+        type: string
 
-permissions: {}
-
-concurrency:
-  group: revalidate-site
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   revalidate:
     runs-on: ubuntu-latest
     steps:
-      - name: Let the raw.githubusercontent.com CDN settle
-        run: sleep 15
+      - name: Select affected content
+        id: content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const library = context.repo.repo.toLowerCase() === 'snlib';
+            const tags = new Set();
+            const scopedRelease = id => {
+              tags.add(library ? 'releases:snlib' : 'releases:plugins');
+              tags.add(`releases:${id}`);
+            };
+            if (context.eventName === 'release') {
+              const tag = context.payload.release.tag_name;
+              const match = library ? /^(?:snlib-)?v?\d+\.\d+\.\d+$/i.exec(tag) : /^([a-z0-9]+)-v\d+\.\d+\.\d+$/.exec(tag);
+              if (match) scopedRelease(library ? 'snlib' : match[1]);
+            } else if (context.eventName === 'workflow_dispatch') {
+              const id = context.payload.inputs?.plugin || '';
+              if (id && !/^[a-z0-9]{1,64}$/.test(id)) throw new Error('Invalid plugin id');
+              if (id) { tags.add(`docs:${id}`); scopedRelease(id); }
+              else if (library) { tags.add('docs:snlib'); tags.add('navigation:snlib'); scopedRelease('snlib'); }
+              else { tags.add('catalog'); tags.add('docs'); tags.add('releases'); }
+            } else {
+              try {
+                const { data } = await github.repos.compareCommitsWithBasehead({
+                  ...context.repo, basehead: `${context.payload.before}...${context.sha}`,
+                });
+                if (!data.files || data.files.length >= 300) throw new Error('Incomplete file list');
+                for (const filename of data.files.flatMap(file => [file.filename, file.previous_filename].filter(Boolean))) {
+                  if (!filename.startsWith('docs/gitbook/')) continue;
+                  if (library) {
+                    if (filename === 'docs/gitbook/SUMMARY.md') tags.add('navigation:snlib');
+                    else tags.add('docs:snlib');
+                  } else if (['docs/gitbook/SUMMARY.md', 'docs/gitbook/download-access.json'].includes(filename)) {
+                    tags.add('catalog');
+                  } else {
+                    const match = /^docs\/gitbook\/([a-z0-9]+)\//.exec(filename);
+                    tags.add(match ? `docs:${match[1]}` : 'docs');
+                  }
+                }
+              } catch {
+                if (library) { tags.add('docs:snlib'); tags.add('navigation:snlib'); }
+                else { tags.add('catalog'); tags.add('docs'); }
+              }
+            }
+            const query = [...tags].map(tag => `tag=${encodeURIComponent(tag)}`).join('&');
+            core.setOutput('query', query);
+            core.info(`Refreshing: ${[...tags].join(', ') || 'none'}`);
 
-      - name: Purge the site cache tags
+      - name: Refresh only affected content
+        if: steps.content.outputs.query != ''
         env:
           SECRET: ${{ secrets.SN_REVALIDATE_SECRET }}
+          QUERY: ${{ steps.content.outputs.query }}
         run: |
           curl --fail-with-body --silent --show-error \
                --retry 3 --retry-delay 5 --retry-all-errors \
-               --request POST "https://sndevelopment.dev/api/revalidate" \
+               --request POST "https://sndevelopment.dev/api/revalidate?$QUERY" \
                --header "Authorization: Bearer $SECRET"
