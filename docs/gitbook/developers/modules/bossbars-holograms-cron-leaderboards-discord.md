@@ -83,6 +83,48 @@ sn.holograms().setBillboard("top", Display.Billboard.VERTICAL);
 
 Spawning under an id that already exists replaces the previous hologram. A re-spawn on every enable is the **expected model**: the previous run's entity is purged as an orphan (see below), so you do not accumulate duplicates.
 
+### Style (API level 28, SnLib 1.44.0)
+
+`HologramStyle` is the whole look of the text display: billboard, text shadow, see-through, background, alignment, line width, text opacity, scale and view range. `HologramStyle.DEFAULT` is the vanilla look (billboard CENTER), so the three-argument `spawn` renders exactly as before.
+
+```java
+HologramStyle style = new HologramStyle(
+        Display.Billboard.FIXED,          // FIXED keeps the spawn location's yaw
+        true,                             // text shadow
+        false,                            // see-through blocks
+        HologramStyle.NO_BACKGROUND,      // or DEFAULT_BACKGROUND, or any ARGB Color
+        TextDisplay.TextAlignment.CENTER,
+        200,                              // line width in pixels (vanilla 200)
+        255,                              // text opacity 0-255
+        1.5F,                             // scale, 0.1-10
+        1.0F);                            // view range multiplier, 0.1-10
+
+sn.holograms().spawn("top", loc, lines, style);
+sn.holograms().setStyle("top", style.withBillboard(Display.Billboard.CENTER));
+```
+
+Read it from a yml section with `HologramStyle.read(section, fallback, warn)`. Every key is optional and keeps the fallback's value; an invalid value keeps it too and reports one line through `warn`, naming the key:
+
+```yaml
+hologram:
+  billboard: FIXED        # FIXED, VERTICAL, HORIZONTAL or CENTER
+  shadow: true
+  see-through: false
+  background: none        # default, none, "#RRGGBB", "#AARRGGBB", "R, G, B" or "R, G, B, A"
+  alignment: CENTER       # CENTER, LEFT or RIGHT
+  line-width: 200
+  text-opacity: 255
+  scale: 1.0
+  view-range: 1.0
+```
+
+```java
+HologramStyle style = HologramStyle.read(yml.getSection("hologram"), HologramStyle.DEFAULT,
+        problem -> getLogger().warning("config.yml hologram." + problem));
+```
+
+The style is re-applied when the hologram re-binds after a chunk reload. `setBillboard` keeps working and changes only the billboard of the current style.
+
 ### PAPI-driven refresh
 
 `refreshEvery(id, intervalTicks)` re-renders the hologram on an interval, resolving PAPI tokens each time. An interval of 0 or less cancels the refresh. There is one refresh task per hologram; a new interval replaces the previous task.
@@ -107,7 +149,7 @@ Per-viewer visibility is **not persistent**: it resets when the entity re-binds 
 
 Because holograms are persistent entities, a crash (or a delete that could not reach an unloaded chunk) can leave a `TextDisplay` behind. SnLib handles this automatically:
 
-- The internal **chunk-load listener** inspects marked displays as their chunk loads. A marker no live registration claims is an orphan and gets removed; a marker a live registration claims re-binds to that hologram's fresh entity instance and gets its current text and billboard re-applied.
+- The internal **chunk-load listener** inspects marked displays as their chunk loads. A marker no live registration claims is an orphan and gets removed; a marker a live registration claims re-binds to that hologram's fresh entity instance and gets its current text and style re-applied.
 - The **startup scan** does the same sweep over already-loaded worlds at SnLib startup, so leftovers from a previous run are purged on the first tick.
 
 Displays **without** the library marker are foreign and always left alone. `delete(id)` removes a hologram; when the entity sits in an unloaded chunk it cannot be touched immediately, so its now-dead marker guarantees the orphan purge removes it on the next chunk load. `deleteAll()` removes every hologram of your context, and the context teardown calls it for you.

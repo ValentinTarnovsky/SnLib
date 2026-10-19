@@ -426,6 +426,14 @@ sn.items().give(player, "wand", 1);
   entry) gets the owner-drawn order too. Config-only: no new API, API level
   stays 27, a region without `flow:` parses exactly as before, and a region
   the owner rewrote in the long form survives the merge of a scalar default.
+- Hologram style (v1.44.0): `HologramStyle` carries the whole look of a
+  hologram (billboard, text shadow, see-through, background color or none,
+  alignment, line width, text opacity, scale, view range). Pass it to
+  `sn.holograms().spawn(id, loc, lines, style)` or `setStyle(id, style)`, or
+  read it from yml with `HologramStyle.read(section, fallback, warn)`. It is
+  re-applied after a chunk reload. `DEFAULT` is the vanilla look, so a
+  hologram spawned without a style renders exactly as before. Requires API
+  level 28.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a
@@ -625,9 +633,9 @@ PlayerDataCache<Stats> cache = sn.db().playerCache(loader, saver);
   `show/hide/setText/setProgress/timer`; pure Adventure (zero packets),
   auto-hide on quit and on teardown.
 - `sn.holograms().spawn("top", loc, lines)`: real TextDisplay entities
-  (zero NMS), `setLines`, per-player visibility, optional PAPI refresh;
-  orphans purged on chunk-load and at startup via the PDC mark
-  `snlib_hologram`.
+  (zero NMS), `setLines`, per-player visibility, optional PAPI refresh, a
+  `HologramStyle` look (billboard, shadow, background, scale...); orphans
+  purged on chunk-load and at startup via the PDC mark `snlib_hologram`.
 - `sn.cron().schedule("payout", "0 4 * * *", task)`: 5-field cron subset +
   shortcuts `daily 04:00` / `hourly :30`, DST-safe via ZonedDateTime,
   persistable `catchUp`.

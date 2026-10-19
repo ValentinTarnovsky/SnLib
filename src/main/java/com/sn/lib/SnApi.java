@@ -93,12 +93,15 @@ package com.sn.lib;
  * commands of other plugins, which keep their /plugin:name form and get the key back when
  * the root unregisters); LEVEL 27 = release 1.41.0 (full Discord embeds:
  * DiscordWebhook.Embed.url, author(name, url, iconUrl), thumbnail, image and
- * footer(text, iconUrl) cover the title link, author bar, images and footer icon).</p>
+ * footer(text, iconUrl) cover the title link, author bar, images and footer icon);
+ * LEVEL 28 = release 1.44.0 (HologramStyle, HologramUtil.spawn with a style and setStyle:
+ * billboard, shadow, see-through, background, alignment, line width, text opacity, scale and
+ * view range of a hologram).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 27;
+    public static final int LEVEL = 28;
 
     private SnApi() {
     }

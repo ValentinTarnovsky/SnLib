@@ -3566,23 +3566,37 @@ Per-context hologram service. Holograms are real `TextDisplay` entities (1.19.4+
 Public methods:
 
 - `public HologramUtil(Sn ctx)` - Constructor.
-- `public void spawn(String id, Location location, List<String> lines)` - Spawns hologram `id` at the location, replacing (previous delete) an earlier hologram with the same id. The entity is created with `setPersistent(true)`, CENTER billboard by default, the PDC mark and the already-rendered text. A location with a null world logs a WARN (`"Hologram '<id>': invalid location, spawn ignored"`) and does nothing. The expected model is re-spawning on every enable: the previous run's entity purges as an orphan when its chunk loads.
+- `public void spawn(String id, Location location, List<String> lines)` - Spawns hologram `id` at the location, replacing (previous delete) an earlier hologram with the same id. The entity is created with `setPersistent(true)`, CENTER billboard by default, the PDC mark and the already-rendered text. A location with a null world logs a WARN (`"Hologram '<id>': invalid location, spawn ignored"`) and does nothing. The expected model is re-spawning on every enable: the previous run's entity purges as an orphan when its chunk loads. Delegates to the four-argument form with `HologramStyle.DEFAULT`.
+- `public void spawn(String id, Location location, List<String> lines, @Nullable HologramStyle style)` (1.44.0, API level 28) - Same as above with a look: every component of the `HologramStyle` is written to the entity (billboard, shadowed, see-through, `setDefaultBackground(false)` + the ARGB background, alignment, line width, text opacity as a byte, a uniform-scale `Transformation` keeping the current translation and rotations, view range). The location's yaw orients a FIXED/VERTICAL/HORIZONTAL billboard. A null style is `DEFAULT`, the vanilla values, so the three-argument form renders exactly as before 1.44.0.
 - `public void setLines(String id, List<String> lines)` - Replaces the lines and re-renders immediately.
-- `public void setBillboard(String id, Display.Billboard billboard)` - The entity's billboard mode (default `CENTER`, the classic hologram behavior); null is a no-op.
+- `public void setBillboard(String id, Display.Billboard billboard)` - The entity's billboard mode (default `CENTER`, the classic hologram behavior); null is a no-op. Since 1.44.0 it replaces only the billboard of the entry's current style.
+- `public void setStyle(String id, HologramStyle style)` (1.44.0) - Replaces the whole style and applies it to the live entity at once; null is a no-op.
 - `public void refreshEvery(String id, long intervalTicks)` - Re-renders the hologram every `intervalTicks` (PAPI tokens included); an interval of 0 or less cancels the refresh. One task handle per hologram; a new interval replaces the previous task.
 - `public void showTo(Player viewer, String id)` - Makes the hologram visible again for that viewer (`viewer.showEntity(plugin, display)`); holograms are visible by default.
 - `public void hideFrom(Player viewer, String id)` - Hides the hologram from that viewer only (`viewer.hideEntity`). Per-viewer visibility is NOT persistent: it resets when the entity re-binds after a chunk reload or a re-spawn.
 - `public void delete(String id)` - Deletes the hologram: cancels its refresh task and removes the entity. If the entity is in an unloaded chunk it cannot be touched here; since its marker stops being live, the orphan purge removes the persisted copy at the chunk's next load.
 - `public void deleteAll()` - Deletes all the context's holograms; the context teardown calls it.
-- `public static boolean adopt(TextDisplay display)` - The adoption contract at chunk load, used by the orphan purge (internal listener and startup scan). A display WITHOUT the lib's marker is foreign and left alone (returns true). A marked display whose marker claims a live registration re-binds as that hologram's fresh instance (same UUID after a chunk reload, or a never-bound entry) and gets its current text (`lastText`) and billboard reapplied; returns true. Returns **false** when the display carries a lib marker that no live hologram claims, or that is already bound to ANOTHER entity (a stale duplicate): the caller must remove those orphans.
+- `public static boolean adopt(TextDisplay display)` - The adoption contract at chunk load, used by the orphan purge (internal listener and startup scan). A display WITHOUT the lib's marker is foreign and left alone (returns true). A marked display whose marker claims a live registration re-binds as that hologram's fresh instance (same UUID after a chunk reload, or a never-bound entry) and gets its current text (`lastText`) and style reapplied; returns true. Returns **false** when the display carries a lib marker that no live hologram claims, or that is already bound to ANOTHER entity (a stale duplicate): the caller must remove those orphans.
 
 Internal logic:
 
 - Static `TenantRegistry<HologramEntry> HOLOGRAMS` with sweep `HologramUtil::sweep`: it cancels the refresh task and removes the entity if reachable (swallows `Throwable` if the entity is already invalid or its chunk unloaded; the orphan purge covers that case).
 - Render: each line goes through `SnText.color(SnText.normalizePapiOutput(ctx.papi().apply(null, line)))` and lines join with `Component.join(JoinConfiguration.newlines(), ...)` into a single multiline `TextDisplay`. PAPI resolves with a null viewer (serverside).
 - `findByMarker(String)` walks the whole tenant registry (`HOLOGRAMS.forEachOwner`) looking for the entry whose `marker` matches; it stops at the first match.
-- `HologramEntry` keeps `marker` final and volatile fields: `rawLines`, `billboard`, `entity`, `lastText` (the already-rendered Component, reapplied on adoption) and `refreshTask`.
+- `HologramEntry` keeps `marker` final and volatile fields: `rawLines`, `style` (a `HologramStyle`, `DEFAULT` until set), `entity`, `lastText` (the already-rendered Component, reapplied on adoption) and `refreshTask`.
 - `copyOf(lines)` normalizes null to `List.of()` and makes an immutable copy (`List.copyOf`).
+
+### HologramStyle
+
+`src/main/java/com/sn/lib/hologram/HologramStyle.java` (1.44.0, API level 28)
+
+Immutable record `(Display.Billboard billboard, boolean shadow, boolean seeThrough, Color background, TextDisplay.TextAlignment alignment, int lineWidth, int textOpacity, float scale, float viewRange)`. The compact constructor replaces a null billboard/alignment with CENTER and a null background with `DEFAULT_BACKGROUND`, keeps `lineWidth >= 1`, `textOpacity` in 0-255 and `scale`/`viewRange` in 0.1-10 (NaN becomes 1).
+
+- `DEFAULT` - the vanilla text display: CENTER, no shadow, not see-through, `DEFAULT_BACKGROUND` (ARGB `0x40000000`), CENTER alignment, `DEFAULT_LINE_WIDTH` 200, opacity 255, scale 1, view range 1.
+- `NO_BACKGROUND` - ARGB 0, a fully transparent background.
+- `withBillboard(billboard)` - the same style with another billboard.
+- `static HologramStyle read(@Nullable ConfigurationSection section, HologramStyle fallback, Consumer<String> warn)` - keys `billboard`, `shadow`, `see-through`, `background`, `alignment`, `line-width`, `text-opacity`, `scale`, `view-range`; each missing key keeps the fallback's value. An unknown enum name warns `"<key> '<raw>' is not one of <constants>; using <fallback>"`, an unparsable background warns `"background '<raw>' is not default, none, #RRGGBB, #AARRGGBB, \"R, G, B\" or \"R, G, B, A\"; keeping the previous value"`; the caller prefixes the file and section. A null section returns the fallback itself.
+- `static @Nullable Color parseBackground(@Nullable String raw)` - `default`, `none`/`transparent`, `#RRGGBB` (opaque), `#AARRGGBB`, `R, G, B` (opaque) or `R, G, B, A`, case-insensitive; null for anything else, including a channel outside 0-255.
 
 Notes and gotchas:
 

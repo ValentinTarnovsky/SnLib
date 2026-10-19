@@ -13,7 +13,9 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.Transformation;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3f;
 
 import com.sn.lib.Sn;
 import com.sn.lib.scheduler.TaskHandle;
@@ -62,6 +64,16 @@ public final class HologramUtil {
      * chunk loads.
      */
     public void spawn(String id, Location location, List<String> lines) {
+        spawn(id, location, lines, HologramStyle.DEFAULT);
+    }
+
+    /**
+     * Spawns the hologram {@code id} with a look ({@link HologramStyle}): billboard, shadow,
+     * background and the rest. The location's yaw orients a FIXED, VERTICAL or HORIZONTAL
+     * billboard. Same replacement and persistence model as
+     * {@link #spawn(String, Location, List)}; a null style is {@link HologramStyle#DEFAULT}.
+     */
+    public void spawn(String id, Location location, List<String> lines, @Nullable HologramStyle style) {
         World world = location == null ? null : location.getWorld();
         if (world == null) {
             ctx.plugin().getLogger().warning(
@@ -71,10 +83,11 @@ public final class HologramUtil {
         delete(id);
         String marker = ctx.plugin().getName() + ":" + id;
         HologramEntry entry = new HologramEntry(marker, copyOf(lines));
+        entry.style = style == null ? HologramStyle.DEFAULT : style;
         entry.lastText = render(entry.rawLines);
         TextDisplay display = world.spawn(location, TextDisplay.class);
         display.setPersistent(true);
-        display.setBillboard(entry.billboard);
+        applyStyle(display, entry.style);
         display.getPersistentDataContainer().set(MARKER_KEY, PersistentDataType.STRING, marker);
         display.text(entry.lastText);
         entry.entity = display;
@@ -98,10 +111,23 @@ public final class HologramUtil {
         if (entry == null || billboard == null) {
             return;
         }
-        entry.billboard = billboard;
+        entry.style = entry.style.withBillboard(billboard);
         TextDisplay display = entry.entity;
         if (display != null && display.isValid()) {
             display.setBillboard(billboard);
+        }
+    }
+
+    /** Replaces the whole look of the hologram ({@link HologramStyle}) and applies it at once. */
+    public void setStyle(String id, HologramStyle style) {
+        HologramEntry entry = get(id);
+        if (entry == null || style == null) {
+            return;
+        }
+        entry.style = style;
+        TextDisplay display = entry.entity;
+        if (display != null && display.isValid()) {
+            applyStyle(display, style);
         }
     }
 
@@ -170,7 +196,7 @@ public final class HologramUtil {
      * and the startup scan). A display without the library marker is foreign and is left
      * alone. A marked display whose marker is claimed by a live registration re-binds as
      * that hologram's fresh entity instance (same UUID after a chunk reload, or a never
-     * bound entry) and gets its current text and billboard re-applied.
+     * bound entry) and gets its current text and style re-applied.
      *
      * @return false when the display carries a library marker that no live hologram
      *         claims, or that is already bound to a different entity (a stale duplicate);
@@ -189,7 +215,7 @@ public final class HologramUtil {
         TextDisplay tracked = live.entity;
         if (tracked == null || tracked.getUniqueId().equals(display.getUniqueId())) {
             live.entity = display;
-            display.setBillboard(live.billboard);
+            applyStyle(display, live.style);
             Component text = live.lastText;
             if (text != null) {
                 display.text(text);
@@ -222,6 +248,22 @@ public final class HologramUtil {
         if (display != null && display.isValid()) {
             display.text(text);
         }
+    }
+
+    /** Writes every component of the style to the entity; DEFAULT writes the vanilla values. */
+    private static void applyStyle(TextDisplay display, HologramStyle style) {
+        display.setBillboard(style.billboard());
+        display.setShadowed(style.shadow());
+        display.setSeeThrough(style.seeThrough());
+        display.setDefaultBackground(false);
+        display.setBackgroundColor(style.background());
+        display.setAlignment(style.alignment());
+        display.setLineWidth(style.lineWidth());
+        display.setTextOpacity((byte) style.textOpacity());
+        Transformation current = display.getTransformation();
+        display.setTransformation(new Transformation(current.getTranslation(), current.getLeftRotation(),
+                new Vector3f(style.scale(), style.scale(), style.scale()), current.getRightRotation()));
+        display.setViewRange(style.viewRange());
     }
 
     private Component render(List<String> rawLines) {
@@ -275,7 +317,7 @@ public final class HologramUtil {
 
         final String marker;
         volatile List<String> rawLines;
-        volatile Display.Billboard billboard = Display.Billboard.CENTER;
+        volatile HologramStyle style = HologramStyle.DEFAULT;
         volatile @Nullable TextDisplay entity;
         volatile @Nullable Component lastText;
         volatile @Nullable TaskHandle refreshTask;
