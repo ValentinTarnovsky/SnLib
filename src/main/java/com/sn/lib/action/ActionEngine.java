@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -96,7 +97,7 @@ import com.sn.lib.util.SoundUtil;
  * {@code id:<item-id>}). Page actions delegate to the context {@link PageTarget}; with a null target or
  * {@link PageTarget#paginationEnabled()} false they no-op with a debug note (pagination
  * is opt-in per menu). Custom tags via {@link #register}; a registration may override a
- * built-in.</p>
+ * built-in, and {@link #unregister} hands the built-in back.</p>
  */
 public final class ActionEngine {
 
@@ -105,6 +106,8 @@ public final class ActionEngine {
     private final Sn ctx;
     private final JavaPlugin plugin;
     private final Map<String, ActionHandler> handlers = new ConcurrentHashMap<>();
+    /** The built-in catalog, filled once by the constructor and read-only afterwards. */
+    private final Map<String, ActionHandler> builtins = new HashMap<>();
     private final Set<String> warned = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean bungeeRegistered = new AtomicBoolean();
 
@@ -195,6 +198,39 @@ public final class ActionEngine {
             throw new IllegalArgumentException("Empty action tag");
         }
         handlers.put(key, handler);
+    }
+
+    /**
+     * Removes the custom action registered under {@code tag} (with or without brackets,
+     * case insensitive), but only while {@code handler} is the very instance registered
+     * there: the disable of a module that runs after a newer enable re-registered the tag
+     * finds another instance and leaves it alone. A tag that overrode a built-in gets the
+     * built-in back. Safe from any thread, like {@link #register}.
+     *
+     * @return true when {@code handler} was taken out of the tag
+     */
+    public boolean unregister(String tag, ActionHandler handler) {
+        Objects.requireNonNull(tag, "tag");
+        Objects.requireNonNull(handler, "handler");
+        return unregister(handlers, builtins, normalizeTag(tag), handler);
+    }
+
+    /**
+     * Removal behind {@link #unregister(String, ActionHandler)}: atomic per key, by
+     * identity, restoring the key's built-in when it has one. Package-visible so the
+     * identity and restore rules can be unit-tested without a server.
+     */
+    static boolean unregister(Map<String, ActionHandler> handlers,
+            Map<String, ActionHandler> builtins, String key, ActionHandler handler) {
+        boolean[] removed = new boolean[1];
+        handlers.computeIfPresent(key, (k, current) -> {
+            if (current != handler) {
+                return current;
+            }
+            removed[0] = true;
+            return builtins.get(k);
+        });
+        return removed[0];
     }
 
     /**
@@ -360,26 +396,27 @@ public final class ActionEngine {
     }
 
     private void registerBuiltins() {
-        handlers.put("player", (p, arg, c) -> dispatch(p, arg));
-        handlers.put("player-as-op", (p, arg, c) -> dispatchAsOp(p, arg));
-        handlers.put("console", (p, arg, c) -> dispatch(Bukkit.getConsoleSender(), arg));
-        handlers.put("message", (p, arg, c) -> p.sendMessage(render(arg)));
-        handlers.put("broadcastmessage", (p, arg, c) -> Bukkit.getServer().sendMessage(render(arg)));
-        handlers.put("actionbar", (p, arg, c) -> p.sendActionBar(render(arg)));
-        handlers.put("title", (p, arg, c) -> showTitle(p, arg));
-        handlers.put("sound", (p, arg, c) -> SoundUtil.play(p, arg));
-        handlers.put("close", (p, arg, c) -> p.closeInventory());
-        handlers.put("open", (p, arg, c) -> openGui(p, arg));
-        handlers.put("connect", (p, arg, c) -> connect(p, arg));
-        handlers.put("next-page", (p, arg, c) -> withPagination(c, "next-page", PageTarget::nextPage));
-        handlers.put("previous-page", (p, arg, c) -> withPagination(c, "previous-page", PageTarget::previousPage));
-        handlers.put("set-page", (p, arg, c) -> withPagination(c, "set-page",
+        builtins.put("player", (p, arg, c) -> dispatch(p, arg));
+        builtins.put("player-as-op", (p, arg, c) -> dispatchAsOp(p, arg));
+        builtins.put("console", (p, arg, c) -> dispatch(Bukkit.getConsoleSender(), arg));
+        builtins.put("message", (p, arg, c) -> p.sendMessage(render(arg)));
+        builtins.put("broadcastmessage", (p, arg, c) -> Bukkit.getServer().sendMessage(render(arg)));
+        builtins.put("actionbar", (p, arg, c) -> p.sendActionBar(render(arg)));
+        builtins.put("title", (p, arg, c) -> showTitle(p, arg));
+        builtins.put("sound", (p, arg, c) -> SoundUtil.play(p, arg));
+        builtins.put("close", (p, arg, c) -> p.closeInventory());
+        builtins.put("open", (p, arg, c) -> openGui(p, arg));
+        builtins.put("connect", (p, arg, c) -> connect(p, arg));
+        builtins.put("next-page", (p, arg, c) -> withPagination(c, "next-page", PageTarget::nextPage));
+        builtins.put("previous-page", (p, arg, c) -> withPagination(c, "previous-page", PageTarget::previousPage));
+        builtins.put("set-page", (p, arg, c) -> withPagination(c, "set-page",
                 t -> t.setPage(parseInt(arg, 1, "set-page"))));
-        handlers.put("refresh-page", (p, arg, c) -> withPagination(c, "refresh-page", PageTarget::refreshPage));
-        handlers.put("refresh-menu", (p, arg, c) -> withPagination(c, "refresh-menu", PageTarget::refreshMenu));
-        handlers.put("particle", (p, arg, c) -> spawnParticle(p, arg));
-        handlers.put("potion", (p, arg, c) -> applyPotion(p, arg));
-        handlers.put("remove-item", (p, arg, c) -> removeItem(p, arg));
+        builtins.put("refresh-page", (p, arg, c) -> withPagination(c, "refresh-page", PageTarget::refreshPage));
+        builtins.put("refresh-menu", (p, arg, c) -> withPagination(c, "refresh-menu", PageTarget::refreshMenu));
+        builtins.put("particle", (p, arg, c) -> spawnParticle(p, arg));
+        builtins.put("potion", (p, arg, c) -> applyPotion(p, arg));
+        builtins.put("remove-item", (p, arg, c) -> removeItem(p, arg));
+        handlers.putAll(builtins);
     }
 
     /** Message-like render: PAPI output normalization plus the full SnText pipeline. */

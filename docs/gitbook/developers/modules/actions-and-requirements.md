@@ -33,6 +33,17 @@ click-actions:
 
 The tag may be written with or without brackets and is case-insensitive; `register("give-token", ...)`, `register("[Give-Token]", ...)` and so on all key the same handler. A registration **may override a built-in** tag if you deliberately reuse its name.
 
+### Removing a custom tag (1.45.0)
+
+`unregister(String tag, ActionHandler handler)` takes the tag back out, for a module you switch off at runtime. Keep the handler instance you registered and pass that same instance: the tag is removed only while it still holds that exact handler, so a late disable never removes what a newer enable registered. A tag that overrode a built-in gets the built-in back. It returns `true` when the handler was taken out. Requires API level 29.
+
+```java
+ActionHandler giveToken = (player, arg, context) -> tokenService.give(player.getUniqueId(), Integer.parseInt(arg.trim()));
+
+sn.actions().register("give-token", giveToken);   // module enable
+sn.actions().unregister("give-token", giveToken); // module disable
+```
+
 The `ActionHandler` is a functional interface:
 
 ```java

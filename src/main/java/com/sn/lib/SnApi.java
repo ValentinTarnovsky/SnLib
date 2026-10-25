@@ -96,12 +96,17 @@ package com.sn.lib;
  * footer(text, iconUrl) cover the title link, author bar, images and footer icon);
  * LEVEL 28 = release 1.44.0 (HologramStyle, HologramUtil.spawn with a style and setStyle:
  * billboard, shadow, see-through, background, alignment, line width, text opacity, scale and
- * view range of a hologram).</p>
+ * view range of a hologram); LEVEL 29 = release 1.45.0 (undoing a registration:
+ * ActionEngine.unregister(String, ActionHandler) removes a custom tag by handler identity and
+ * hands back the built-in it overrode, YmlManager.unmount(String) forgets a mounted file so
+ * the reload stops reading and merging it, and ItemRegistry.unregister(String) removes a
+ * definition with its recipe, held effects and redeem, so a module switched off at runtime
+ * leaves nothing registered behind).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 28;
+    public static final int LEVEL = 29;
 
     private SnApi() {
     }

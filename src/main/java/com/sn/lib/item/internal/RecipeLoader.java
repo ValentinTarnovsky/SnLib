@@ -91,6 +91,27 @@ public final class RecipeLoader {
         defs.forEach(this::register);
     }
 
+    /**
+     * Removes the recipe this owner registered for {@code itemId} from the server; main
+     * thread only. A recipe this owner never registered is left alone.
+     *
+     * @return true when a recipe was removed
+     */
+    public boolean unregister(String itemId) {
+        NamespacedKey key;
+        try {
+            key = new NamespacedKey(plugin, keyName(itemId));
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
+        if (!KEYS.forOwner(plugin).contains(key)) {
+            return false;
+        }
+        KEYS.remove(plugin, key);
+        Bukkit.removeRecipe(key);
+        return true;
+    }
+
     /** Removes every recipe key of this owner from the server. */
     public void unregisterAll() {
         unregisterAll(plugin);
@@ -192,14 +213,21 @@ public final class RecipeLoader {
 
     /** Owner-namespaced recipe key; item ids are normalized to the key charset. */
     private @Nullable NamespacedKey keyFor(String itemId) {
-        String cleaned = itemId.trim().toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9/._-]", "_");
         try {
-            return new NamespacedKey(plugin, "snlib_recipe_" + cleaned);
+            return new NamespacedKey(plugin, keyName(itemId));
         } catch (IllegalArgumentException invalid) {
             warn("Item id '" + itemId + "' does not produce a valid recipe key; ignored");
             return null;
         }
+    }
+
+    /**
+     * Key name of an item's recipe, {@code snlib_recipe_<id>} with the id folded to the key
+     * charset; shared by register and unregister so both always name the same recipe.
+     */
+    static String keyName(String itemId) {
+        return "snlib_recipe_" + itemId.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9/._-]", "_");
     }
 
     private static @Nullable Material resolveMaterial(@Nullable String raw) {

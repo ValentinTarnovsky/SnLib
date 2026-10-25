@@ -100,6 +100,38 @@ public final class YmlManager {
     }
 
     /**
+     * Forgets the file mounted at {@code path} (normalized like every mount), so the reload
+     * stops reading, merging and re-seeding it and the teardown stops flushing it. Its
+     * pending coalesced write is drained first, so nothing the plugin saved is lost. The
+     * {@link SnYml} the mount returned stays readable but is no longer reloaded; a later
+     * mount of the same path creates a fresh instance under whatever mode it asks for. The
+     * file stays on disk. A path that is not mounted is a no-op. Menu files under
+     * {@code guis/} or a {@code GuiManager.loadFolder} folder belong to the menu module,
+     * which keeps its own handle on them: leave those to the menu module. Same thread as
+     * the mounts: onEnable, the reload flow or a module switch, never gameplay.
+     *
+     * @return true when the path was mounted and is now forgotten
+     * @throws IllegalArgumentException for the main config, which lives as long as the context
+     */
+    public boolean unmount(String path) {
+        String key = normalize(path);
+        if (key.equals(configPath)) {
+            throw new IllegalArgumentException("The main config '" + configPath
+                    + "' cannot be unmounted");
+        }
+        Entry removed;
+        synchronized (entries) {
+            removed = entries.remove(key);
+            modeConflictWarned.remove(key);
+        }
+        if (removed == null) {
+            return false;
+        }
+        removed.yml().flush();
+        return true;
+    }
+
+    /**
      * Re-runs the merge of every managed file (config first, so the gate is fresh) and
      * reloads every mounted file from disk, firing their reload hooks.
      */
@@ -215,7 +247,8 @@ public final class YmlManager {
         return new File(ctx.plugin().getDataFolder(), path);
     }
 
-    private static String normalize(String path) {
+    /** Mount key of a path: forward slashes, no leading slash; shared by mount and unmount. */
+    static String normalize(String path) {
         String normalized = path.replace('\\', '/');
         while (normalized.startsWith("/")) {
             normalized = normalized.substring(1);

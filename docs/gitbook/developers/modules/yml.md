@@ -51,6 +51,15 @@ Choosing between them:
 
 Opt in to pruning with `managedPruning(name)`: it behaves like `managed` but ALSO removes keys that no longer exist in the jar resource. The plain merge never deletes anything, so reach for pruning only when you deliberately want stale keys gone.
 
+### Unmounting a file (1.45.0)
+
+Every mount stays registered until the plugin disables, and the reload reads, merges and re-seeds it each time. A module switched off at runtime calls `sn.yml().unmount(name)` to forget its files. The path is normalized like the mount, so any spelling you mounted with works. Any save still pending is written first. The file stays on disk, and the `SnYml` you hold stays readable but is no longer reloaded. Mounting the path again later creates a fresh instance. It returns `false` for a path that is not mounted. The main config cannot be unmounted (that throws), and menu files under `guis/` or a `loadFolder` folder belong to the menu module, so leave those to it. Requires API level 29.
+
+```java
+SnYml arena = sn.yml().managed("modules/arena.yml"); // module enable
+sn.yml().unmount("modules/arena.yml");                // module disable
+```
+
 ## Typed getters
 
 Every getter takes a key and a default. A missing key returns the default silently. A value of the wrong type (or a string that cannot be parsed to the requested number/boolean) returns the default and logs ONE warning naming the file, key, bad value and fallback. Getters never throw and never print a stack trace on bad user input.

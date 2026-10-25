@@ -434,6 +434,13 @@ sn.items().give(player, "wand", 1);
   re-applied after a chunk reload. `DEFAULT` is the vanilla look, so a
   hologram spawned without a style renders exactly as before. Requires API
   level 28.
+- Undoing registrations (v1.45.0): a module switched off at runtime can now
+  remove what it registered. `sn.actions().unregister(tag, handler)` removes
+  a custom tag only while it holds that same handler instance, and gives back
+  the built-in it overrode. `sn.yml().unmount(path)` forgets a mounted file
+  after writing any pending save, so the reload stops reading and merging it.
+  `sn.items().unregister(id)` removes a definition with its recipe, held
+  effects and redeem. Requires API level 29.
 - Menu backups (v1.39.0): the `old-<file>-<yyyyMMdd-HHmmss>.yml` copies the
   merge leaves in a menu folder (`guis/` or a `loadFolder` folder) no longer
   load as `old-...` / `<ns>:old-...` menus (a debug line notes each one); a

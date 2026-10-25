@@ -110,6 +110,32 @@ public final class ItemRegistry {
         heldEffects.track(key, def);
     }
 
+    /**
+     * Removes the definition registered under {@code id} together with everything hung
+     * from that id: its server recipe, its held-effects tracking (the timer stops once no
+     * item needs it) and its {@link #redeemable} registration. Stacks already out in the
+     * world keep their tag but turn inert - no properties, actions, durability or
+     * redemption - until the id is registered again. Remove applied equipment with
+     * {@link #unapply} first: once the definition is gone, the quit and shutdown restore
+     * no longer recognizes the applied piece and hands the real item to the inventory
+     * instead of the slot. An id read from the items file of {@link #loadAll} comes back
+     * on the next reload while that file still declares it. Main thread only, like
+     * {@link #register(String, ItemDef)}, because the recipe is removed from the server.
+     *
+     * @return true when a definition or a redeemable registration was removed
+     */
+    public boolean unregister(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+        String key = id.trim();
+        boolean removed = defs.remove(key) != null;
+        removed |= redeems.remove(key) != null;
+        recipes.unregister(key);
+        heldEffects.untrack(key);
+        return removed;
+    }
+
     /** Registers every top-level section of {@code itemsFile} as one item definition. */
     public void loadAll(SnYml itemsFile) {
         this.itemsSource = itemsFile;

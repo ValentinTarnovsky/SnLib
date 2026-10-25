@@ -73,6 +73,21 @@ public final class HeldEffectsTask {
         ensureStarted();
     }
 
+    /**
+     * Drops the tracking of {@code id} and cancels the timer once nothing is tracked; a
+     * later tracked definition with held-effects starts it again.
+     */
+    public void untrack(String id) {
+        if (byId.remove(id) == null) {
+            return;
+        }
+        synchronized (this) {
+            if (byId.isEmpty()) {
+                stop();
+            }
+        }
+    }
+
     /** Cancels the timer; the next tracked definition with held-effects restarts it. */
     public synchronized void stop() {
         if (handle != null) {

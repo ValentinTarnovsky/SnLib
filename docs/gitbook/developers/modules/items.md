@@ -314,6 +314,22 @@ sn.items().redeemable("gem",
 - The registration is programmatic and survives item reloads; re-register (or
   `removeRedeemable(id)`) from your reload callback when the mode is config-driven.
 
+## Unregistering an item (1.45.0)
+
+`sn.items().unregister(id)` removes a definition and everything that hangs from its id:
+the server recipe, the held effects (the timer stops once no item needs it) and the
+redeemable registration. It returns `true` when something was removed. Call it on the
+main thread, like `register`. Requires API level 29.
+
+- Stacks already out in the world keep their tag but go inert: no properties, actions,
+  durability or redemption until the id is registered again.
+- Take applied equipment off with `unapply` first. Once the definition is gone, the quit
+  and shutdown restore no longer recognizes the applied piece and gives the real item to
+  the inventory instead of the slot.
+- An id that came from the items file of `loadAll` comes back on the next reload while
+  that file still declares it. `unregister` is meant for programmatic definitions and for
+  definitions read from a module's own file.
+
 ## Multi-line lore placeholders (1.12.0)
 
 A lore line containing `\n` splits into one lore line per segment (`SnItem.lore`), so a
