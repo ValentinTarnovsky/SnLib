@@ -1099,6 +1099,11 @@ public final class SnItem {
             if (current != null && current.hasTextures()) {
                 return;
             }
+            if (!SkinResolver.mojangResolvable(resolved.getUniqueId())) {
+                // An offline-mode identity (name-based UUID) that carries no textures of its
+                // own: Mojang can never resolve it, so the head stays as applied above.
+                return;
+            }
         }
         if (skinRefresh != null) {
             skinRefresh.accept(skullOwner);

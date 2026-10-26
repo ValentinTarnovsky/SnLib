@@ -125,6 +125,43 @@ class SkinCacheTest {
     }
 
     @Test
+    void negativeCacheHasItsOwnBound() {
+        SkinCache<String> cache = new SkinCache<>(10_000, 10_000, 2, 5, clock);
+        for (int i = 0; i < 9; i++) {
+            cache.putNegative("owner-" + i);
+        }
+        assertEquals(5, cache.negativeSize(), "the negative bound is its own, never exceeded");
+        assertFalse(cache.negativeHit("owner-0"), "the eldest failure is evicted");
+        assertTrue(cache.negativeHit("owner-8"));
+    }
+
+    @Test
+    void negativesWithinTheBoundAreNotRefetchedInRotation() {
+        // More owners than the positive cap, rendered round-robin: every one of them must stay
+        // suppressed for the whole window, or each render would fetch again.
+        SkinCache<String> cache = new SkinCache<>(10_000, 10_000, 2, 16, clock);
+        for (int i = 0; i < 10; i++) {
+            assertTrue(cache.beginFetch("o" + i));
+            cache.endFetch("o" + i);
+            cache.putNegative("o" + i);
+        }
+        for (int round = 0; round < 3; round++) {
+            for (int i = 0; i < 10; i++) {
+                assertFalse(cache.beginFetch("o" + i), "o" + i + " stays suppressed");
+            }
+        }
+    }
+
+    @Test
+    void fourArgumentFormSharesOneBound() {
+        SkinCache<String> cache = cache(10_000, 10_000, 3);
+        for (int i = 0; i < 6; i++) {
+            cache.putNegative("k" + i);
+        }
+        assertEquals(3, cache.negativeSize());
+    }
+
+    @Test
     void clearResetsPositiveNegativeAndInFlight() {
         SkinCache<String> cache = cache(100, 50, 8);
         cache.put("a", "1");

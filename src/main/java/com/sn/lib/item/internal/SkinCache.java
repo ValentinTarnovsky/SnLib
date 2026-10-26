@@ -29,6 +29,7 @@ public final class SkinCache<V> {
     private final long positiveTtlMillis;
     private final long negativeTtlMillis;
     private final int maxSize;
+    private final int negativeMaxSize;
     private final LongSupplier clock;
 
     private final Map<String, Entry<V>> positive;
@@ -46,9 +47,23 @@ public final class SkinCache<V> {
      * @param clock             monotonic-enough millis source; injectable for tests
      */
     public SkinCache(long positiveTtlMillis, long negativeTtlMillis, int maxSize, LongSupplier clock) {
+        this(positiveTtlMillis, negativeTtlMillis, maxSize, maxSize, clock);
+    }
+
+    /**
+     * Same as the four-argument form with a separate bound for the negative cache: a failed
+     * key costs only a string and a long, so it can hold far more owners than the positive
+     * cache holds profiles. A negative cache smaller than the owners rendered in rotation
+     * evicts the entry before it is read again and the owner is refetched on every pass.
+     *
+     * @param negativeMaxSize upper bound of the negative cache; floored to 1
+     */
+    public SkinCache(long positiveTtlMillis, long negativeTtlMillis, int maxSize,
+                     int negativeMaxSize, LongSupplier clock) {
         this.positiveTtlMillis = positiveTtlMillis;
         this.negativeTtlMillis = negativeTtlMillis;
         this.maxSize = Math.max(1, maxSize);
+        this.negativeMaxSize = Math.max(1, negativeMaxSize);
         this.clock = clock;
         this.positive = new LinkedHashMap<>(64, 0.75f, true) {
             @Override
@@ -59,7 +74,7 @@ public final class SkinCache<V> {
         this.negative = new LinkedHashMap<>(64, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
-                return size() > SkinCache.this.maxSize;
+                return size() > SkinCache.this.negativeMaxSize;
             }
         };
     }
@@ -133,6 +148,11 @@ public final class SkinCache<V> {
         positive.clear();
         negative.clear();
         inFlight.clear();
+    }
+
+    /** Live negative-cache size; test visibility. */
+    synchronized int negativeSize() {
+        return negative.size();
     }
 
     /** Live positive-cache size; test visibility. */

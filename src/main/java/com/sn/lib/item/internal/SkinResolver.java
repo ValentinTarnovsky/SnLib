@@ -28,23 +28,43 @@ import com.sn.lib.SnLibPlugin;
  * the textured profile and invoke the caller's re-render callback.</p>
  *
  * <p>Results live in a shared {@link SkinCache}: a positive TTL so repeated GUI opens do
- * not refetch, a short negative TTL so a genuinely unresolvable owner is not hammered, and
- * an in-flight guard so concurrent renders of the same owner trigger a single fetch. The
- * only remaining WARN is for a genuinely unresolvable owner (no such player, or no skin),
- * logged once per owner. Server-wide statics justified by contract note (a) of
+ * not refetch, a bounded negative cache so a genuinely unresolvable owner is not hammered,
+ * and an in-flight guard so concurrent renders of the same owner trigger a single fetch.
+ * The only remaining WARN is for a genuinely unresolvable owner (no such player, or no
+ * skin), logged once per owner and capped per server run.</p>
+ *
+ * <p>Mojang is asked about Mojang accounts only. Every account UUID is a random (version 4)
+ * UUID; an offline-mode UUID is name-based (version 3) and can never be resolved, so
+ * {@link #mojangResolvable(UUID)} keeps such an owner away from the network altogether (it
+ * keeps whatever the server already knows about it, normally the default head) instead of
+ * burning a lookup, a rate-limit slot and a stack trace per render. Server-wide statics
+ * justified by contract note (a) of
  * {@code SnLib}: skin data is content-addressed and identical for every consumer;
  * {@link #clearCache()} runs on the SnLib plugin teardown.</p>
  */
 public final class SkinResolver {
 
     private static final long POSITIVE_TTL_MILLIS = Duration.ofMinutes(30).toMillis();
-    private static final long NEGATIVE_TTL_MILLIS = Duration.ofMinutes(2).toMillis();
+    private static final long NEGATIVE_TTL_MILLIS = Duration.ofMinutes(10).toMillis();
     private static final int CACHE_CAP = 512;
+    /**
+     * A failed owner costs a key and a long; the bound only has to outlast the owners a
+     * server renders in rotation, or the entries evict each other and every render fetches.
+     */
+    private static final int NEGATIVE_CAP = 4096;
+    /** Distinct unresolvable owners that get their own WARN line per server run. */
+    private static final int UNRESOLVED_WARN_CAP = 32;
 
     private static final SkinCache<PlayerProfile> CACHE = new SkinCache<>(
-            POSITIVE_TTL_MILLIS, NEGATIVE_TTL_MILLIS, CACHE_CAP, System::currentTimeMillis);
+            POSITIVE_TTL_MILLIS, NEGATIVE_TTL_MILLIS, CACHE_CAP, NEGATIVE_CAP,
+            System::currentTimeMillis);
 
     private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> UNRESOLVED_WARNED = ConcurrentHashMap.newKeySet();
+
+    private static final int WARN_NONE = 0;
+    private static final int WARN_OWNER = 1;
+    private static final int WARN_LAST = 2;
 
     private SkinResolver() {
     }
@@ -53,6 +73,9 @@ public final class SkinResolver {
      * Canonical cache key of an owner: a UUID normalizes to its lowercase string form, any
      * other value to its lowercase trimmed form, so the same player keyed by UUID or by
      * name (any case) shares one cache slot. Null or blank yields null.
+     *
+     * <p>Runs on every head render, so the common shapes allocate nothing: a name has no
+     * dash and a UUID is never parsed when it already is in canonical lowercase form.</p>
      */
     public static @Nullable String normalizeKey(String owner) {
         if (owner == null) {
@@ -62,11 +85,62 @@ public final class SkinResolver {
         if (trimmed.isEmpty()) {
             return null;
         }
+        if (trimmed.indexOf('-') < 0) {
+            // UUID.fromString needs its four dashes, so this is a name.
+            return trimmed.toLowerCase(Locale.ROOT);
+        }
+        if (isCanonicalUuid(trimmed)) {
+            return trimmed;
+        }
         try {
             return UUID.fromString(trimmed).toString();
         } catch (IllegalArgumentException notAUuid) {
             return trimmed.toLowerCase(Locale.ROOT);
         }
+    }
+
+    /** True for the lowercase 36-character text form of a UUID, what {@code UUID.toString()} prints. */
+    private static boolean isCanonicalUuid(String text) {
+        if (text.length() != 36) {
+            return false;
+        }
+        for (int i = 0; i < 36; i++) {
+            char c = text.charAt(i);
+            if (i == 8 || i == 13 || i == 18 || i == 23) {
+                if (c != '-') {
+                    return false;
+                }
+            } else if ((c < '0' || c > '9') && (c < 'a' || c > 'f')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether Mojang can know this account: only a random (version 4) UUID can. A
+     * name-based (version 3) UUID is an offline-mode identity that no session server
+     * resolves, so asking is a wasted lookup that also feeds the rate limit.
+     */
+    public static boolean mojangResolvable(UUID id) {
+        return id != null && id.version() == 4;
+    }
+
+    /**
+     * Whether a fetch for {@code owner} may reach Mojang at all: a name always may (the
+     * server cannot tell what it is without asking), a UUID only when
+     * {@link #mojangResolvable(UUID)} holds. Allocation free for a canonical key.
+     */
+    static boolean mojangResolvableOwner(@Nullable String owner) {
+        String key = normalizeKey(owner);
+        if (key == null) {
+            return false;
+        }
+        if (isCanonicalUuid(key)) {
+            // The version is the first digit of the third group of the canonical text.
+            return key.charAt(14) == '4';
+        }
+        return true;
     }
 
     /**
@@ -83,12 +157,13 @@ public final class SkinResolver {
      * Requests an off-thread texture fetch for {@code owner} owned by {@code ctx}'s
      * scheduler and runs {@code onLanded} on the main thread when a textured profile lands.
      * Gated by the shared cache: nothing happens when the key is already cached, already
-     * in flight, or inside its negative window. Intended for the GUI path, where
+     * in flight, or inside its negative window, and never for an owner UUID that is not a
+     * Mojang account (an offline-mode, version 3 UUID). Intended for the GUI path, where
      * {@code onLanded} re-renders the affected slot.
      */
     public static void request(Sn ctx, String owner, Runnable onLanded) {
         String key = normalizeKey(owner);
-        if (key == null || !CACHE.beginFetch(key)) {
+        if (key == null || !mojangResolvableOwner(key) || !CACHE.beginFetch(key)) {
             return;
         }
         PlayerProfile base = baseProfile(owner);
@@ -134,6 +209,7 @@ public final class SkinResolver {
     public static void clearCache() {
         CACHE.clear();
         WARNED.clear();
+        UNRESOLVED_WARNED.clear();
     }
 
     /**
@@ -187,8 +263,35 @@ public final class SkinResolver {
             return;
         }
         CACHE.putNegative(key);
-        warnOnce("skull-owner:" + owner, "skull-owner '" + owner + "' could not be resolved to a "
-                + "textured profile (unknown player or no skin); keeping the default head");
+        warnUnresolved(key, owner);
+    }
+
+    /**
+     * One WARN line per owner per server run, and at most {@value #UNRESOLVED_WARN_CAP}
+     * distinct owners: past that, one closing line says the rest is silent, so a server
+     * full of unresolvable heads cannot flood its log.
+     */
+    private static void warnUnresolved(String key, String owner) {
+        int verdict = unresolvedVerdict(UNRESOLVED_WARNED, UNRESOLVED_WARN_CAP, key);
+        if (verdict == WARN_OWNER) {
+            Bukkit.getLogger().warning("[SnLib] skull-owner '" + owner + "' could not be resolved to a "
+                    + "textured profile (unknown player or no skin); keeping the default head");
+        } else if (verdict == WARN_LAST) {
+            Bukkit.getLogger().warning("[SnLib] skull-owner '" + owner + "' could not be resolved "
+                    + "either; further unresolvable skull-owners are not logged (default heads are kept)");
+        }
+    }
+
+    /**
+     * Pure decision of {@link #warnUnresolved}: {@code WARN_OWNER} for a first sighting
+     * below the cap, {@code WARN_LAST} for the sighting that fills it, {@code WARN_NONE} for
+     * a repeat or anything past the cap. {@code seen} never grows past {@code cap}.
+     */
+    static int unresolvedVerdict(Set<String> seen, int cap, String key) {
+        if (seen.size() >= cap || !seen.add(key)) {
+            return WARN_NONE;
+        }
+        return seen.size() >= cap ? WARN_LAST : WARN_OWNER;
     }
 
     private static void warnOnce(String tag, String message) {

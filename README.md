@@ -434,6 +434,14 @@ sn.items().give(player, "wand", 1);
   re-applied after a chunk reload. `DEFAULT` is the vanilla look, so a
   hologram spawned without a style renders exactly as before. Requires API
   level 28.
+- Skin lookups only for Mojang accounts (v1.45.1): a `skull-owner` head whose
+  UUID is not a Mojang one (a name-based, version 3 UUID of an offline-mode
+  server) is never sent to Mojang; it keeps the default head. Before, every
+  such head in an open menu cost a profile lookup, which under load rate
+  limited the server (HTTP 429) and flooded the log. A genuine owner that fails
+  to resolve is remembered for 10 minutes (up to 4096 owners, was 2 minutes
+  and 512) and warns once, with at most 32 owners logged per run. No API
+  change.
 - Undoing registrations (v1.45.0): a module switched off at runtime can now
   remove what it registered. `sn.actions().unregister(tag, handler)` removes
   a custom tag only while it holds that same handler instance, and gives back

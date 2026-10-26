@@ -686,7 +686,7 @@ templates:
 {% endhint %}
 
 {% hint style="info" %}
-A `skull-owner` head whose textured profile the server has not cached yet (a rarely-seen offline player) renders as the default head immediately and then **pops in** its real skin: SnLib fetches the texture off the main thread and, when it lands, re-renders exactly that slot - a plain declared item, a manual `bind`, or a single paged entry alike. The GUI wires this automatically, so no code is needed. The re-render is guarded (it skips if the session closed, the page changed, or the slot was re-bound), and a genuinely unresolvable owner just keeps the default head. See the [items page](items.md#newer-snitem-additions) for the underlying `skullOwner` behavior.
+A `skull-owner` head whose textured profile the server has not cached yet (a rarely-seen offline player) renders as the default head immediately and then **pops in** its real skin: SnLib fetches the texture off the main thread and, when it lands, re-renders exactly that slot - a plain declared item, a manual `bind`, or a single paged entry alike. The GUI wires this automatically, so no code is needed. The re-render is guarded (it skips if the session closed, the page changed, or the slot was re-bound), and a genuinely unresolvable owner just keeps the default head. The same goes for an owner whose UUID is not a Mojang account (an offline-mode server's name-based UUID): it is never looked up at all. See the [items page](items.md#newer-snitem-additions) for the underlying `skullOwner` behavior.
 {% endhint %}
 
 ## Related pages
