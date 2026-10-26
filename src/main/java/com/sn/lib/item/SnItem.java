@@ -52,6 +52,7 @@ import com.sn.lib.Ph;
 import com.sn.lib.compat.SnCompat;
 import com.sn.lib.compat.SnVersion;
 import com.sn.lib.item.internal.SkinResolver;
+import com.sn.lib.item.internal.SkullOwnerPolicy;
 import com.sn.lib.text.SnText;
 import com.sn.lib.util.HeadUtil;
 import com.sn.lib.yml.SnYml;
@@ -1071,15 +1072,17 @@ public final class SnItem {
     }
 
     /**
-     * Applies the skull owner in three tiers, all non-blocking on the main thread. First a
-     * hit in the shared async cache is applied outright (this is how every consumer, GUI or
-     * a direct build, ends up textured once the cache is warm). Otherwise the owner is
-     * resolved without blocking and applied as the best-effort look now; when that profile
-     * still lacks textures an off-thread fetch is scheduled - through the wired
-     * {@link #skinRefresh} hook for a live GUI (which re-renders the slot on completion), or
-     * through SnLib's own scheduler for a direct build (warming the cache for the next
-     * build). The genuinely-unresolvable WARN is deferred to the fetch, so an uncached name
-     * no longer warns just for being uncached.
+     * Applies the skull owner without ever leaving an owner that has no textures on the meta
+     * (Paper fires an uncached Mojang lookup per {@code setItemMeta} for such a meta), all
+     * non-blocking on the main thread. A hit in the shared async cache is applied outright
+     * (this is how every consumer, GUI or a direct build, ends up textured once the cache is
+     * warm). Otherwise the owner is resolved without blocking and its profile applied only
+     * when it already carries textures (an online player's own). In every other case the head
+     * is the plain default head with no owner; when Mojang can resolve the owner an off-thread
+     * fetch is scheduled - through the wired {@link #skinRefresh} hook for a live GUI (which
+     * re-renders the slot on completion), or through SnLib's own scheduler for a direct build
+     * (warming the cache for the next build). The decision is {@link SkullOwnerPolicy}. The
+     * genuinely-unresolvable WARN is deferred to the fetch.
      */
     private void applySkullOwner(ItemMeta meta) {
         if (!(meta instanceof SkullMeta skull)) {
@@ -1088,27 +1091,23 @@ public final class SnItem {
             return;
         }
         PlayerProfile cached = SkinResolver.cachedProfile(skullOwner);
-        if (cached != null) {
-            HeadUtil.applyProfile(skull, cached);
-            return;
-        }
-        OfflinePlayer resolved = resolveSkullOwner(skullOwner);
-        if (resolved != null) {
-            HeadUtil.applyOwner(skull, resolved);
-            PlayerProfile current = resolved.getPlayerProfile();
-            if (current != null && current.hasTextures()) {
-                return;
+        OfflinePlayer resolved = cached == null ? resolveSkullOwner(skullOwner) : null;
+        PlayerProfile own = resolved == null ? null : resolved.getPlayerProfile();
+        SkullOwnerPolicy.Plan plan = SkullOwnerPolicy.decide(cached != null,
+                SkullOwnerPolicy.hasTextures(own), resolved != null,
+                resolved != null && SkinResolver.mojangResolvable(resolved.getUniqueId()));
+        switch (plan) {
+            case APPLY_CACHED -> HeadUtil.applyProfile(skull, cached);
+            case APPLY_OWN -> HeadUtil.applyProfile(skull, own);
+            case DEFAULT_ONLY -> skull.setPlayerProfile(null);
+            case DEFAULT_AND_FETCH -> {
+                skull.setPlayerProfile(null);
+                if (skinRefresh != null) {
+                    skinRefresh.accept(skullOwner);
+                } else {
+                    SkinResolver.requestSelf(skullOwner);
+                }
             }
-            if (!SkinResolver.mojangResolvable(resolved.getUniqueId())) {
-                // An offline-mode identity (name-based UUID) that carries no textures of its
-                // own: Mojang can never resolve it, so the head stays as applied above.
-                return;
-            }
-        }
-        if (skinRefresh != null) {
-            skinRefresh.accept(skullOwner);
-        } else {
-            SkinResolver.requestSelf(skullOwner);
         }
     }
 

@@ -434,6 +434,16 @@ sn.items().give(player, "wand", 1);
   re-applied after a chunk reload. `DEFAULT` is the vanilla look, so a
   hologram spawned without a style renders exactly as before. Requires API
   level 28.
+- No owner without textures on a head (v1.45.2): Paper starts an uncached
+  Mojang profile lookup on every `setItemMeta` of a `PLAYER_HEAD` whose meta
+  has an owner but no textures, which 1.45.1 still triggered for offline-mode
+  players without a skin (menu renders became a flood of HTTP 429 lookups).
+  SnLib now applies an owner profile only when it carries textures (the shared
+  skin cache, or the online player's own profile); otherwise the item is the
+  plain default head with no owner, which is what the client shows for such a
+  player anyway, and an owner Mojang can resolve is still fetched once and
+  re-rendered. `HeadUtil.applyOwner` and `fromPlayer` follow the same rule.
+  No API change.
 - Skin lookups only for Mojang accounts (v1.45.1): a `skull-owner` head whose
   UUID is not a Mojang one (a name-based, version 3 UUID of an offline-mode
   server) is never sent to Mojang; it keeps the default head. Before, every

@@ -49,7 +49,7 @@ material: PLAYER_HEAD
 skull-owner: '%player_name%'
 ```
 
-A name the server has not cached shows the default head first, and the skin is fetched off-thread. A menu cell re-renders on its own when the skin lands; a physical stack already sitting in an inventory keeps the default look and shows the skin the next time the item is created. Only a truly unresolvable owner WARNs, once.
+A name the server has not cached shows the default head first, and the skin is fetched off-thread. A player whose skin the server cannot know (typically a player of an offline-mode server without a skin plugin) shows the default head, which is what the client displays for such a player anyway; SnLib never puts an owner without a skin on the item, so menu renders cause no profile lookups. A menu cell re-renders on its own when the skin lands; a physical stack already sitting in an inventory keeps the default look and shows the skin the next time the item is created. Only a truly unresolvable owner WARNs, once.
 
 > When `skull-owner` and a texture material are both set, `skull-owner` wins and the texture is ignored, with one WARN.
 

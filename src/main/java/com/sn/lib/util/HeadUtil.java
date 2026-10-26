@@ -85,8 +85,11 @@ public final class HeadUtil {
     /**
      * Creates a {@code PLAYER_HEAD} stack showing the given player's skin.
      *
-     * <p>No NMS and no HTTP of its own: the skin resolves from the server's profile cache
-     * (a transient Steve renders until the profile is cached).</p>
+     * <p>No NMS and no HTTP of its own. The owner is applied only when the server already
+     * holds a textured profile for it (an online player's own); a player whose skin is not
+     * known yields the plain default head, because an owner without textures makes Paper
+     * start an uncached Mojang lookup on every {@code setItemMeta} (see
+     * {@link #applyOwner}).</p>
      *
      * @param owner the head owner; null yields a default head
      * @return a {@code PLAYER_HEAD} stack of amount 1
@@ -104,27 +107,34 @@ public final class HeadUtil {
     }
 
     /**
-     * Applies a player owner to a skull meta via {@link SkullMeta#setOwningPlayer}. The
-     * skin resolves from the server's profile cache (transient Steve until cached); no NMS
-     * and no HTTP of its own. Null meta or null owner is a no-op.
+     * Applies a player's skin to a skull meta, but only when the server already holds a
+     * textured profile for the player (an online player's own profile). A skull meta with an
+     * owner and no textures makes Paper ({@code CraftMetaSkull.applyToItem}) start an
+     * uncached, asynchronous Mojang profile lookup on every {@code setItemMeta}, which under
+     * load is a flood of requests (HTTP 429) for players Mojang may not even know. So a
+     * player whose skin is unknown leaves the meta without any owner, the plain default
+     * head, which is what the client shows for such a player anyway. No NMS and no HTTP of
+     * its own. Null meta or null owner is a no-op.
      */
     public static void applyOwner(SkullMeta meta, @Nullable OfflinePlayer owner) {
         if (meta == null || owner == null) {
             return;
         }
-        meta.setOwningPlayer(owner);
+        PlayerProfile profile = owner.getPlayerProfile();
+        meta.setPlayerProfile(profile != null && profile.hasTextures() ? profile : null);
     }
 
     /**
      * Applies a fully resolved {@link PlayerProfile} (textures included) to a skull meta
      * via {@link SkullMeta#setPlayerProfile}. Used to re-apply a profile the async skin
-     * resolver fetched off-thread. Null meta or null profile is a no-op.
+     * resolver fetched off-thread. A profile without textures is never applied (the meta is
+     * left without an owner, see {@link #applyOwner}). Null meta or null profile is a no-op.
      */
     public static void applyProfile(SkullMeta meta, @Nullable PlayerProfile profile) {
         if (meta == null || profile == null) {
             return;
         }
-        meta.setPlayerProfile(profile);
+        meta.setPlayerProfile(profile.hasTextures() ? profile : null);
     }
 
     /**
