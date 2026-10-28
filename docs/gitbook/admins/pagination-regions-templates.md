@@ -264,6 +264,7 @@ A plugin can hand a ready-made stack to any cell: a crate reward, kit contents, 
 | `display-name` | Non-empty replaces the stack's own name. Absent or `""` keeps the real name. |
 | `lore` | Your lines are appended after the lore the stack already has. Absent appends nothing. |
 | `view-requirements`, `click-requirements`, `deny-actions`, `click-actions`, the per-click matrix | Unchanged: behavior stays yours. |
+| `custom-model-data-floats`, `-flags`, `-strings`, `-colors` (Minecraft 1.21.4+) | Each list you declare replaces that list of the stack's `custom_model_data` component; the lists you leave out stay the stack's own (its floats survive unless you declare `custom-model-data-floats`). A resource pack can use them to draw extra art on every button, such as a tinted slot background. |
 | `material`, `amount`, `glow`, `enchantments`, `custom-model-data`, every other appearance key | Ignored: the stack already carries them. |
 
 > **`lore: []` and a list holding `""` are not the same.** An empty list declares nothing, and the stack keeps its own lore untouched. A list with one empty string declares one blank line, appended as a spacer.

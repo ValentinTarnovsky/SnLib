@@ -60,6 +60,9 @@ import com.sn.lib.yml.SnYml;
  *   items.&lt;id&gt;:
  *     display-name, material (basehead/base64), lore,   -> SnItem.parse via GuiItemDef.render
  *       custom-model-data, item-model (1.21.2+),           (re-read per viewer: locals,
+ *       custom-model-data-floats/flags/strings/colors
+ *       (1.21.4+; also painted over a supplied stack
+ *       by GuiItemDef.renderOver),
  *       amount, glow, enchantments,
  *       flags (HIDE_ALL, HIDE_TOOLTIP,                      PAPI, [small], [rgb], [center],
  *       HIDE_POTION_EFFECTS alias),                         MiniMessage + legacy)

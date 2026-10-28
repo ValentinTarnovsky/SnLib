@@ -17,6 +17,7 @@ import com.sn.lib.Ph;
 import com.sn.lib.action.Requirement;
 import com.sn.lib.action.RequirementEngine;
 import com.sn.lib.item.SnItem;
+import com.sn.lib.item.internal.ModelDataLists;
 import com.sn.lib.util.SlotParser;
 import com.sn.lib.yml.SnYml;
 
@@ -520,8 +521,10 @@ public final class GuiItemDef {
     /**
      * Renders a PLUGIN-SUPPLIED stack under this definition instead of building one from the
      * yml: a clone of {@code supplied} carries the whole appearance and only this
-     * definition's {@code display-name} (replacing) and {@code lore} (appended) are painted
-     * over it, both resolved per viewer plus the locals {@code phs}. See
+     * definition's {@code display-name} (replacing), {@code lore} (appended) and
+     * {@code custom-model-data-floats/flags/strings/colors} (each declared list replacing that
+     * list of the stack's component, 1.21.4+) are painted over it, all resolved per viewer
+     * plus the locals {@code phs}. See
      * {@link StackOverlay} for the exact overlay rules.
      *
      * <p>There is no skin-refresh hook on this path: the appearance is the caller's stack,
@@ -533,6 +536,7 @@ public final class GuiItemDef {
         // The phs resolve inside the yml getters (before PAPI, 1.32.0), so the overlay
         // receives finished strings and applies no locals of its own here.
         return StackOverlay.apply(supplied, yml.getString(p + "display-name", "", viewer, phs),
-                yml.getStringList(p + "lore", List.of(), viewer, phs));
+                yml.getStringList(p + "lore", List.of(), viewer, phs),
+                ModelDataLists.read(yml, p, viewer, phs));
     }
 }

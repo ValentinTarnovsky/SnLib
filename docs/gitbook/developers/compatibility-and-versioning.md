@@ -147,8 +147,12 @@ surface (new public methods or classes). Its history:
 - LEVEL 24 = release 1.37.0 - a root fallback subcommand (`SnCommands.RootBuilder.fallbackSub`, so `/trade Steve` runs `/trade request Steve`)
 - LEVEL 26 = release 1.39.0 - command priority (`SnSpec.Builder.commandPriority`, and the `SnCommands` constructor that carries it: the core plugin of a server mode takes the bare name and the aliases of its roots from other plugins, which keep their `/plugin:name` form and get the name back when the root unregisters)
 - LEVEL 25 = release 1.38.0 - runtime roots and a pre-enable gate (`SnCommands.RootBuilder.dynamic`, which drops the "not declared in the plugin.yml" WARN and notes a name collision once at INFO; `SnPlugin.onPreEnable`, which can refuse the enable before SnLib writes a file). The level also protects a consumer that moved its license gate to `onPreEnable`: on an older SnLib the hook would never be called, so the handshake refuses the plugin first
+- LEVEL 27 = release 1.41.0 - full Discord embeds (`DiscordWebhook.Embed.url`, `author(name, url, iconUrl)`, `thumbnail`, `image` and `footer(text, iconUrl)`)
+- LEVEL 28 = release 1.44.0 - hologram styles (`HologramStyle`, `HologramUtil.spawn` with a style and `setStyle`: billboard, shadow, see-through, background, alignment, line width, text opacity, scale and view range)
+- LEVEL 29 = release 1.45.0 - undoing a registration (`ActionEngine.unregister`, `YmlManager.unmount`, `ItemRegistry.unregister`), so a module switched off at runtime leaves nothing registered behind
+- LEVEL 30 = release 1.46.0 - the `custom_model_data` component lists from yml (`custom-model-data-floats`, `-flags`, `-strings` and `-colors` on items and menu templates, also over a stack the plugin supplies; `SnItem.modelDataFloats/Flags/Strings/Colors` and `SnItem.applyModelDataLists`), Paper 1.21.4+
 
-The current value is 26. Releases that change only behaviour do not bump it:
+The current value is 30. Releases that change only behaviour do not bump it:
 1.3.0 removed the experimental SnBridge and added the separate Velocity base,
 1.19.0/1.19.1 changed marker and warning behaviour, 1.26.0 changed no public
 surface, 1.29.0 added the `HIDE_TOOLTIP` flag name - a value the existing

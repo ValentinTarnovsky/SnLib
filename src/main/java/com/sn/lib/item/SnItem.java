@@ -51,6 +51,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import com.sn.lib.Ph;
 import com.sn.lib.compat.SnCompat;
 import com.sn.lib.compat.SnVersion;
+import com.sn.lib.item.internal.ModelDataLists;
 import com.sn.lib.item.internal.SkinResolver;
 import com.sn.lib.item.internal.SkullOwnerPolicy;
 import com.sn.lib.text.SnText;
@@ -72,7 +73,8 @@ import com.sn.lib.yml.SnYml;
  * through {@link SnCompat#probe}; on 1.20.4 glow degrades to a real vanilla enchant plus
  * {@code HIDE_ENCHANTS} and max-stack-size and the {@code HIDE_TOOLTIP} flag are skipped,
  * each with one WARN; below 1.21.2
- * item-model is skipped the same way. Trim lookup
+ * item-model is skipped the same way, and below 1.21.4 the custom_model_data component lists
+ * (floats, flags, strings, colors; reflective, see {@link #applyModelDataLists}). Trim lookup
  * prefers {@link RegistryAccess} ({@code Registry.TRIM_*} is deprecated since 1.20.6) and
  * falls back to the legacy fields on older servers. {@link ItemFlag} is treated as an open
  * enum: individual {@code valueOf} in try/catch with the lenient
@@ -83,8 +85,9 @@ import com.sn.lib.yml.SnYml;
  * and the deprecated UUID constructor with a deterministic name-derived UUID on 1.20.4.</p>
  *
  * <p>Covered fields: display-name, material (with head texture convention), skull-owner,
- * custom-model-data, item-model, amount, glow, lore, enchantments, flags, color, trim,
- * potion-effects, attributes, damage, unbreakable, max-stack-size and equipment-slot.</p>
+ * custom-model-data, custom-model-data-floats/flags/strings/colors, item-model, amount, glow,
+ * lore, enchantments, flags, color, trim, potion-effects, attributes, damage, unbreakable,
+ * max-stack-size and equipment-slot.</p>
  *
  * <p>Server-wide statics allowed by the SnLib contract: the WARN dedup set records facts
  * about this server's registries, not about a consumer.</p>
@@ -116,6 +119,10 @@ public final class SnItem {
     private String trimMaterial;
     private final List<String> potionEffects = new ArrayList<>();
     private Integer modelData;
+    private @Nullable List<Float> modelDataFloats;
+    private @Nullable List<Boolean> modelDataFlags;
+    private @Nullable List<String> modelDataStrings;
+    private @Nullable List<Color> modelDataColors;
     private String itemModel;
     private String headBase64;
     private String skullOwner;
@@ -148,7 +155,9 @@ public final class SnItem {
     /**
      * Maps every appearance field of the golden spec found under {@code path}: display-name,
      * material (with the {@code texture-}/{@code basehead-}/{@code base64-} head convention),
-     * custom-model-data (only when set), item-model (1.21.2+ base ItemModel key,
+     * custom-model-data (only when set), custom-model-data-floats/flags/strings/colors
+     * (1.21.4+ component lists, each only when set; strings placeholder-resolved, bad
+     * entries skipped with one WARN), item-model (1.21.2+ base ItemModel key,
      * placeholder-resolved), amount, glow, lore, enchantments, flags, color,
      * trim-pattern/trim-material, potion-effects, unbreakable, max-stack-size,
      * equipment-slot, skull-owner (placeholder-resolved per viewer), attributes (static
@@ -182,6 +191,13 @@ public final class SnItem {
         item.amount(yml.getInt(p + "amount", 1));
         if (yml.isSet(p + "custom-model-data")) {
             item.modelData(yml.getInt(p + "custom-model-data", 0));
+        }
+        ModelDataLists lists = ModelDataLists.read(yml, p, viewer, phs);
+        if (!lists.isEmpty()) {
+            item.modelDataFloats(lists.floats())
+                    .modelDataFlags(lists.flags())
+                    .modelDataStrings(lists.strings())
+                    .modelDataColors(lists.colors());
         }
         String rawItemModel = yml.getString(p + "item-model", "", viewer, phs);
         if (!rawItemModel.isEmpty()) {
@@ -344,6 +360,61 @@ public final class SnItem {
     }
 
     /**
+     * Float list of the 1.21.4+ {@code custom_model_data} component; replaces the whole list
+     * and wins over the {@code floats[0]} that {@link #modelData(int)} writes. Null means not
+     * set (the component keeps its floats). Skipped with one WARN below 1.21.4.
+     */
+    public SnItem modelDataFloats(@Nullable List<Float> floats) {
+        this.modelDataFloats = ModelDataLists.copy(floats);
+        return this;
+    }
+
+    /**
+     * Flag list of the 1.21.4+ {@code custom_model_data} component; replaces the whole list.
+     * Null means not set. Skipped with one WARN below 1.21.4.
+     */
+    public SnItem modelDataFlags(@Nullable List<Boolean> flags) {
+        this.modelDataFlags = ModelDataLists.copy(flags);
+        return this;
+    }
+
+    /**
+     * String list of the 1.21.4+ {@code custom_model_data} component; replaces the whole
+     * list. Null means not set. Skipped with one WARN below 1.21.4.
+     */
+    public SnItem modelDataStrings(@Nullable List<String> strings) {
+        this.modelDataStrings = ModelDataLists.copy(strings);
+        return this;
+    }
+
+    /**
+     * Color list of the 1.21.4+ {@code custom_model_data} component (tints read by a
+     * resource pack's {@code minecraft:custom_model_data} tint source); replaces the whole
+     * list. Null means not set. Skipped with one WARN below 1.21.4.
+     */
+    public SnItem modelDataColors(@Nullable List<Color> colors) {
+        this.modelDataColors = ModelDataLists.copy(colors);
+        return this;
+    }
+
+    /**
+     * Overlays the given {@code custom_model_data} component lists onto an existing meta
+     * (1.21.4+): every non-null list REPLACES that list of the component, the null ones keep
+     * what the meta already holds. Call it after any {@code setCustomModelData(Integer)},
+     * which resets the whole component. The caller still writes the meta back with
+     * {@code ItemStack#setItemMeta}.
+     *
+     * @return true when at least one list was applied; false when all are null or the
+     *         server is below 1.21.4 (skipped with one WARN, never thrown)
+     */
+    public static boolean applyModelDataLists(ItemMeta meta, @Nullable List<Float> floats,
+                                              @Nullable List<Boolean> flags,
+                                              @Nullable List<String> strings,
+                                              @Nullable List<Color> colors) {
+        return ModelDataLists.apply(meta, floats, flags, strings, colors);
+    }
+
+    /**
      * Base ItemModel key (1.21.2+ {@code minecraft:item_model} component), e.g.
      * {@code nexo:2d_player_head}; a key without a namespace defaults to {@code minecraft:}.
      * Independent of {@link #modelData(int)} - both components may coexist on one item.
@@ -473,6 +544,9 @@ public final class SnItem {
         if (modelData != null) {
             meta.setCustomModelData(modelData);
         }
+        // After setCustomModelData, which replaces the whole component with floats=[value].
+        ModelDataLists.apply(meta, modelDataFloats, modelDataFlags, modelDataStrings,
+                modelDataColors);
         if (itemModel != null) {
             applyItemModel(meta);
         }
@@ -690,7 +764,7 @@ public final class SnItem {
     }
 
     private void applyColor(ItemMeta meta) {
-        Color parsed = parseColor(color);
+        Color parsed = ModelDataLists.parseColor(color);
         if (parsed == null) {
             warnOnce("color:" + color, "Invalid color '" + color
                     + "' (expected 'R, G, B' or hex 'RRGGBB'); ignored");
@@ -704,29 +778,6 @@ public final class SnItem {
             warnOnce("color-meta:" + material, "color defined for " + material
                     + " which does not support tinting; ignored");
         }
-    }
-
-    private static @Nullable Color parseColor(String raw) {
-        String value = raw.trim();
-        if (value.startsWith("#")) {
-            value = value.substring(1);
-        }
-        try {
-            if (value.indexOf(',') >= 0) {
-                String[] parts = value.split(",");
-                if (parts.length != 3) {
-                    return null;
-                }
-                return Color.fromRGB(Integer.parseInt(parts[0].trim()),
-                        Integer.parseInt(parts[1].trim()), Integer.parseInt(parts[2].trim()));
-            }
-            if (value.length() == 6) {
-                return Color.fromRGB(Integer.parseInt(value, 16));
-            }
-        } catch (IllegalArgumentException invalid) {
-            // Malformed number or channel outside 0-255; the caller warns with ONE WARN.
-        }
-        return null;
     }
 
     private void applyTrim(ItemMeta meta) {

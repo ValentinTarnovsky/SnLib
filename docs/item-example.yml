@@ -17,6 +17,10 @@ item-id: # can be anything as long it is unique
   material: string (can resolve basehead-base64) # default: "STONE"
   skull-owner: string # player name or UUID; resolves placeholders per viewer (%player_name%); requires PLAYER_HEAD; uncached name -> default head # default: ""
   custom-model-data: int # only stamped when the key is present; 0 is NOT the same as omitting the key # default: not set
+  custom-model-data-floats: number list # 1.21.4+ custom_model_data component floats, ex [1.0, 0.5]; replaces the whole list and wins over the floats[0] custom-model-data writes; a non-number entry is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
+  custom-model-data-flags: boolean list # 1.21.4+ custom_model_data component flags, ex [true, false]; replaces the whole list; an entry that is not true/false is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
+  custom-model-data-strings: string list # 1.21.4+ custom_model_data component strings, ex ["gold"]; placeholder-resolved per viewer; replaces the whole list; skipped with one WARN below 1.21.4 # default: not set
+  custom-model-data-colors: color list # 1.21.4+ custom_model_data component colors, each "#RRGGBB" / "RRGGBB" / "R, G, B" (quote the hex ones, a bare # starts a comment), ex ["#FF5500", "0, 128, 255"]; replaces the whole list; a bad entry is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
   item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
   amount: int # default: 1
   glow: true/false # default: false

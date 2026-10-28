@@ -101,12 +101,14 @@ package com.sn.lib;
  * hands back the built-in it overrode, YmlManager.unmount(String) forgets a mounted file so
  * the reload stops reading and merging it, and ItemRegistry.unregister(String) removes a
  * definition with its recipe, held effects and redeem, so a module switched off at runtime
- * leaves nothing registered behind).</p>
+ * leaves nothing registered behind); LEVEL 30 = release 1.46.0 (custom_model_data component
+ * lists from yml: custom-model-data-floats/flags/strings/colors on items and menu templates,
+ * SnItem.modelDataFloats/Flags/Strings/Colors and applyModelDataLists).</p>
  */
 public final class SnApi {
 
     /** API level of this build. Bumped by 1 on every release that grows the public API. */
-    public static final int LEVEL = 29;
+    public static final int LEVEL = 30;
 
     private SnApi() {
     }

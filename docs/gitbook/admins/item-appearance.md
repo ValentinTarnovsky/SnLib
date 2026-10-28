@@ -94,6 +94,26 @@ Four keys only act when the key is physically present in the file. Writing the d
 item-model: "nexo:2d_player_head"
 ```
 
+### custom-model-data lists (Minecraft 1.21.4+)
+
+Since 1.21.4 the `custom_model_data` component holds four lists a resource pack can read: floats, flags, strings and colors. Four keys set them, each one only when present:
+
+| Key | Values |
+|-----|--------|
+| `custom-model-data-floats` | Numbers, for example `[1.0, 0.5]`. |
+| `custom-model-data-flags` | `true` / `false`, for example `[true]`. |
+| `custom-model-data-strings` | Text, placeholders resolve per viewer, for example `["gold"]`. |
+| `custom-model-data-colors` | `"#RRGGBB"`, `"RRGGBB"` or `"R, G, B"`, for example `["#2B6CB0"]`. Quote the hex ones: a bare `#` starts a YAML comment. |
+
+Each key replaces that whole list. `custom-model-data: N` writes N as the first float; `custom-model-data-floats` wins over it when both are set. An entry that is not a number, not `true`/`false` or not a color is skipped with one WARN and the rest of the list applies. Below Minecraft 1.21.4 the four keys are skipped with one WARN.
+
+```yaml
+custom-model-data-flags: [true]
+custom-model-data-colors: ["#2B6CB0"]
+```
+
+In a menu these keys also apply over an item a plugin supplies; see [Pagination, regions and templates](pagination-regions-templates.md).
+
 ## glow and enchantments
 
 `glow: true` adds the enchantment glint without any real enchantment. On Minecraft 1.20.4 it degrades to a hidden vanilla enchant plus `HIDE_ENCHANTS`, with one WARN.

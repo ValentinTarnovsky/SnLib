@@ -11,28 +11,34 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 
 import com.sn.lib.Ph;
+import com.sn.lib.item.internal.ModelDataLists;
 import com.sn.lib.text.SnText;
 
 /**
  * Appearance overlay painted over a PLUGIN-SUPPLIED stack: the stack the plugin hands to a
  * bind is authoritative about how the cell LOOKS, and the template it is bound to keeps
- * owning how the cell BEHAVES. Only two appearance fields cross that line, both of them
- * text the server owner must be able to write:
+ * owning how the cell BEHAVES. Only these appearance fields cross that line, all of them
+ * values the server owner must be able to write:
  *
  * <ul>
  *   <li>{@code display-name}, when the template declares a non-empty one, REPLACES the
  *       stack's name;</li>
  *   <li>{@code lore} lines, when the template declares any, are APPENDED after the lore the
- *       stack already carries.</li>
+ *       stack already carries;</li>
+ *   <li>{@code custom-model-data-floats/flags/strings/colors} (1.21.4+, 1.46.0), each one
+ *       the template declares REPLACING that list of the stack's {@code custom_model_data}
+ *       component while the undeclared lists stay the stack's (a resource pack can then draw
+ *       something extra over any supplied stack, e.g. a tinted slot background).</li>
  * </ul>
  *
- * <p>A template that declares neither is a STRICT pass-through: the clone comes back with
- * nothing added, nothing cleared and nothing normalized, because {@link #apply} never even
- * fetches the meta in that case. A consumer that hands over a fully-formed stack whose lore
- * it built itself gets exactly that stack back. Nothing else of the template is applied -
- * material, amount, enchantments, model data and every other appearance field stay the
- * stack's, because a stack the plugin did not author (a crate reward, a kit item, shop
- * stock) carries NBT that no yml item definition can re-express.
+ * <p>A template that declares none of them is a STRICT pass-through: the clone comes back
+ * with nothing added, nothing cleared and nothing normalized, because {@link #apply} never
+ * even fetches the meta in that case. A consumer that hands over a fully-formed stack whose
+ * lore it built itself gets exactly that stack back. Nothing else of the template is
+ * applied - material, amount, enchantments, the integer {@code custom-model-data},
+ * item-model and every other appearance field stay the stack's, because a stack the plugin
+ * did not author (a crate reward, a kit item, shop stock) carries NBT that no yml item
+ * definition can re-express.
  * Both strings resolve through the normal pipeline: the local placeholders, then PAPI per
  * viewer (locals before PAPI since 1.32.0 - {@code renderOver} resolves both inside the
  * yml getters and passes no phs here), then colour, rgb and the rest of {@link SnText},
@@ -103,10 +109,24 @@ final class StackOverlay {
      */
     static ItemStack apply(ItemStack supplied, @Nullable String declaredName,
                            @Nullable List<String> declaredLore, Ph... phs) {
+        return apply(supplied, declaredName, declaredLore, ModelDataLists.NONE, phs);
+    }
+
+    /**
+     * {@link #apply(ItemStack, String, List, Ph...)} plus the {@code custom_model_data}
+     * component lists the template declares: each non-null list of {@code modelData}
+     * REPLACES that list of the clone's component, the others keep the stack's own (so the
+     * stack's floats survive unless the template declares floats). An empty
+     * {@code modelData} keeps the strict pass-through.
+     */
+    static ItemStack apply(ItemStack supplied, @Nullable String declaredName,
+                           @Nullable List<String> declaredLore, ModelDataLists modelData,
+                           Ph... phs) {
         ItemStack stack = supplied.clone();
         Component name = name(declaredName, phs);
         boolean appendsLore = declaredLore != null && !declaredLore.isEmpty();
-        if (name == null && !appendsLore) {
+        boolean paintsModelData = modelData != null && !modelData.isEmpty();
+        if (name == null && !appendsLore && !paintsModelData) {
             return stack;
         }
         ItemMeta meta = stack.getItemMeta();
@@ -118,6 +138,9 @@ final class StackOverlay {
         }
         if (appendsLore) {
             meta.lore(lore(meta.lore(), declaredLore, phs));
+        }
+        if (paintsModelData) {
+            modelData.applyTo(meta);
         }
         stack.setItemMeta(meta);
         return stack;

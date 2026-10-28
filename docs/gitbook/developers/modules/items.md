@@ -179,6 +179,8 @@ items:
     material: DIAMOND_SWORD
     custom-model-data: 1001
     item-model: "nexo:legendary_blade"   # optional, 1.21.2+: base ItemModel key; works alongside custom-model-data
+    custom-model-data-flags: [true]       # optional, 1.21.4+: custom_model_data component lists
+    custom-model-data-colors: ["#FF5555"] #   (also -floats, -strings); SnItem.modelDataFlags/Colors/... in code
     amount: 1
     glow: true
     lore:

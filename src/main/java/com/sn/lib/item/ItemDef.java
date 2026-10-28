@@ -41,6 +41,8 @@ import com.sn.lib.yml.SnYml;
  * Golden spec checklist (docs/item-example.yml) - field by field, where it parses:
  *   APPEARANCE: display-name, material (basehead),      -> SnItem.parse (re-read per viewer
  *     custom-model-data, item-model (1.21.2+ probe),       on every ItemRegistry.create)
+ *     custom-model-data-floats/flags/strings/colors
+ *     (1.21.4+ component lists, reflective),
  *     amount, glow, lore,
  *     enchantments, flags (HIDE_ALL, HIDE_TOOLTIP,
  *     alias HIDE_POTION_EFFECTS), color RGB/HEX,

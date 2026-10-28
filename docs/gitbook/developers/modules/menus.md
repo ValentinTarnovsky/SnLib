@@ -237,8 +237,9 @@ templates:
 
 - `display-name`, when non-empty, **replaces** the stack's name;
 - `lore` lines are **appended** after the lore the item already carries;
-- a template that declares neither is a strict pass-through (below);
-- everything else (`material`, `amount`, `glow`, `enchantments`, `custom-model-data`, ...) is ignored for that cell - the stack already has it.
+- `custom-model-data-floats` / `-flags` / `-strings` / `-colors` (1.46.0, Minecraft 1.21.4+): each declared list **replaces** that list of the stack's `custom_model_data` component, the undeclared ones stay the stack's (so the server owner can put resource pack art, such as a tinted slot background, on every button from the menu yml);
+- a template that declares none of these is a strict pass-through (below);
+- everything else (`material`, `amount`, `glow`, `enchantments`, the int `custom-model-data`, ...) is ignored for that cell - the stack already has it.
 
 Both resolve through the normal pipeline, so `%papi%` placeholders, your local `Ph` pairs, `&` colours, `[rgb]` and MiniMessage all work in them.
 

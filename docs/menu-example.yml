@@ -200,6 +200,15 @@ items:
     max-stack-size: int (1-99) # only applied when the key is present; probe-based, skipped with one WARN on 1.20.4 # default: vanilla default for the material
     equipment-slot: string # restricts where the item can be equipped: MAINHAND, OFFHAND, HEAD, CHEST, LEGS, FEET # default: "" (any slot)
     custom-model-data: int # only stamped when the key is present; 0 is NOT the same as omitting the key # default: not set
+    custom-model-data-floats: number list # 1.21.4+ custom_model_data component floats, ex [1.0, 0.5]; replaces the whole list and wins over the floats[0] custom-model-data writes; a non-number entry is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
+    custom-model-data-flags: boolean list # 1.21.4+ custom_model_data component flags, ex [true]; replaces the whole list; an entry that is not true/false is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
+    custom-model-data-strings: string list # 1.21.4+ custom_model_data component strings, ex ["gold"]; placeholder-resolved per viewer; replaces the whole list; skipped with one WARN below 1.21.4 # default: not set
+    custom-model-data-colors: color list # 1.21.4+ custom_model_data component colors, each "#RRGGBB" / "RRGGBB" / "R, G, B" (quote the hex ones, a bare # starts a comment), ex ["#2B6CB0"]; replaces the whole list; a bad entry is skipped with one WARN; skipped with one WARN below 1.21.4 # default: not set
+    # The four custom-model-data-* lists also apply OVER a plugin-supplied stack (see
+    # templates below): each declared list replaces that list of the stack's component, the
+    # undeclared ones (floats included) stay the stack's own. A resource pack can use them to
+    # draw extra art on every button of a menu with no plugin code, e.g. flags [true] plus
+    # colors ["#2B6CB0"] for a tinted slot background where the pack reads flag 0 / color 0.
     item-model: string # 1.21.2+ base ItemModel key, ex "nexo:2d_player_head"; no namespace -> minecraft:; independent of custom-model-data (both can coexist); skipped with one WARN below 1.21.2 # default: ""
     amount: int # default: 1
     slots: list ex: [0, 1, 2] or [0-2] or [0, 2, 4-6] # alternative: key (one layout character, see example-layout-item); several items may declare the same slot or key (see example-shared-slot below)
@@ -528,9 +537,14 @@ items:
 #       item's real name".
 #     - view-requirements, click-requirements, deny-actions, click-actions, the per-click
 #       matrix and update-interval - all unchanged.
-#   material, amount, glow, enchantments, custom-model-data and every other appearance
-#   field are IGNORED for that cell (the stack already carries them). Nothing changes for
-#   a bind that supplies no stack: the template renders the cell as it always has.
+#     - custom-model-data-floats / -flags / -strings / -colors (1.21.4+): each list the
+#       template declares REPLACES that list of the item's custom_model_data component;
+#       the lists it leaves out stay the item's own (its floats survive unless the
+#       template declares custom-model-data-floats).
+#   material, amount, glow, enchantments, the int custom-model-data and every other
+#   appearance field are IGNORED for that cell (the stack already carries them).
+#   Nothing changes for a bind that supplies no stack: the template renders the cell as
+#   it always has.
 #
 # Usage example (backpack plugin):
 #   - Plugin defines: backpack-slots: [0,1,2,3,4]
@@ -543,6 +557,10 @@ templates:
     display-name: string # default: ""
     material: string (can resolve basehead-base64) # default: "STONE"
     custom-model-data: int # default: 0
+    custom-model-data-floats: number list # 1.21.4+ # default: not set
+    custom-model-data-flags: boolean list # 1.21.4+ # default: not set
+    custom-model-data-strings: string list # 1.21.4+ # default: not set
+    custom-model-data-colors: color list ("#RRGGBB" / "RRGGBB" / "R, G, B") # 1.21.4+; these four also apply over a plugin-supplied stack # default: not set
     item-model: string # 1.21.2+ base ItemModel key # default: ""
     amount: int # default: 1
     # slots:/key: OPTIONAL - declared cells feed the no-slot bind("template-id");
